@@ -47,10 +47,15 @@ static void on_probe(const probe_observation_t *obs)
 
     bool whitelisted = whitelist_contains(obs->fp.hash);
 
-    if (is_armed(obs->timestamp_us) &&
-        obs->rssi >= CONFIG_PRINTBACK_ARMED_RSSI_THRESHOLD &&
-        !whitelisted) {
-        if (whitelist_add(obs->fp.hash)) {
+    if (is_armed(obs->timestamp_us)) {
+        if (whitelisted) {
+            ESP_LOGI(TAG, "armed: fp=%s already on whitelist (rssi=%d)",
+                     obs->fp.hex, obs->rssi);
+        } else if (obs->rssi < CONFIG_PRINTBACK_ARMED_RSSI_THRESHOLD) {
+            ESP_LOGI(TAG, "armed: ignored fp=%s rssi=%d (need >= %d)",
+                     obs->fp.hex, obs->rssi,
+                     CONFIG_PRINTBACK_ARMED_RSSI_THRESHOLD);
+        } else if (whitelist_add(obs->fp.hash)) {
             ESP_LOGI(TAG, "captured fp=%s rssi=%d (whitelist now=%u)",
                      obs->fp.hex, obs->rssi, whitelist_count());
             whitelisted = true;
