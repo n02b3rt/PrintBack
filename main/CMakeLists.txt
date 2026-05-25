@@ -3,6 +3,8 @@ idf_component_register(
         "main.c"
         "wifi_sniffer.c"
         "fingerprint.c"
+        "tracker.c"
+        "output.c"
     INCLUDE_DIRS "."
     REQUIRES
         esp_wifi

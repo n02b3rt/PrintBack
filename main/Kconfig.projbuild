@@ -1,0 +1,35 @@
+menu "PrintBack"
+
+config PRINTBACK_TRACKER_CAPACITY
+    int "Tracker capacity (unique devices in window)"
+    range 64 8192
+    default 1024
+
+config PRINTBACK_WINDOW_SECONDS
+    int "Active-device window (seconds)"
+    range 30 3600
+    default 300
+    help
+        How long a fingerprint stays counted as "present" after the
+        last probe before the sweeper evicts it.
+
+config PRINTBACK_HOP_INTERVAL_MS
+    int "Channel-hop dwell time (ms)"
+    range 100 5000
+    default 400
+
+config PRINTBACK_STATS_INTERVAL_SECONDS
+    int "Periodic stats log interval (seconds)"
+    range 5 600
+    default 30
+
+config PRINTBACK_RSSI_FLOOR
+    int "RSSI floor (dBm, drop weaker frames)"
+    range -100 0
+    default -85
+
+config PRINTBACK_JSON_OUTPUT
+    bool "Emit one JSON line per observation"
+    default y
+
+endmenu
