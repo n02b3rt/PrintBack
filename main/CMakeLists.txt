@@ -5,6 +5,8 @@ idf_component_register(
         "fingerprint.c"
         "tracker.c"
         "output.c"
+        "whitelist.c"
+        "ui.c"
     INCLUDE_DIRS "."
     REQUIRES
         esp_wifi
@@ -12,4 +14,5 @@ idf_component_register(
         nvs_flash
         mbedtls
         esp_timer
+        driver
 )

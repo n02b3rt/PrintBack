@@ -9,9 +9,6 @@ config PRINTBACK_WINDOW_SECONDS
     int "Active-device window (seconds)"
     range 30 3600
     default 300
-    help
-        How long a fingerprint stays counted as "present" after the
-        last probe before the sweeper evicts it.
 
 config PRINTBACK_HOP_INTERVAL_MS
     int "Channel-hop dwell time (ms)"
@@ -31,5 +28,62 @@ config PRINTBACK_RSSI_FLOOR
 config PRINTBACK_JSON_OUTPUT
     bool "Emit one JSON line per observation"
     default y
+
+menu "Pins (XIAO ESP32-C6)"
+
+config PRINTBACK_PIN_BUTTON
+    int "Tact switch GPIO"
+    default 2
+    help
+        D2 on XIAO ESP32-C6. Other pin → GND. Internal pull-up is used.
+
+config PRINTBACK_PIN_LED_R
+    int "RGB LED — Red GPIO"
+    default 21
+    help
+        D3 on XIAO ESP32-C6.
+
+config PRINTBACK_PIN_LED_G
+    int "RGB LED — Green GPIO"
+    default 23
+    help
+        D5 on XIAO ESP32-C6.
+
+config PRINTBACK_PIN_LED_B
+    int "RGB LED — Blue GPIO"
+    default 22
+    help
+        D4 on XIAO ESP32-C6.
+
+config PRINTBACK_LED_COMMON_ANODE
+    bool "RGB LED is common-anode"
+    default n
+    help
+        Enable if the long leg of your RGB LED goes to 3V3 instead of GND.
+        Inverts PWM duty so colour logic stays positive.
+
+endmenu
+
+menu "Whitelist capture"
+
+config PRINTBACK_LONG_PRESS_MS
+    int "Long-press duration (ms) to arm capture"
+    range 500 10000
+    default 3000
+
+config PRINTBACK_ARMED_TIMEOUT_SECONDS
+    int "How long ARMED stays active (seconds)"
+    range 3 120
+    default 15
+
+config PRINTBACK_ARMED_RSSI_THRESHOLD
+    int "Min RSSI to accept a capture (dBm)"
+    range -90 0
+    default -45
+    help
+        Captured fingerprint must be at least this strong. Default -45 dBm
+        means the device must be within ~30 cm of the antenna.
+
+endmenu
 
 endmenu
