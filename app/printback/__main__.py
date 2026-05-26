@@ -3,6 +3,8 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+import traceback
+from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtWidgets import QApplication
@@ -10,6 +12,24 @@ from PySide6.QtWidgets import QApplication
 from .config import Config, default_app_dir
 from .i18n import set_locale
 from .ui.main_window import MainWindow
+
+
+def _install_excepthook(app_dir: Path) -> None:
+    """Catch uncaught exceptions, log to file, keep the process alive where
+    possible. Qt slot exceptions land here in PySide6 6.x.
+    """
+    log_path = app_dir / "app-errors.log"
+
+    def handle(exc_type, exc_value, exc_tb):
+        msg = "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
+        sys.stderr.write(msg)
+        try:
+            with log_path.open("a", encoding="utf-8") as f:
+                f.write(f"\n[{datetime.now().isoformat(timespec='seconds')}]\n{msg}")
+        except OSError:
+            pass
+
+    sys.excepthook = handle
 
 _ESP_VIDS = {0x303A, 0x10C4, 0x1A86, 0x0403}
 
@@ -29,6 +49,7 @@ def detect_port() -> str | None:
 def main() -> int:
     app_dir = default_app_dir()
     app_dir.mkdir(parents=True, exist_ok=True)
+    _install_excepthook(app_dir)
 
     ap = argparse.ArgumentParser(prog="printback")
     ap.add_argument(

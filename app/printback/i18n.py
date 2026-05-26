@@ -84,6 +84,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         # status bar
         "status.connecting": "łączenie…",
         "status.db": "db: {path}",
+        "status.stale": "{base} — brak danych od {age}s, sprawdź urządzenie",
 
         # menu
         "menu.settings": "Ustawienia",
@@ -160,6 +161,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
 
         "status.connecting": "connecting…",
         "status.db": "db: {path}",
+        "status.stale": "{base} — no data for {age}s, check device",
 
         "menu.settings": "Settings",
         "menu.language": "Language",

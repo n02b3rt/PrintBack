@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+import time
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer
@@ -43,7 +44,12 @@ class MainWindow(QMainWindow):
         self.config_path = config_path
         self.app_dir = app_dir
         self.store = Store(db_path)
+        self._verify_store_integrity()
         self.maintenance = Maintenance(self.store, self.config, app_dir)
+
+        # connection state — used to render status bar with stale-detection
+        self._conn_ok = False
+        self._conn_msg = tr("status.connecting")
 
         self._build_ui(db_path)
         self._build_menu()
@@ -135,9 +141,27 @@ class MainWindow(QMainWindow):
         )
 
     def _on_connection(self, ok: bool, msg: str) -> None:
-        self.status_conn.setText(msg)
-        color = theme.OK if ok else theme.BAD
-        self.status_conn.setStyleSheet(f"color: {color};")
+        self._conn_ok = ok
+        self._conn_msg = msg
+        self._apply_status()
+
+    def _apply_status(self) -> None:
+        if not self._conn_ok:
+            self.status_conn.setText(self._conn_msg)
+            self.status_conn.setStyleSheet(f"color: {theme.BAD};")
+            self.setWindowTitle("PrintBack")
+            return
+        age = time.time() - self.reader.last_data_at
+        if age > 45:
+            self.status_conn.setText(
+                tr("status.stale", base=self._conn_msg, age=int(age))
+            )
+            self.status_conn.setStyleSheet(f"color: {theme.WARN};")
+            self.setWindowTitle("PrintBack — NO DATA")
+        else:
+            self.status_conn.setText(self._conn_msg)
+            self.status_conn.setStyleSheet(f"color: {theme.OK};")
+            self.setWindowTitle("PrintBack")
 
     def _on_observation(self, obs: Observation) -> None:
         self.store.insert(obs)
@@ -147,13 +171,49 @@ class MainWindow(QMainWindow):
         self.stats_tab.on_observation(obs)
         self.debug_tab.on_observation(obs)
 
+    def _verify_store_integrity(self) -> None:
+        """On startup, run PRAGMA integrity_check. If the DB is corrupt, move
+        it aside and restore from the most recent backup. Logs to stderr; the
+        excepthook captures persistent errors elsewhere."""
+        if self.store.integrity_check():
+            return
+        print(f"warning: SQLite integrity check FAILED for {self.store.path}",
+              file=sys.stderr)
+        import shutil
+        backups_dir = self.app_dir / "backups"
+        candidates = sorted(backups_dir.glob("printback-*.db")) if backups_dir.exists() else []
+        if not candidates:
+            print("no backups available — leaving DB as-is (writes may fail)",
+                  file=sys.stderr)
+            return
+        latest = candidates[-1]
+        corrupt = self.store.path.with_suffix(".db.corrupt")
+        try:
+            self.store.conn.close()
+            if corrupt.exists():
+                corrupt.unlink()
+            self.store.path.replace(corrupt)
+            shutil.copy(latest, self.store.path)
+            self.store.reopen()
+            print(f"restored DB from backup: {latest.name} "
+                  f"(corrupt DB saved as {corrupt.name})", file=sys.stderr)
+        except OSError as e:
+            print(f"backup restore failed: {e}", file=sys.stderr)
+
     def _tick_fast(self) -> None:
-        self.stats_tab.tick()
-        self.debug_tab.tick()
+        try:
+            self.stats_tab.tick()
+            self.debug_tab.tick()
+            self._apply_status()
+        except Exception as e:  # noqa: BLE001
+            print(f"tick_fast error: {e}", file=sys.stderr)
 
     def _tick_slow(self) -> None:
-        self.stats_tab.refresh_slow()
-        self.debug_tab.refresh_slow()
+        try:
+            self.stats_tab.refresh_slow()
+            self.debug_tab.refresh_slow()
+        except Exception as e:  # noqa: BLE001
+            print(f"tick_slow error: {e}", file=sys.stderr)
 
     def _run_maintenance_quiet(self) -> None:
         try:

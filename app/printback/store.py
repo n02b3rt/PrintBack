@@ -93,6 +93,25 @@ class Store:
         self.conn.execute("PRAGMA foreign_keys = ON")
         self._migrate()
 
+    def integrity_check(self) -> bool:
+        """PRAGMA integrity_check — returns True if DB is consistent."""
+        try:
+            row = self.conn.execute("PRAGMA integrity_check").fetchone()
+            return bool(row and row[0] == "ok")
+        except sqlite3.DatabaseError:
+            return False
+
+    def reopen(self) -> None:
+        """Close and reopen — used after restore from backup."""
+        try:
+            self.conn.close()
+        except sqlite3.Error:
+            pass
+        self.conn = sqlite3.connect(str(self.path))
+        self.conn.execute("PRAGMA journal_mode = WAL")
+        self.conn.execute("PRAGMA synchronous = NORMAL")
+        self.conn.execute("PRAGMA foreign_keys = ON")
+
     def _migrate(self) -> None:
         # Add missing columns to pre-existing whitelist (v0 → v1).
         cols = {row[1] for row in self.conn.execute("PRAGMA table_info(whitelist)")}
