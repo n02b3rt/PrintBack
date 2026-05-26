@@ -290,7 +290,57 @@ class Store:
         ).fetchall()
         return [(d, int(t), int(n), int(r)) for d, t, n, r in rows]
 
+    def today_hourly(self, exclude_wl: bool = True) -> list[int]:
+        """24 ints — unique non-WL fp count per hour of today (local time)."""
+        today_start, _ = _day_bounds(_today())
+        hours = [0] * 24
+        wl_clause = (
+            "AND fp NOT IN (SELECT fp FROM whitelist)" if exclude_wl else ""
+        )
+        rows = self.conn.execute(
+            f"""SELECT CAST((received_at - ?) / 3600 AS INTEGER) AS h,
+                       COUNT(DISTINCT fp) AS uniq
+               FROM observations
+               WHERE received_at >= ? {wl_clause}
+               GROUP BY h""",
+            (today_start, today_start),
+        ).fetchall()
+        for h, uniq in rows:
+            h = int(h)
+            if 0 <= h < 24:
+                hours[h] = int(uniq)
+        return hours
+
+    def last_n_days_totals(self, n: int) -> list[tuple[str, int, int]]:
+        """[(YYYY-MM-DD, weekday_idx, total_unique), ...] oldest first.
+
+        For today, queries L1 live (excluding whitelist). For prior days,
+        reads from L3 daily_totals (already excludes whitelist).
+        """
+        today = _today()
+        out: list[tuple[str, int, int]] = []
+        for i in range(n - 1, -1, -1):
+            d = today - timedelta(days=i)
+            if d == today:
+                today_start, _ = _day_bounds(d)
+                row = self.conn.execute(
+                    """SELECT COUNT(DISTINCT fp) FROM observations
+                       WHERE received_at >= ?
+                         AND fp NOT IN (SELECT fp FROM whitelist)""",
+                    (today_start,),
+                ).fetchone()
+                count = int(row[0]) if row else 0
+            else:
+                row = self.conn.execute(
+                    "SELECT total_unique FROM daily_totals WHERE date = ?",
+                    (d.isoformat(),),
+                ).fetchone()
+                count = int(row[0]) if row else 0
+            out.append((d.isoformat(), d.weekday(), count))
+        return out
+
     def frequency_segments(self, days_back: int) -> list[tuple[str, int]]:
+        """Returns list of (segment_key, count). Caller translates keys via i18n."""
         cutoff = _date_str(_today() - timedelta(days=days_back))
         rows = self.conn.execute(
             """SELECT fp, COUNT(DISTINCT visit_date) AS visits
@@ -299,17 +349,17 @@ class Store:
                GROUP BY fp""",
             (cutoff, _date_str(_today())),
         ).fetchall()
-        buckets = {"1 wizyta": 0, "2-3": 0, "4-7": 0, "8+": 0}
+        buckets = {"1_visit": 0, "2_3": 0, "4_7": 0, "8_plus": 0}
         for _fp, visits in rows:
             v = int(visits)
             if v <= 1:
-                buckets["1 wizyta"] += 1
+                buckets["1_visit"] += 1
             elif v <= 3:
-                buckets["2-3"] += 1
+                buckets["2_3"] += 1
             elif v <= 7:
-                buckets["4-7"] += 1
+                buckets["4_7"] += 1
             else:
-                buckets["8+"] += 1
+                buckets["8_plus"] += 1
         return list(buckets.items())
 
     # ---------- live devices (Debug tab) ----------

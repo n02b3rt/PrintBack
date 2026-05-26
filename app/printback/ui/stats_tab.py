@@ -1,13 +1,11 @@
 from __future__ import annotations
 
 import time
-from datetime import date, datetime, timedelta
+from datetime import datetime
 
 import pyqtgraph as pg
-from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
-    QGridLayout,
     QHBoxLayout,
     QLabel,
     QVBoxLayout,
@@ -15,19 +13,60 @@ from PySide6.QtWidgets import (
 )
 
 from ..config import Config
+from ..i18n import tr
 from ..models import Observation
 from ..store import Store
 from . import theme
 
 
+class HeroCard(QWidget):
+    """Headline KPI — single large number, secondary line below."""
+
+    def __init__(self, title: str, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._title = QLabel(title)
+        self._title.setStyleSheet(f"color: {theme.MUTED}; font-size: 13px;")
+
+        self._value = QLabel("--")
+        vf = QFont()
+        vf.setPointSize(44)
+        vf.setBold(True)
+        self._value.setFont(vf)
+
+        self._sub = QLabel("")
+        sf = QFont()
+        sf.setPointSize(13)
+        self._sub.setFont(sf)
+        self._sub.setStyleSheet(f"color: {theme.MUTED};")
+
+        v = QVBoxLayout(self)
+        v.setContentsMargins(24, 16, 24, 18)
+        v.setSpacing(2)
+        v.addWidget(self._title)
+        v.addWidget(self._value)
+        v.addWidget(self._sub)
+        self.setStyleSheet(
+            f"HeroCard {{ background: {theme.PANEL}; border-radius: 10px; }}"
+        )
+
+    def set_value(self, text: str, sub: str = "", sub_color: str | None = None) -> None:
+        self._value.setText(text)
+        self._sub.setText(sub)
+        self._sub.setStyleSheet(
+            f"color: {sub_color or theme.MUTED}; font-size: 13px;"
+        )
+
+
 class KpiCard(QWidget):
+    """Secondary KPI — medium number + optional sub-line."""
+
     def __init__(self, label: str, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._label = QLabel(label)
         self._label.setStyleSheet(f"color: {theme.MUTED};")
         self._value = QLabel("--")
         vf = QFont()
-        vf.setPointSize(26)
+        vf.setPointSize(24)
         vf.setBold(True)
         self._value.setFont(vf)
         self._sub = QLabel("")
@@ -65,43 +104,72 @@ class StatsTab(QWidget):
         root.setContentsMargins(12, 12, 12, 12)
         root.setSpacing(10)
 
-        # KPI grid: 4 cards
+        # Hero
+        self.hero = HeroCard(tr("hero.title"))
+        root.addWidget(self.hero)
+
+        # Secondary KPI row
         kpi_row = QHBoxLayout()
         kpi_row.setSpacing(10)
-        self.kpi_active = KpiCard("aktywni teraz (5 min)")
-        self.kpi_today = KpiCard("dziś unikalnych")
-        self.kpi_new = KpiCard("nowi dziś")
-        self.kpi_returning = KpiCard("powracający dziś")
-        for c in (self.kpi_active, self.kpi_today, self.kpi_new, self.kpi_returning):
+        self.kpi_active = KpiCard(tr("kpi.active_now"))
+        self.kpi_returning = KpiCard(tr("kpi.returning_today"))
+        self.kpi_new = KpiCard(tr("kpi.new_today"))
+        for c in (self.kpi_active, self.kpi_returning, self.kpi_new):
             kpi_row.addWidget(c)
         root.addLayout(kpi_row)
 
-        # Charts row: frequency segments + trend
-        charts_row = QHBoxLayout()
-        charts_row.setSpacing(10)
+        # Today by hour — full width, fixed X
+        self.hourly_plot = self._make_bar_plot(
+            title=tr("chart.today_hourly"),
+            y_label=tr("chart.today_hourly_y"),
+            x_label=tr("chart.today_hourly_x"),
+        )
+        self.hourly_plot.setXRange(-0.5, 23.5, padding=0)
+        self.hourly_plot.setLimits(xMin=-0.6, xMax=23.6, yMin=0)
+        self.hourly_plot.getAxis("bottom").setTicks(
+            [[(h, f"{h:02d}") for h in range(0, 24, 2)]]
+        )
+        self.hourly_bars: pg.BarGraphItem | None = None
+        root.addWidget(self.hourly_plot, stretch=2)
 
-        self.freq_plot = pg.PlotWidget(title="powracający vs nowi — segmenty (ostatnie 30 dni)")
-        self.freq_plot.showGrid(x=False, y=True, alpha=0.2)
-        self.freq_plot.setLabel("left", "liczba urządzeń")
+        # Bottom row: last 7 days + frequency segments
+        bottom = QHBoxLayout()
+        bottom.setSpacing(10)
+
+        self.week_plot = self._make_bar_plot(
+            title=tr("chart.last_7_days"),
+            y_label=tr("chart.last_7_days_y"),
+        )
+        self.week_plot.setXRange(-0.5, 6.5, padding=0)
+        self.week_plot.setLimits(xMin=-0.6, xMax=6.6, yMin=0)
+        self.week_bars: pg.BarGraphItem | None = None
+        bottom.addWidget(self.week_plot, stretch=1)
+
+        self.freq_plot = self._make_bar_plot(
+            title=tr("chart.freq_segments"),
+            y_label=tr("chart.freq_y"),
+        )
+        self.freq_plot.setXRange(-0.5, 3.5, padding=0)
+        self.freq_plot.setLimits(xMin=-0.6, xMax=3.6, yMin=0)
         self.freq_bars: pg.BarGraphItem | None = None
-        charts_row.addWidget(self.freq_plot, stretch=1)
+        bottom.addWidget(self.freq_plot, stretch=1)
 
-        self.trend_plot = pg.PlotWidget(title="ruch dzienny (ostatnie 30 dni)")
-        self.trend_plot.showGrid(x=True, y=True, alpha=0.2)
-        self.trend_plot.setLabel("left", "unikalnych / dzień")
-        self.trend_plot.setAxisItems({"bottom": pg.DateAxisItem(orientation="bottom")})
-        self.trend_curve = self.trend_plot.plot(
-            [], [], pen=pg.mkPen(theme.ACCENT_HEX, width=2), symbol="o", symbolSize=6,
-            symbolBrush=pg.mkBrush(*theme.ACCENT), symbolPen=None,
-        )
-        self.trend_ma = self.trend_plot.plot(
-            [], [], pen=pg.mkPen("#aaaaaa", width=1, style=Qt.PenStyle.DashLine),
-        )
-        charts_row.addWidget(self.trend_plot, stretch=2)
+        root.addLayout(bottom, stretch=2)
 
-        root.addLayout(charts_row, stretch=1)
+    def _make_bar_plot(
+        self, title: str, y_label: str, x_label: str | None = None,
+    ) -> pg.PlotWidget:
+        p = pg.PlotWidget(title=title)
+        p.showGrid(x=False, y=True, alpha=0.2)
+        p.setLabel("left", y_label)
+        if x_label:
+            p.setLabel("bottom", x_label)
+        p.setMouseEnabled(x=False, y=False)
+        p.setMenuEnabled(False)
+        p.hideButtons()
+        return p
 
-    # ---------- live observation tracking ----------
+    # ---------- observation tracking ----------
 
     def on_observation(self, obs: Observation) -> None:
         if obs.whitelisted:
@@ -118,56 +186,75 @@ class StatsTab(QWidget):
 
     def refresh_slow(self) -> None:
         stats = self.store.live_today_stats(self.config.returning_window_days)
-        self.kpi_today.set_value(str(stats["total"]))
-        self.kpi_new.set_value(str(stats["new"]))
-        self.kpi_returning.set_value(str(stats["returning"]))
+        total = int(stats["total"])
+        n_new = int(stats["new"])
+        n_ret = int(stats["returning"])
 
-        # vs yesterday delta on "today total"
+        # Hero
         y = self.store.yesterday_total()
         if y > 0:
-            delta = stats["total"] - y
+            delta = total - y
             pct = (delta / y) * 100
             arrow = "▲" if delta > 0 else ("▼" if delta < 0 else "•")
             color = theme.OK if delta > 0 else (theme.BAD if delta < 0 else theme.MUTED)
-            self.kpi_today.set_value(
-                str(stats["total"]),
-                sub=f"{arrow} {delta:+d} ({pct:+.0f}%) vs wczoraj ({y})",
+            self.hero.set_value(
+                str(total),
+                sub=tr("kpi.today.delta_yesterday",
+                       arrow=arrow, delta=delta, pct=pct, y=y),
                 sub_color=color,
             )
         else:
-            self.kpi_today.set_value(str(stats["total"]), sub="brak danych wczoraj")
+            self.hero.set_value(str(total), sub=tr("kpi.today.no_yesterday"))
 
-        # frequency segments bar chart
-        segments = self.store.frequency_segments(30)
-        xs = list(range(len(segments)))
-        ys = [c for _, c in segments]
-        labels = [name for name, _ in segments]
-        if self.freq_bars is not None:
-            self.freq_plot.removeItem(self.freq_bars)
-        self.freq_bars = pg.BarGraphItem(
-            x=xs, height=ys, width=0.6, brush=pg.mkBrush(*theme.ACCENT)
+        # Secondary
+        ret_pct = (n_ret / total * 100) if total > 0 else 0
+        new_pct = (n_new / total * 100) if total > 0 else 0
+        self.kpi_returning.set_value(str(n_ret), sub=f"({ret_pct:.0f}%)")
+        self.kpi_new.set_value(str(n_new), sub=f"({new_pct:.0f}%)")
+
+        # Today by hour
+        hours = self.store.today_hourly()
+        self._draw_bars(
+            self.hourly_plot, "hourly_bars",
+            xs=list(range(24)), ys=hours, width=0.75,
         )
-        self.freq_plot.addItem(self.freq_bars)
-        ax = self.freq_plot.getAxis("bottom")
-        ax.setTicks([list(zip(xs, labels))])
 
-        # 30-day trend
-        today = date.today()
-        start = today - timedelta(days=30)
-        rows = self.store.daily_totals_range(start.isoformat(), today.isoformat())
-        if rows:
-            xs_t = [datetime.fromisoformat(d).timestamp() + 43200 for d, *_ in rows]
-            ys_t = [t for _, t, _, _ in rows]
-            self.trend_curve.setData(xs_t, ys_t)
-            # 7-day moving average
-            if len(ys_t) >= 3:
-                ma = []
-                for i in range(len(ys_t)):
-                    window = ys_t[max(0, i - 6):i + 1]
-                    ma.append(sum(window) / len(window))
-                self.trend_ma.setData(xs_t, ma)
-            else:
-                self.trend_ma.setData([], [])
-        else:
-            self.trend_curve.setData([], [])
-            self.trend_ma.setData([], [])
+        # Last 7 days
+        week = self.store.last_n_days_totals(7)
+        xs_w = list(range(len(week)))
+        ys_w = [c for _, _, c in week]
+        labels_w = []
+        for date_str, weekday, _ in week:
+            d = datetime.fromisoformat(date_str)
+            labels_w.append(f"{tr(f'day.{weekday}')}\n{d.day:02d}.{d.month:02d}")
+        self.week_plot.getAxis("bottom").setTicks([list(zip(xs_w, labels_w))])
+        self._draw_bars(
+            self.week_plot, "week_bars",
+            xs=xs_w, ys=ys_w, width=0.65,
+        )
+
+        # Frequency segments
+        segments = self.store.frequency_segments(30)
+        xs_f = list(range(len(segments)))
+        ys_f = [c for _, c in segments]
+        labels_f = [tr(f"freq.{key}") for key, _ in segments]
+        self.freq_plot.getAxis("bottom").setTicks([list(zip(xs_f, labels_f))])
+        self._draw_bars(
+            self.freq_plot, "freq_bars",
+            xs=xs_f, ys=ys_f, width=0.65,
+        )
+
+    def _draw_bars(
+        self, plot: pg.PlotWidget, attr: str,
+        xs: list[int], ys: list[int], width: float,
+    ) -> None:
+        old = getattr(self, attr)
+        if old is not None:
+            plot.removeItem(old)
+        max_y = max(ys) if ys else 0
+        plot.setYRange(0, max(1, max_y * 1.15))
+        bars = pg.BarGraphItem(
+            x=xs, height=ys, width=width, brush=pg.mkBrush(*theme.ACCENT),
+        )
+        plot.addItem(bars)
+        setattr(self, attr, bars)
