@@ -7,6 +7,7 @@ from pathlib import Path
 
 from PySide6.QtWidgets import QApplication
 
+from .config import Config, default_app_dir
 from .ui.main_window import MainWindow
 
 _ESP_VIDS = {0x303A, 0x10C4, 0x1A86, 0x0403}
@@ -25,15 +26,26 @@ def detect_port() -> str | None:
 
 
 def main() -> int:
+    app_dir = default_app_dir()
+    app_dir.mkdir(parents=True, exist_ok=True)
+
     ap = argparse.ArgumentParser(prog="printback")
     ap.add_argument(
         "--port",
         default=os.environ.get("PRINTBACK_SERIAL_PORT"),
         help="serial port (default: auto-detect; env: PRINTBACK_SERIAL_PORT)",
     )
-    ap.add_argument("--baud", type=int, default=115200)
-    ap.add_argument("--db", type=Path, default=Path("printback.db"))
+    ap.add_argument("--baud", type=int, default=None,
+                    help="override config.serial_baud")
+    ap.add_argument("--db", type=Path, default=app_dir / "printback.db",
+                    help=f"SQLite DB path (default: {app_dir / 'printback.db'})")
+    ap.add_argument("--config", type=Path, default=app_dir / "config.json",
+                    help=f"config path (default: {app_dir / 'config.json'})")
     args = ap.parse_args()
+
+    config = Config.load(args.config)
+    if args.baud is not None:
+        config.serial_baud = args.baud
 
     port = args.port or detect_port()
     if port is None:
@@ -44,7 +56,7 @@ def main() -> int:
         return 2
 
     app = QApplication(sys.argv)
-    win = MainWindow(port=port, baud=args.baud, db_path=args.db)
+    win = MainWindow(port=port, config=config, db_path=args.db, app_dir=app_dir)
     win.show()
     return app.exec()
 

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,3 +28,27 @@ class Observation:
             new=bool(d["new"]),
             whitelisted=bool(d["wl"]),
         )
+
+
+@dataclass(frozen=True, slots=True)
+class DailyTotal:
+    date: str
+    total_unique: int
+    n_new: int
+    n_returning: int
+    hourly_counts: list[int]
+    channel_counts: dict[str, int]
+
+
+@dataclass(slots=True)
+class LiveDevice:
+    fp: str
+    mac: str
+    last_rssi: int
+    avg_rssi: float
+    n_obs: int
+    first_seen: float
+    last_seen: float
+    channels: set[int] = field(default_factory=set)
+    wl_source: str | None = None  # None | "device" | "manual" | "auto"
+    distinct_hours_in_window: int = 0
