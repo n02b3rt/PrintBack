@@ -8,6 +8,7 @@ from pathlib import Path
 from PySide6.QtWidgets import QApplication
 
 from .config import Config, default_app_dir
+from .i18n import set_locale
 from .ui.main_window import MainWindow
 
 _ESP_VIDS = {0x303A, 0x10C4, 0x1A86, 0x0403}
@@ -46,6 +47,7 @@ def main() -> int:
     config = Config.load(args.config)
     if args.baud is not None:
         config.serial_baud = args.baud
+    set_locale(config.locale)
 
     port = args.port or detect_port()
     if port is None:
@@ -56,7 +58,13 @@ def main() -> int:
         return 2
 
     app = QApplication(sys.argv)
-    win = MainWindow(port=port, config=config, db_path=args.db, app_dir=app_dir)
+    win = MainWindow(
+        port=port,
+        config=config,
+        config_path=args.config,
+        db_path=args.db,
+        app_dir=app_dir,
+    )
     win.show()
     return app.exec()
 

@@ -4,16 +4,18 @@ import sys
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QCloseEvent
+from PySide6.QtGui import QAction, QActionGroup, QCloseEvent
 from PySide6.QtWidgets import (
     QLabel,
     QMainWindow,
+    QMessageBox,
     QSplitter,
     QStatusBar,
     QTabWidget,
 )
 
 from ..config import Config
+from ..i18n import tr
 from ..maintenance import Maintenance
 from ..models import Observation
 from ..serial_reader import SerialReader
@@ -29,6 +31,7 @@ class MainWindow(QMainWindow):
         self,
         port: str,
         config: Config,
+        config_path: Path,
         db_path: Path,
         app_dir: Path,
     ) -> None:
@@ -37,46 +40,39 @@ class MainWindow(QMainWindow):
         self.resize(1320, 820)
 
         self.config = config
+        self.config_path = config_path
         self.app_dir = app_dir
         self.store = Store(db_path)
         self.maintenance = Maintenance(self.store, self.config, app_dir)
 
         self._build_ui(db_path)
+        self._build_menu()
         self.setStyleSheet(theme.QSS)
 
-        # Catch-up maintenance on startup (covers offline periods).
         try:
-            report = self.maintenance.run_all()
-            if report.has_changes():
-                # WL panel doesn't exist yet at construction; will refresh below.
-                pass
+            self.maintenance.run_all()
         except Exception as e:  # noqa: BLE001
             print(f"warning: startup maintenance failed: {e}", file=sys.stderr)
 
-        # Serial reader
         self.reader = SerialReader(port, config.serial_baud, parent=self)
         self.reader.observation.connect(self._on_observation)
         self.reader.connection.connect(self._on_connection)
         self.reader.start()
 
-        # Initial UI population
         self.whitelist_panel.refresh()
         self.stats_tab.refresh_slow()
         self.debug_tab.refresh_slow()
 
-        # Fast tick (1 Hz): KPIs, live RSSI, raw log scroll
         self._fast = QTimer(self)
         self._fast.setInterval(1000)
         self._fast.timeout.connect(self._tick_fast)
         self._fast.start()
 
-        # Slow refresh (DB queries): every 10s
         self._slow = QTimer(self)
         self._slow.setInterval(10_000)
         self._slow.timeout.connect(self._tick_slow)
         self._slow.start()
 
-        # Maintenance loop
         self._maint = QTimer(self)
         self._maint.setInterval(self.config.maintenance_interval_minutes * 60_000)
         self._maint.timeout.connect(self._run_maintenance_quiet)
@@ -88,8 +84,8 @@ class MainWindow(QMainWindow):
         self.tabs = QTabWidget()
         self.stats_tab = StatsTab(self.store, self.config)
         self.debug_tab = DebugTab(self.store, self.config)
-        self.tabs.addTab(self.stats_tab, "Statystyki")
-        self.tabs.addTab(self.debug_tab, "Debug")
+        self.tabs.addTab(self.stats_tab, tr("tab.stats"))
+        self.tabs.addTab(self.debug_tab, tr("tab.debug"))
         splitter.addWidget(self.tabs)
 
         self.whitelist_panel = WhitelistPanel(self.store)
@@ -101,13 +97,42 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(splitter)
 
         self.setStatusBar(QStatusBar(self))
-        self.status_conn = QLabel("łączenie…")
+        self.status_conn = QLabel(tr("status.connecting"))
         self.statusBar().addWidget(self.status_conn)
-        db_label = QLabel(f"db: {db_path}")
+        db_label = QLabel(tr("status.db", path=str(db_path)))
         db_label.setStyleSheet(f"color: {theme.MUTED};")
         self.statusBar().addPermanentWidget(db_label)
 
-    # ---------- signal handlers ----------
+    def _build_menu(self) -> None:
+        menu_bar = self.menuBar()
+        settings_menu = menu_bar.addMenu(tr("menu.settings"))
+        language_menu = settings_menu.addMenu(tr("menu.language"))
+
+        group = QActionGroup(self)
+        group.setExclusive(True)
+
+        for locale_code, label_key in (("pl", "menu.language.pl"),
+                                       ("en", "menu.language.en")):
+            act = QAction(tr(label_key), self, checkable=True)
+            act.setData(locale_code)
+            act.setChecked(self.config.locale == locale_code)
+            group.addAction(act)
+            language_menu.addAction(act)
+
+        group.triggered.connect(self._on_language_changed)
+
+    def _on_language_changed(self, action: QAction) -> None:
+        new_locale = action.data()
+        if new_locale == self.config.locale:
+            return
+        self.config.locale = new_locale
+        try:
+            self.config.save(self.config_path)
+        except OSError as e:
+            print(f"warning: config save failed: {e}", file=sys.stderr)
+        QMessageBox.information(
+            self, tr("dialog.restart_title"), tr("dialog.restart_msg")
+        )
 
     def _on_connection(self, ok: bool, msg: str) -> None:
         self.status_conn.setText(msg)
@@ -121,8 +146,6 @@ class MainWindow(QMainWindow):
             self.whitelist_panel.refresh()
         self.stats_tab.on_observation(obs)
         self.debug_tab.on_observation(obs)
-
-    # ---------- timers ----------
 
     def _tick_fast(self) -> None:
         self.stats_tab.tick()
@@ -142,6 +165,9 @@ class MainWindow(QMainWindow):
             print(f"maintenance error: {e}", file=sys.stderr)
 
     def closeEvent(self, event: QCloseEvent) -> None:
+        self._fast.stop()
+        self._slow.stop()
+        self._maint.stop()
         self.reader.stop()
         self.reader.wait(2000)
         self.store.close()

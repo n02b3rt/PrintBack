@@ -44,6 +44,9 @@ class Config:
     # serial
     serial_baud: int = 115200
 
+    # i18n
+    locale: str = "pl"  # "pl" or "en"
+
     @classmethod
     def load(cls, path: Path) -> "Config":
         if not path.exists():

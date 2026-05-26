@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import time
-from typing import Callable
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QAction, QBrush, QColor
@@ -16,6 +15,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ..i18n import tr
 from ..store import Store
 from . import theme
 
@@ -53,7 +53,7 @@ class WhitelistPanel(QWidget):
         layout.setSpacing(6)
 
         header_row = QHBoxLayout()
-        header = QLabel("whitelist")
+        header = QLabel(tr("wl.header"))
         header.setStyleSheet(f"color: {theme.FG}; font-weight: bold; padding: 2px;")
         header_row.addWidget(header)
         header_row.addStretch()
@@ -63,7 +63,10 @@ class WhitelistPanel(QWidget):
         layout.addLayout(header_row)
 
         self.table = QTableWidget(0, 4)
-        self.table.setHorizontalHeaderLabels(["fingerprint", "label", "src", "age"])
+        self.table.setHorizontalHeaderLabels([
+            tr("wl.col.fp"), tr("wl.col.label"),
+            tr("wl.col.source"), tr("wl.col.age"),
+        ])
         h = self.table.horizontalHeader()
         h.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         h.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
@@ -81,14 +84,16 @@ class WhitelistPanel(QWidget):
         try:
             self.table.setRowCount(len(rows))
             for i, (fp, label, added_at, source, reason) in enumerate(rows):
-                short = fp[:12] + "…" if len(fp) > 12 else fp
-                fp_item = QTableWidgetItem(short)
+                fp_item = QTableWidgetItem(fp)
                 fp_item.setFlags(fp_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
                 fp_item.setData(Qt.ItemDataRole.UserRole, fp)
-                tooltip = f"{fp}\nadded: {time.ctime(added_at)}"
+                added_str = tr("wl.tooltip.added", when=time.ctime(added_at))
                 if reason:
-                    tooltip += f"\nreason: {reason}"
-                fp_item.setToolTip(tooltip)
+                    fp_item.setToolTip(
+                        f"{added_str}\n{tr('wl.tooltip.reason', reason=reason)}"
+                    )
+                else:
+                    fp_item.setToolTip(added_str)
 
                 label_item = QTableWidgetItem(label or "")
                 label_item.setData(Qt.ItemDataRole.UserRole, fp)
@@ -132,12 +137,12 @@ class WhitelistPanel(QWidget):
         source = src_item.text() if src_item else ""
 
         menu = QMenu(self)
-        remove_act = QAction("usuń z whitelisty", self)
+        remove_act = QAction(tr("wl.menu.remove"), self)
         remove_act.triggered.connect(lambda: self._remove(fp))
         menu.addAction(remove_act)
 
         if source == "auto":
-            fp_act = QAction("oznacz jako false-positive (nie auto-WL ponownie)", self)
+            fp_act = QAction(tr("wl.menu.false_positive"), self)
             fp_act.triggered.connect(lambda: self._false_positive(fp))
             menu.addAction(fp_act)
 
