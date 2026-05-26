@@ -16,7 +16,8 @@
 
 static const char *TAG = "ui";
 
-static volatile ui_state_t s_state = UI_STATE_BOOT;
+static volatile ui_state_t s_state          = UI_STATE_BOOT;
+static volatile bool       s_host_connected = false;
 static ui_event_cb_t       s_cb;
 
 static void led_write(uint8_t r, uint8_t g, uint8_t b)
@@ -85,6 +86,12 @@ static void render(ui_state_t st, int64_t in_state_ms)
             break;
 
         case UI_STATE_IDLE: {
+            if (!s_host_connected) {
+                /* Slow blue blink ~0.66 Hz — firmware alive, nobody on host. */
+                if ((in_state_ms / 750) % 2) led_write(0, 60, 200);
+                else                         led_write(0, 0,  20);
+                break;
+            }
             /* slow ~0.5 Hz triangular pulse, dim but visible */
             int t  = (int)(in_state_ms % 2000);
             int up = t < 1000 ? t : 2000 - t;
@@ -158,5 +165,6 @@ void ui_init(void)
     ESP_LOGI(TAG, "ui started (btn=%d r=%d g=%d b=%d)", PIN_BTN, PIN_R, PIN_G, PIN_B);
 }
 
-void ui_set_state(ui_state_t st)         { s_state = st; }
-void ui_set_event_handler(ui_event_cb_t cb) { s_cb = cb; }
+void ui_set_state(ui_state_t st)              { s_state = st; }
+void ui_set_event_handler(ui_event_cb_t cb)   { s_cb = cb; }
+void ui_set_host_connected(bool connected)    { s_host_connected = connected; }

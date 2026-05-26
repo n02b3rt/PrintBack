@@ -16,6 +16,31 @@ CONFIG_FREERTOS_HZ=1000
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
 CONFIG_MBEDTLS_HARDWARE_SHA=y
 
+# --- Task Watchdog Timer -------------------------------------------------
+# Hardware-level recovery from firmware hangs. Resets the chip if any task
+# (including the idle task — which catches CPU starvation / blocked main
+# loop) does not run for >10s. Paired with the host-side serial watchdog
+# this gives end-to-end auto recovery: ESP resets within 10s, host re-opens
+# the port within the next ~20s, no manual unplug/replug needed.
+CONFIG_ESP_TASK_WDT_INIT=y
+CONFIG_ESP_TASK_WDT_TIMEOUT_S=10
+CONFIG_ESP_TASK_WDT_PANIC=y
+CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU0=y
+
+# --- Interrupt Watchdog --------------------------------------------------
+# Catches ISR-level hangs that the task watchdog can't reach (e.g., critical
+# section held too long, runaway interrupt handler). 300ms is the IDF default
+# and is conservative enough to never false-trigger under normal load.
+CONFIG_ESP_INT_WDT=y
+CONFIG_ESP_INT_WDT_TIMEOUT_MS=300
+
+# --- Brownout Detector ---------------------------------------------------
+# Resets the chip cleanly when the 3.3V rail dips below the threshold instead
+# of letting undefined behaviour propagate. Important for deployments running
+# off cheap wall-warts where voltage sags happen.
+CONFIG_ESP_BROWNOUT_DET=y
+CONFIG_ESP_BROWNOUT_DET_LVL_SEL_7=y
+
 # --- PrintBack: pinout (XIAO ESP32-C6) -----------------------------------
 # D2=GPIO2 (tact), D3=GPIO21 (B), D4=GPIO22 (G), D5=GPIO23 (R)
 CONFIG_PRINTBACK_PIN_BUTTON=2
