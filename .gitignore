@@ -28,3 +28,8 @@ app/printback.db-shm
 *.swp
 *.swo
 .DS_Store
+
+# --- Raw hardware capture dumps (contain real MAC addresses) ---
+firmware/local/
+*.pcap
+*.pcapng
