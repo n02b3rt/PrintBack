@@ -3,6 +3,8 @@
 - [x] Faza 0: dokumentacja startowa (docs/DECISIONS.md,
       docs/LEARNINGS.md, docs/PROGRESS.md, docs/TASKS.md, szkielety
       docs/ARCHITECTURE.md/docs/DATA_MODEL.md) — 2026-07-02
+- [x] Faza 0.5: narzędzia (gałąź `refactor/ble-sd-flutter`, dev_cycle.py,
+      pre-commit MAC-leak guard, host test harness + przykład kanon.c) — 2026-07-02
 - [ ] Faza 1: docs/ARCHITECTURE.md, docs/DATA_MODEL.md, README.md — patrz docs/TASKS.md
 - [ ] Faza 2: SD card logging
 - [ ] Faza 3: agregacja on-device, drop raw MAC

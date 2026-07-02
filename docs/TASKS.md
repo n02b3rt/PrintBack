@@ -74,7 +74,9 @@ Zadania:
 3. Zaimplementuj próg k-anonymity: jeśli unique_count w danej godzinie < 5,
    NIE publikuj rekordu godzinowego — zamiast tego dolicz do agregatu
    dziennego (rozdzielczość dzienna zawsze ma się publikować, niezależnie
-   od progu).
+   od progu). Gotowe: `firmware/main/kanon.c` (`kanon_hourly_publishable`),
+   przetestowane w `firmware/test_host/test_kanon.c` — użyj tego zamiast
+   pisać próg od nowa.
 4. Zapisuj agregaty jako osobne, mniejsze rekordy (SD, osobny plik/katalog
    od raw, np. `/sdcard/logs/stats/`) — to jedyne dane, które trafią do BLE.
 5. Uwzględnij auto-whitelist heurystykę z istniejącego kodu — urządzenia
