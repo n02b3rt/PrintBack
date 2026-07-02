@@ -7,6 +7,7 @@ idf_component_register(
         "output.c"
         "whitelist.c"
         "ui.c"
+        "kanon.c"
     INCLUDE_DIRS "."
     REQUIRES
         esp_wifi
