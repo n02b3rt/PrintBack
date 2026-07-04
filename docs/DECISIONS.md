@@ -41,3 +41,31 @@ pierwszym parowaniu).
 
 Wybrane: przycisk na urządzeniu uruchamia tryb parowania na czas X, potem
 bonding w NVS — wymaga fizycznego dostępu do urządzenia przy pierwszym razie.
+
+## D6: Telefon jako źródło czasu zegarowego
+
+Odrzucone: sprzętowy RTC (np. DS3231 na I2C) — nowy komponent na BOM, nowe
+okablowanie, nigdzie wcześniej w projekcie nie planowane.
+
+Odrzucone: czas wyłącznie względem bootu, bez dat kalendarzowych — odbiega
+od nazewnictwa plików w docs/TASKS.md (`YYYY-MM-DD.bin`) i utrudnia
+czytanie dat wprost.
+
+Wybrane: telefon wysyła bieżący unix time przy każdym połączeniu BLE.
+Powód: urządzenie nie ma RTC ani WiFi-STA/NTP (świadomie, zasada "no
+network calls"), a telefon i tak musi być fizycznie obecny przy parowaniu i
+każdej synchronizacji (D5) — zero nowego sprzętu. Urządzenie trzyma
+`esp_timer_get_time()` jako źródło monotoniczne + offset korygowany przy
+każdym sync; drift możliwy tylko gdy telefon długo się nie łączy.
+
+## D7: JSON zamiast CBOR dla BLE STATS
+
+Odrzucone: CBOR.
+
+Powód: payload jest i tak mały (<100B/rekord), więc ~30-50% oszczędności
+CBOR jest nieistotne przy tej skali. JSON renderuje się czytelnie w
+generycznym BLE scannerze (nRF Connect) używanym do weryfikacji w Fazie 4
+(docs/TASKS.md) — CBOR wymagałby osobnego dekodera, co utrudnia
+samodzielną weryfikację sprzętu. JSON nie wymaga żadnej nowej zależności
+on-device (a coexistence build — NimBLE + WiFi + SD + FAT — jest już
+wystarczająco złożony), Flutter ma `dart:convert` wbudowane.
