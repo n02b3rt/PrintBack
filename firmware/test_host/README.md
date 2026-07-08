@@ -20,5 +20,5 @@ finds the pair by name on its own and compiles it with host gcc, no CMake.
 
 ## Current tests
 
-- `test_kanon.c`: the k-anonymity threshold (an
-  hourly aggregate < 5 events → don't publish, fold into the daily total)
+- `test_kanon.c`: the k-anonymity threshold (an hourly aggregate < 5
+  events → don't publish, fold into the daily total)

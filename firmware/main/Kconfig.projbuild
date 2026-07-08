@@ -99,7 +99,8 @@ config PRINTBACK_SD_RETENTION_DAYS
     default 30
     help
         Hard limit on raw data retention (docs/compliance/README.md). Files
-        purged on a rolling basis, see docs/ARCHITECTURE.md "SD layout".
+        older than this are purged on a rolling basis, see
+        docs/ARCHITECTURE.md "SD layout".
 
 config PRINTBACK_FALLBACK_UNIX_EPOCH
     int "Fallback wall-clock time at boot (unix seconds, UTC)"

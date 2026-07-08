@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Heuristic guard for the project's hard rule: never send raw MAC / a
-# per-client hash over BLE or to the mobile app - only aggregated counts.
-# This catches obvious cases (path + pattern match), it is not a proof.
-# False positive? commit with --no-verify once you're sure.
+# per-client hash over BLE or to the mobile app - only aggregated counts
+# (see docs/DECISIONS.md D3). This catches obvious cases (path + pattern
+# match), it is not a proof. False positive? commit with --no-verify
+# once you're sure.
 
 set -e
 
@@ -23,7 +24,7 @@ done
 
 if [ -n "$offenders" ]; then
     echo "pre-commit: possible raw MAC leak toward BLE/mobile in:$offenders"
-    echo "hard rule: never send raw MAC / per-client hash over BLE or to the app - aggregates only."
+    echo "hard rule: never send raw MAC / per-client hash over BLE or to the app - aggregates only (docs/DECISIONS.md D3)."
     echo "false positive? git commit --no-verify"
     exit 1
 fi
