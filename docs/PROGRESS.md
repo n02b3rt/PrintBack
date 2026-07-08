@@ -38,7 +38,40 @@
       couldn't see its own SD writes (missing `stats/` directories +
       `fflush()` alone isn't enough on FatFs, needs `fsync()` too), see
       docs/LEARNINGS.md.
-- [ ] Phase 4: BLE GATT server
+- [x] Phase 4: BLE GATT server (2026-07-08). NimBLE enabled alongside the
+      existing WiFi sniffer (`CONFIG_BT_NIMBLE_ENABLED`,
+      `CONFIG_ESP_COEX_SW_COEXIST_ENABLE` - corrected from the wrong
+      `CONFIG_SW_COEXIST_ENABLE` name in earlier docs, see
+      docs/DECISIONS.md D4). New `ble_gatt.c`: one GATT service, STATS
+      (read+notify) and CONFIG (read-only this phase) characteristics,
+      UUIDs in docs/DATA_MODEL.md. `aggregate_run_hourly()`/
+      `aggregate_run_daily_rollover()` extended with an optional
+      out-record so a fresh aggregate triggers a STATS notify right after
+      it's written to SD. PAIRING_STATUS and CONFIG-write deferred to
+      Phase 5 (both need the bonding state machine to exist first, see
+      docs/TASKS.md). Also corrected a second doc error: Phase 4's task
+      list called for splitting WiFi/BLE across cores, impossible on the
+      ESP32-C6's single HP core; replaced with an accurate description of
+      software-arbitrated time-slicing on the one core.
+      Verified on real hardware (nRF Connect for Mobile): connects
+      without pairing (not-bonded, as designed), reads STATS
+      (`{"date":"2026-07-08","hour":null,"unique":6,"returning":0,"kanon":true}`,
+      leftover Phase 3 test data still on the SD card) and CONFIG
+      (`{"rssi_floor":-85,"returning_window_days":30}`) return the exact
+      expected JSON, CONFIG's ATT properties show read-only (no write
+      exposed at the protocol level), and STATS notify-subscribe
+      round-trips correctly in the log. Hit and fixed one real bug along
+      the way: BLE advertisement data (flags + name + 128-bit UUID)
+      exceeded the 31-byte legacy advertising limit, fixed by moving the
+      device name into the scan response packet, see docs/LEARNINGS.md.
+      One acceptance criterion from docs/TASKS.md not fully met: couldn't
+      get a clean WiFi packets/min before-vs-after number, no ambient
+      probe traffic was reachable in the test environment even with BLE
+      fully disabled (controlled A/B test, see docs/LEARNINGS.md) - so
+      while no coexistence regression was found (both stacks ran
+      simultaneously for many minutes without a crash or visible
+      interference), the specific packet-loss measurement remains an open
+      gap pending a proper traffic source.
 - [ ] Phase 5: pairing button + bonding
 - [ ] Phase 6: mobile Flutter skeleton
 - [ ] Phase 7: docs/compliance/README.md + README.md, final documentation
@@ -47,4 +80,4 @@ Note: the current code in `firmware/` and `app/` is still the old
 architecture (USB-CDC → Python desktop dashboard, SQLite). Don't remove /
 change it until the new path (BLE+SD) is ready and tested in parallel.
 
-Last updated: 2026-07-08.
+Last updated: 2026-07-08 (Phase 4).

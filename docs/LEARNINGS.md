@@ -112,6 +112,63 @@ confirmed `daily rollover: history set rebuilt, 6 unique fp over last
 30 days` too.
 Status: RESOLVED (2026-07-08)
 
+## [FIRMWARE] BLE advertisement data exceeded the 31-byte legacy limit
+Date: 2026-07-08
+Problem: on first Phase 4 hardware boot, GATT services registered fine
+(confirmed in the log: our custom service and both STATS/CONFIG
+characteristics got real attribute handles), but advertising itself never
+started: `E ble_gatt: error setting advertisement data; rc=4`.
+Root cause: `gatt_advertise()` packed flags (3B) + the device name
+"PrintBack" (11B) + our 128-bit service UUID (18B) into one
+`ble_gap_adv_set_fields()` call, 32 bytes total. BLE legacy (non-extended)
+advertising has a hard 31-byte limit per packet; rc=4 is `BLE_HS_EMSGSIZE`,
+confirmed by checking the installed ESP-IDF's NimBLE header
+(`components/bt/host/nimble/nimble/nimble/host/include/host/ble_hs.h`)
+directly rather than guessing from the number alone.
+Fix: split the data across two packets, both of which NimBLE lets you set
+independently: the 128-bit UUID stays in the primary advertisement
+(`ble_gap_adv_set_fields`, 21B, fits), the device name moves to the scan
+response (`ble_gap_adv_rsp_set_fields`, 11B, its own separate 31-byte
+packet). Every practical BLE central (including nRF Connect) requests the
+scan response automatically, so this is invisible in practice, not a
+scoped-down feature. Confirmed on hardware: log now shows `NimBLE: GAP
+procedure initiated: advertise` with no error, device visible over BLE.
+Status: RESOLVED (2026-07-08)
+
+## [FIRMWARE] Testing WiFi+BLE packet loss needs traffic, and none is
+available in this environment
+Date: 2026-07-08
+Problem: Phase 4's acceptance criteria (docs/TASKS.md) call for comparing
+WiFi probe capture rate before/after enabling BLE. With BLE active and a
+phone connected over GATT, `housekeeper()`'s log showed `obs=0` across
+every attempt: toggling the phone's WiFi off/on, manually refreshing its
+WiFi scan list, and a 3-minute passive capture waiting for ambient
+household devices to probe on their own. Zero probe requests were
+captured by any method.
+Root cause: not a coexistence bug. Confirmed with a controlled A/B test:
+temporarily removed the `ble_gatt_start()` call from `app_main()`,
+rebuilt, reflashed, and ran the same 3-minute passive capture with BLE
+fully disabled. Result: also `obs=0`, identical to the BLE-enabled run.
+Since the WiFi-only build shows the exact same zero, the missing traffic
+is an environmental/methodology gap (no probe requests reaching the
+device in this location right now - modern Android throttles/avoids
+probing when near a known AP, matching the same difficulty already noted
+during Phase 2/3 testing), not something BLE introduced.
+Fix: none needed for coexistence itself - no regression found. What *is*
+confirmed on hardware, with BLE active: `wifi_sniffer`'s promiscuous mode
+stayed up (`sniffer: promiscuous mode active`), `channel_hopper` kept
+running, the device never reset, and BLE GATT reads/notify-subscribe
+worked correctly throughout multiple back-to-back multi-minute capture
+windows - i.e. both stacks ran simultaneously without crashing or
+visibly interfering with each other, just without a clean packets/min
+number since there was nothing to count either with or without BLE. A
+real packets/min comparison needs a controlled traffic source (e.g. a
+second, dedicated test device known to probe reliably); revisit if that
+becomes available, otherwise this remains an open gap in what Phase 4
+could verify.
+Status: OPEN (coexistence itself not shown broken, but packet-loss number
+from docs/TASKS.md's acceptance criteria not obtained)
+
 ## Things that DON'T work: don't try again
 
 - WiFi monitor mode + Thread (802.15.4) on one ESP32-C6 radio: confirmed
