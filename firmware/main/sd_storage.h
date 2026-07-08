@@ -29,6 +29,12 @@ void sd_storage_write_raw(const probe_observation_t *obs, bool fresh, bool white
  * sync once Phase 4/5 lands (docs/DECISIONS.md D6). */
 void sd_storage_set_wallclock_unix_s(uint32_t unix_s);
 
+/* Current wall-clock estimate (UTC unix seconds): the last value set via
+ * sd_storage_set_wallclock_unix_s() plus elapsed monotonic time since.
+ * Used by main.c to schedule hourly/daily aggregation (Phase 3) off the
+ * same clock sd_storage itself uses for file naming. */
+uint32_t sd_storage_current_unix_s(void);
+
 /* Bytes written so far to the currently-open raw file (0 if none open
  * or SD not ready). Operational visibility only, so "is SD actually
  * accumulating data" is answerable from the serial log without pulling

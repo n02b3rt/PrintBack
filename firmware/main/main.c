@@ -14,7 +14,9 @@
 #include "output.h"
 #include "whitelist.h"
 #include "ui.h"
+#include "sd_paths.h"
 #include "sd_storage.h"
+#include "aggregate.h"
 
 static const char *TAG = "printback";
 
@@ -123,6 +125,40 @@ static void usb_link_monitor(void *arg)
     }
 }
 
+/* Hour/day the aggregation module last saw. UINT32_MAX/-1 sentinel means
+ * "not initialized yet" (first tick after boot has nothing completed to
+ * aggregate). */
+static uint32_t s_agg_day = UINT32_MAX;
+static int      s_agg_hour = -1;
+
+/* Cheap on every housekeeper tick, same pattern as sd_storage's own
+ * day-rollover check in Phase 2: compares against the last-seen
+ * hour/day and only does real work (aggregate_run_hourly/
+ * aggregate_run_daily_rollover) when a boundary was actually crossed. */
+static void check_aggregation_rollover(void)
+{
+    uint32_t now_s = sd_storage_current_unix_s();
+    uint32_t day = sd_unix_day_from_unix_s(now_s);
+    int hour = sd_hour_from_unix_s(now_s);
+
+    if (s_agg_day == UINT32_MAX) {
+        s_agg_day = day;
+        s_agg_hour = hour;
+        return;
+    }
+    if (day == s_agg_day && hour == s_agg_hour) return;
+
+    if (day != s_agg_day) {
+        aggregate_run_hourly(s_agg_day, 23); /* last hour of the day that just ended */
+        aggregate_run_daily_rollover(day);
+    } else {
+        aggregate_run_hourly(s_agg_day, s_agg_hour);
+    }
+
+    s_agg_day = day;
+    s_agg_hour = hour;
+}
+
 static void housekeeper(void *arg)
 {
     const int64_t window_us =
@@ -132,6 +168,7 @@ static void housekeeper(void *arg)
     for (;;) {
         vTaskDelay(period);
         int64_t now = esp_timer_get_time();
+        check_aggregation_rollover();
 
         if (atomic_load(&s_armed_until_us) > 0 && !is_armed(now)) {
             disarm();
