@@ -87,7 +87,7 @@ static void render(ui_state_t st, int64_t in_state_ms)
 
         case UI_STATE_IDLE: {
             if (!s_host_connected) {
-                /* Slow blue blink ~0.66 Hz — firmware alive, nobody on host. */
+                /* Slow blue blink ~0.66 Hz: firmware alive, nobody on host. */
                 if ((in_state_ms / 750) % 2) led_write(0, 60, 200);
                 else                         led_write(0, 0,  20);
                 break;
@@ -126,7 +126,7 @@ static void ui_task(void *arg)
     for (;;) {
         int64_t now = esp_timer_get_time();
 
-        /* Button — polling debounce. The 20 ms tick is the debounce. */
+        /* Button, polling debounce. The 20 ms tick is the debounce. */
         bool pressed = (gpio_get_level(PIN_BTN) == 0);
         if (pressed) {
             if (press_started == 0) press_started = now;

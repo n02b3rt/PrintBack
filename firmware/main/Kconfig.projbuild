@@ -38,19 +38,19 @@ config PRINTBACK_PIN_BUTTON
         D2 on XIAO ESP32-C6. Other pin → GND. Internal pull-up is used.
 
 config PRINTBACK_PIN_LED_R
-    int "RGB LED — Red GPIO"
+    int "RGB LED, Red GPIO"
     default 21
     help
         D3 on XIAO ESP32-C6.
 
 config PRINTBACK_PIN_LED_G
-    int "RGB LED — Green GPIO"
+    int "RGB LED, Green GPIO"
     default 23
     help
         D5 on XIAO ESP32-C6.
 
 config PRINTBACK_PIN_LED_B
-    int "RGB LED — Blue GPIO"
+    int "RGB LED, Blue GPIO"
     default 22
     help
         D4 on XIAO ESP32-C6.

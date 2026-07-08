@@ -148,7 +148,7 @@ static void housekeeper(void *arg)
                  whitelist_count(), s.rssi_min, s.rssi_max,
                  free_heap, min_heap);
         if (free_heap < LOW_HEAP_WARN_BYTES) {
-            ESP_LOGW(TAG, "low free heap: %" PRIu32 " bytes — leak suspected",
+            ESP_LOGW(TAG, "low free heap: %" PRIu32 " bytes, leak suspected",
                      free_heap);
         }
     }

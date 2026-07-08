@@ -18,7 +18,7 @@ CONFIG_MBEDTLS_HARDWARE_SHA=y
 
 # --- Task Watchdog Timer -------------------------------------------------
 # Hardware-level recovery from firmware hangs. Resets the chip if any task
-# (including the idle task — which catches CPU starvation / blocked main
+# (including the idle task, which catches CPU starvation / blocked main
 # loop) does not run for >10s. Paired with the host-side serial watchdog
 # this gives end-to-end auto recovery: ESP resets within 10s, host re-opens
 # the port within the next ~20s, no manual unplug/replug needed.

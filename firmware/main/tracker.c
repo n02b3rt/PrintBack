@@ -23,7 +23,7 @@ static SemaphoreHandle_t s_mtx;
 static inline uint32_t fp_bucket(const uint8_t *fp)
 {
     /* The fingerprint is already a SHA-256 prefix, so the low 32 bits
-     * are uniformly distributed — use them directly as the hash. */
+     * are uniformly distributed, so use them directly as the hash. */
     uint32_t h;
     memcpy(&h, fp, 4);
     return h % CAP;
@@ -62,7 +62,7 @@ bool tracker_observe(const probe_observation_t *obs)
 
     int idx = find_slot(obs->fp.hash, true);
     if (idx < 0) {
-        /* Table full — evict the oldest entry in the natural probe
+        /* Table full: evict the oldest entry in the natural probe
          * sequence. Rare at capacity 1024 with a 5-minute window. */
         uint32_t start = fp_bucket(obs->fp.hash);
         int oldest = (int)start;
