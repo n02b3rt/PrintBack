@@ -29,10 +29,12 @@ personal data, so they can be kept without a retention limit. Raw data
 
 ## D4: C6 (not H2/C6-Thread) for WiFi+BLE
 
-Reason: one 2.4GHz radio shared in software (CONFIG_SW_COEXIST_ENABLE)
-works well for WiFi+BLE (a mature, common use case, e.g. BLE
-provisioning). WiFi+Thread on the same radio has much worse coexistence,
-confirmed by earlier tests on another project, see docs/LEARNINGS.md.
+Reason: one 2.4GHz radio shared in software (`ESP_COEX_SW_COEXIST_ENABLE`,
+verified against the installed ESP-IDF 5.3.2 source in Phase 4; auto-enabled
+once both WiFi and Bluetooth are compiled in) works well for WiFi+BLE (a
+mature, common use case, e.g. BLE provisioning). WiFi+Thread on the same
+radio has much worse coexistence, confirmed by earlier tests on another
+project, see docs/LEARNINGS.md.
 
 ## D5: Pairing, physical button + BLE bonding
 
