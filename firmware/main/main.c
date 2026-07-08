@@ -14,6 +14,7 @@
 #include "output.h"
 #include "whitelist.h"
 #include "ui.h"
+#include "sd_storage.h"
 
 static const char *TAG = "printback";
 
@@ -90,6 +91,7 @@ static void on_probe(const probe_observation_t *obs)
 
     bool fresh = tracker_observe(obs);
     output_emit(obs, fresh, whitelisted);
+    sd_storage_write_raw(obs, fresh, whitelisted);
 }
 
 static void channel_hopper(void *arg)
@@ -164,6 +166,7 @@ void app_main(void)
     tracker_init();
     ui_init();
     ui_set_event_handler(on_ui_event);
+    sd_storage_init(); /* logs its own error and keeps going without SD if this fails */
     wifi_sniffer_start(on_probe);
     xTaskCreate(channel_hopper,   "hop",     2048, NULL, 4, NULL);
     xTaskCreate(housekeeper,      "house",   3072, NULL, 3, NULL);
