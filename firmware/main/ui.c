@@ -14,6 +14,11 @@
 #define PIN_B    CONFIG_PRINTBACK_PIN_LED_B
 #define LONG_MS  CONFIG_PRINTBACK_LONG_PRESS_MS
 
+/* Debounce floor for UI_EVENT_SHORT_CLICK: a release below this duration
+ * is noise (contact bounce), not a deliberate click. Not Kconfig - this
+ * is pure signal filtering, not a behavior to tune, unlike LONG_MS. */
+#define SHORT_CLICK_MIN_MS 30
+
 static const char *TAG = "ui";
 
 static volatile ui_state_t s_state          = UI_STATE_BOOT;
@@ -113,6 +118,14 @@ static void render(ui_state_t st, int64_t in_state_ms)
             if ((in_state_ms / 200) % 2) led_write(220, 0, 0);
             else                          led_write(0, 0, 0);
             break;
+
+        case UI_STATE_PAIRING:
+            /* cyan blink ~2Hz - deliberately distinct color and rate from
+             * ARMED's amber 4Hz, so the two "waiting for something" states
+             * are never confused at a glance. */
+            if ((in_state_ms / 250) % 2) led_write(0, 200, 200);
+            else                          led_write(0, 0, 0);
+            break;
     }
 }
 
@@ -135,6 +148,12 @@ static void ui_task(void *arg)
                 if (s_cb) s_cb(UI_EVENT_LONG_PRESS);
             }
         } else {
+            if (press_started != 0 && !long_fired) {
+                int64_t held_ms = (now - press_started) / 1000;
+                if (held_ms >= SHORT_CLICK_MIN_MS) {
+                    if (s_cb) s_cb(UI_EVENT_SHORT_CLICK);
+                }
+            }
             press_started = 0;
             long_fired    = false;
         }

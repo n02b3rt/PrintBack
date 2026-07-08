@@ -220,6 +220,56 @@ Status: RESOLVED (2026-07-08) - docs/TASKS.md's Phase 4 acceptance
 criterion (WiFi+BLE run simultaneously without significant packet loss)
 confirmed with real traffic.
 
+## [FIRMWARE] ble_store_config_init() not exposed by any header
+Date: 2026-07-09
+Problem: build failed on `ble_store_config_init();` in `ble_gatt.c`:
+`implicit declaration of function 'ble_store_config_init'`, even with
+`store/config/ble_store_config.h` included.
+Root cause: that header only declares the read/write/delete functions;
+`ble_store_config_init()` itself isn't exposed by any public header in
+this ESP-IDF version. Confirmed by grepping the NimBLE tree: even
+Espressif's own `bleprph`/`bleprph_wifi_coex` examples forward-declare
+this exact function themselves (`extern void ble_store_config_init(void);`)
+rather than including something for it.
+Fix: added the same `extern void ble_store_config_init(void);` forward
+declaration directly in `ble_gatt.c`, matching the reference examples.
+Status: RESOLVED (2026-07-09)
+
+## [FIRMWARE] CONFIG_BT_NIMBLE_NVS_PERSIST didn't take effect from
+sdkconfig.defaults alone
+Date: 2026-07-09
+Problem: bonded, confirmed `whitelist refreshed: 1 bonded peer(s)`, then
+restarted the device to test persistence (docs/TASKS.md Phase 5
+acceptance criteria) - whitelist came back at 0 bonded peers.
+Root cause: same class of issue as Phase 4's BT/coexistence Kconfig
+additions (see earlier entry): `firmware/sdkconfig` (the live, gitignored,
+generated config) already had `CONFIG_BT_NIMBLE_NVS_PERSIST` recorded as
+"not set" from before this option was added to `sdkconfig.defaults`.
+Kconfig only applies defaults to options that don't have an existing
+recorded value yet, so adding a line to `sdkconfig.defaults` doesn't
+retroactively flip an already-decided option in a pre-existing
+`sdkconfig`. Third time this exact gotcha has come up (Phase 2, Phase 4,
+now Phase 5) - worth remembering as a standing pattern, not a one-off.
+Fix: edited the live `firmware/sdkconfig` directly
+(`CONFIG_BT_NIMBLE_NVS_PERSIST=y`), rebuilt, reflashed. Re-paired and
+confirmed `whitelist refreshed: 1 bonded peer(s)` survives a subsequent
+restart.
+Status: RESOLVED (2026-07-09)
+
+## [FIRMWARE] CONFIG characteristic showed READ-only despite WRITE_ENC flag
+Date: 2026-07-09
+Problem: nRF Connect showed `Properties: READ` on the CONFIG
+characteristic with no write option available, despite
+`.flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_WRITE_ENC` in
+`ble_gatt.c`.
+Root cause: confirmed in `host/ble_gatt.h`: `BLE_GATT_CHR_F_WRITE_ENC`
+(0x1000) is a security/permission bit layered on top of the base
+`BLE_GATT_CHR_F_WRITE` (0x0008) property flag, not a replacement for it
+- same relationship as `_READ_ENC`/`_READ`. Without the base flag, the
+characteristic never advertises write support at the ATT layer at all.
+Fix: `.flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_ENC`.
+Status: RESOLVED (2026-07-09)
+
 ## Things that DON'T work: don't try again
 
 - WiFi monitor mode + Thread (802.15.4) on one ESP32-C6 radio: confirmed

@@ -138,4 +138,19 @@ config PRINTBACK_ARMED_RSSI_THRESHOLD
 
 endmenu
 
+menu "Pairing (BLE bonding)"
+
+config PRINTBACK_PAIRING_WINDOW_SECONDS
+    int "How long the pairing window stays open (seconds)"
+    range 10 300
+    default 60
+    help
+        A short click on the tact switch opens this window
+        (docs/DECISIONS.md D5): only during this time will the device
+        accept a BLE connection from a phone it hasn't bonded with
+        before (firmware/main/ble_gatt.c). Outside the window, only
+        already-bonded phones can connect at all.
+
+endmenu
+
 endmenu

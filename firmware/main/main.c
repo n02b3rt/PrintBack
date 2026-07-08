@@ -18,6 +18,7 @@
 #include "sd_storage.h"
 #include "aggregate.h"
 #include "ble_gatt.h"
+#include "runtime_config.h"
 
 static const char *TAG = "printback";
 
@@ -57,7 +58,15 @@ static void disarm(void)
 
 static void on_ui_event(ui_event_t ev)
 {
+    if (ev == UI_EVENT_SHORT_CLICK) {
+        ble_gatt_enter_pairing_mode();
+        ui_set_state(UI_STATE_PAIRING);
+        ESP_LOGI(TAG, "pairing mode: waiting %ds for a new phone to bond",
+                 CONFIG_PRINTBACK_PAIRING_WINDOW_SECONDS);
+        return;
+    }
     if (ev != UI_EVENT_LONG_PRESS) return;
+
     int64_t until = esp_timer_get_time() +
                     (int64_t)CONFIG_PRINTBACK_ARMED_TIMEOUT_SECONDS * 1000000;
     atomic_store(&s_armed_until_us, until);
@@ -69,7 +78,7 @@ static void on_ui_event(ui_event_t ev)
 
 static void on_probe(const probe_observation_t *obs)
 {
-    if (obs->rssi < CONFIG_PRINTBACK_RSSI_FLOOR) return;
+    if (obs->rssi < runtime_config_rssi_floor()) return;
 
     bool whitelisted = whitelist_contains(obs->fp.hash);
 
@@ -168,6 +177,12 @@ static void check_aggregation_rollover(void)
     s_agg_hour = hour;
 }
 
+/* Was pairing mode active as of the last tick? Same "check the transition,
+ * not just the level" pattern as s_armed_until_us/is_armed() above -
+ * ble_gatt.c owns the actual timeout/bond-success logic, this just
+ * mirrors it into the LED. */
+static bool s_pairing_ui_active = false;
+
 static void housekeeper(void *arg)
 {
     const int64_t window_us =
@@ -183,6 +198,13 @@ static void housekeeper(void *arg)
             disarm();
             ESP_LOGI(TAG, "armed window expired");
         }
+
+        bool pairing_now = ble_gatt_pairing_mode_active();
+        if (s_pairing_ui_active && !pairing_now) {
+            ui_set_state(UI_STATE_IDLE);
+            ESP_LOGI(TAG, "pairing window closed");
+        }
+        s_pairing_ui_active = pairing_now;
 
         uint32_t evicted = tracker_sweep(now, window_us);
         tracker_stats_t s;
@@ -211,6 +233,7 @@ void app_main(void)
 
     whitelist_init();
     tracker_init();
+    runtime_config_init(); /* before wifi_sniffer_start(): on_probe() needs the RSSI floor from the first packet */
     ui_init();
     ui_set_event_handler(on_ui_event);
     sd_storage_init(); /* logs its own error and keeps going without SD if this fails */

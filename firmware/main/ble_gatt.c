@@ -5,21 +5,32 @@
 
 #include "esp_err.h"
 #include "esp_log.h"
+#include "esp_timer.h"
+#include "sdkconfig.h"
 
 #include "host/ble_hs.h"
+#include "host/ble_sm.h"
+#include "host/ble_store.h"
 #include "host/ble_uuid.h"
 #include "host/util/util.h"
 #include "nimble/nimble_port.h"
 #include "nimble/nimble_port_freertos.h"
 #include "services/gap/ble_svc_gap.h"
 #include "services/gatt/ble_svc_gatt.h"
+#include "store/config/ble_store_config.h"
 
 #include "aggregate.h"
+#include "runtime_config.h"
 #include "sd_storage.h"
 
 static const char *TAG = "ble_gatt";
 
 #define DEVICE_NAME "PrintBack"
+
+/* Max simultaneously bonded phones the controller whitelist tracks.
+ * Not a hard product requirement, just a sane static buffer size - NVS/
+ * controller limits would bind first in practice. */
+#define MAX_BONDED_PEERS 8
 
 /* Preferred ATT MTU: a single STATS JSON row (~70-90B) needs more than
  * the unnegotiated default of 23B. Every BLE 4.2+ central negotiates at
@@ -41,8 +52,8 @@ static const ble_uuid128_t s_stats_chr_uuid =
     BLE_UUID128_INIT(0x13, 0x7f, 0xed, 0x30, 0x1a, 0xba, 0x44, 0xb5,
                       0xcd, 0x4a, 0x6e, 0x29, 0xc2, 0x65, 0x14, 0x1b);
 
-/* c5468eed-52a8-434b-bc6f-0d60c323f07f (docs/DATA_MODEL.md), read-only in
- * Phase 4 - write needs Phase 5 bonding to authorize it first. */
+/* c5468eed-52a8-434b-bc6f-0d60c323f07f (docs/DATA_MODEL.md), read+write:
+ * write requires bonding (Phase 5, BLE_GATT_CHR_F_WRITE_ENC below). */
 static const ble_uuid128_t s_config_chr_uuid =
     BLE_UUID128_INIT(0x7f, 0xf0, 0x23, 0xc3, 0x60, 0x0d, 0x6f, 0xbc,
                       0x4b, 0x43, 0xa8, 0x52, 0xed, 0x8e, 0x46, 0xc5);
@@ -51,11 +62,28 @@ static uint16_t s_stats_val_handle;
 static uint16_t s_conn_handle = BLE_HS_CONN_HANDLE_NONE;
 static uint8_t  s_own_addr_type;
 
+/* Phase 5 pairing/bonding state. Physical-access gating (docs/DECISIONS.md
+ * D5) is enforced at the link layer, not the SM/encryption layer: Just
+ * Works (BLE_SM_IO_CAP_NO_IO, no display on this device) has no app-level
+ * hook to refuse an incoming pairing request, so instead the controller's
+ * connection whitelist decides who can even connect. Normally only
+ * already-bonded peers (BLE_HCI_ADV_FILT_CONN); during the pairing
+ * window (button press), anyone (BLE_HCI_ADV_FILT_NONE). */
+static bool               s_pairing_mode_active = false;
+static esp_timer_handle_t s_pairing_timer;
+static ble_addr_t         s_whitelist[MAX_BONDED_PEERS];
+
 /* gatt_advertise() and gatt_gap_event() call each other (advertise passes
  * gatt_gap_event as the connection callback; the event handler re-arms
  * advertising on disconnect/adv-complete/failed-connect), hence the
  * forward declaration. */
 static int gatt_gap_event(struct ble_gap_event *event, void *arg);
+
+/* Not exposed by any public header in this ESP-IDF version despite
+ * store/config/ble_store_config.h existing - confirmed by grepping the
+ * NimBLE tree: even Espressif's own bleprph example forward-declares
+ * this exact function itself rather than including something for it. */
+extern void ble_store_config_init(void);
 
 /* Builds the docs/DATA_MODEL.md STATS JSON row for one aggregate record,
  * e.g. {"date":"2026-07-02","hour":14,"unique":37,"returning":22,"kanon":false}
@@ -108,19 +136,38 @@ static int gatt_config_read(struct ble_gatt_access_ctxt *ctxt)
     char json[CONFIG_JSON_MAX_LEN];
     int len = snprintf(json, sizeof(json),
         "{\"rssi_floor\":%d,\"returning_window_days\":%d}",
-        CONFIG_PRINTBACK_RSSI_FLOOR, RETURNING_WINDOW_DAYS);
+        runtime_config_rssi_floor(), runtime_config_returning_window_days());
 
     if (len < 0) return BLE_ATT_ERR_UNLIKELY;
     int rc = os_mbuf_append(ctxt->om, json, (uint16_t)len);
     return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
 }
 
-/* Dispatches by characteristic UUID. Both characteristics are read-only
- * at the ATT layer (flags below), so ctxt->op is always
- * BLE_GATT_ACCESS_OP_READ_CHR here - NimBLE rejects any write attempt
- * before this callback is ever invoked for CONFIG, no manual write
- * handling needed (docs/DECISIONS.md: CONFIG write is Phase 5 scope,
- * once bonding exists to authorize it). */
+/* CONFIG write requires an encrypted link (BLE_GATT_CHR_F_WRITE_ENC on
+ * the characteristic, only reachable at all by a bonded peer thanks to
+ * the connection whitelist above) - a phone mid-pairing but not yet
+ * bonded can't sneak a write in during the open pairing window either,
+ * since encryption isn't up yet at that point. */
+static int gatt_config_write(struct ble_gatt_access_ctxt *ctxt)
+{
+    char buf[CONFIG_JSON_MAX_LEN];
+    uint16_t om_len = OS_MBUF_PKTLEN(ctxt->om);
+    if (om_len == 0 || om_len >= sizeof(buf)) return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+
+    uint16_t copied;
+    if (ble_hs_mbuf_to_flat(ctxt->om, buf, sizeof(buf) - 1, &copied) != 0) {
+        return BLE_ATT_ERR_UNLIKELY;
+    }
+    buf[copied] = '\0';
+
+    if (!runtime_config_apply_json(buf, copied)) {
+        return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+    }
+    return 0;
+}
+
+/* Dispatches by characteristic UUID. STATS is read+notify only; CONFIG
+ * is read+write (write gated behind encryption, see gatt_config_write). */
 static int gatt_access_cb(uint16_t conn_handle, uint16_t attr_handle,
                            struct ble_gatt_access_ctxt *ctxt, void *arg)
 {
@@ -133,6 +180,9 @@ static int gatt_access_cb(uint16_t conn_handle, uint16_t attr_handle,
         return gatt_stats_read(ctxt);
     }
     if (ble_uuid_cmp(uuid, &s_config_chr_uuid.u) == 0) {
+        if (ctxt->op == BLE_GATT_ACCESS_OP_WRITE_CHR) {
+            return gatt_config_write(ctxt);
+        }
         return gatt_config_read(ctxt);
     }
     return BLE_ATT_ERR_UNLIKELY;
@@ -151,7 +201,12 @@ static const struct ble_gatt_svc_def s_gatt_svcs[] = {
             }, {
                 .uuid = &s_config_chr_uuid.u,
                 .access_cb = gatt_access_cb,
-                .flags = BLE_GATT_CHR_F_READ,
+                /* _WRITE_ENC is a permission bit layered on top of the base
+                 * _WRITE property, not a replacement for it - without
+                 * _WRITE too, the characteristic doesn't advertise write
+                 * support at all (confirmed on hardware: nRF Connect showed
+                 * "Properties: READ" only until this was added). */
+                .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_ENC,
             }, {
                 0, /* No more characteristics in this service. */
             }
@@ -195,6 +250,8 @@ static void gatt_register_cb(struct ble_gatt_register_ctxt *ctxt, void *arg)
  * automatically. */
 static void gatt_advertise(void)
 {
+    ble_gap_adv_stop(); /* harmless if not currently advertising */
+
     struct ble_hs_adv_fields fields;
     memset(&fields, 0, sizeof(fields));
 
@@ -228,12 +285,49 @@ static void gatt_advertise(void)
     memset(&adv_params, 0, sizeof(adv_params));
     adv_params.conn_mode = BLE_GAP_CONN_MODE_UND;
     adv_params.disc_mode = BLE_GAP_DISC_MODE_GEN;
+    /* Discoverable (scannable) by anyone always; connectable only by
+     * whitelisted (bonded) peers, except during the open pairing window. */
+    adv_params.filter_policy = s_pairing_mode_active ? BLE_HCI_ADV_FILT_NONE
+                                                      : BLE_HCI_ADV_FILT_CONN;
 
     rc = ble_gap_adv_start(s_own_addr_type, NULL, BLE_HS_FOREVER, &adv_params,
                             gatt_gap_event, NULL);
     if (rc != 0) {
         ESP_LOGE(TAG, "error enabling advertisement; rc=%d", rc);
     }
+}
+
+/* Re-reads bonded peer identity addresses from the NVS store and
+ * overwrites the controller's connection whitelist. Called at boot (so
+ * pre-existing bonds survive a restart, per docs/TASKS.md Phase 5
+ * acceptance criteria) and whenever pairing mode ends (fresh bond added,
+ * or window timed out with nothing new). */
+static void refresh_whitelist(void)
+{
+    int count = 0;
+    ble_store_util_bonded_peers(s_whitelist, &count, MAX_BONDED_PEERS);
+    if (count > 0) {
+        ble_gap_wl_set(s_whitelist, (uint8_t)count);
+    }
+    ESP_LOGI(TAG, "whitelist refreshed: %d bonded peer(s)", count);
+}
+
+static void exit_pairing_mode(void)
+{
+    if (!s_pairing_mode_active) return;
+
+    s_pairing_mode_active = false;
+    esp_timer_stop(s_pairing_timer); /* no-op if it already fired */
+    ble_gap_adv_stop();              /* down before touching the whitelist */
+    refresh_whitelist();
+    gatt_advertise();                /* back to whitelist-only filtering */
+}
+
+static void pairing_timeout_cb(void *arg)
+{
+    (void)arg;
+    ESP_LOGI(TAG, "pairing window expired, no new bond");
+    exit_pairing_mode();
 }
 
 static int gatt_gap_event(struct ble_gap_event *event, void *arg)
@@ -248,6 +342,15 @@ static int gatt_gap_event(struct ble_gap_event *event, void *arg)
         if (event->connect.status == 0) {
             s_conn_handle = event->connect.conn_handle;
             ble_gattc_exchange_mtu(s_conn_handle, NULL, NULL);
+            /* Outside the pairing window only whitelisted (already
+             * bonded) peers can even reach this point, so there's
+             * nothing to initiate. Inside the window, this is either a
+             * brand new phone (the point of pairing mode) or a bonded
+             * phone reconnecting during an open window (harmless,
+             * restores existing encryption). */
+            if (s_pairing_mode_active) {
+                ble_gap_security_initiate(s_conn_handle);
+            }
         } else {
             gatt_advertise(); /* connection attempt failed, keep advertising */
         }
@@ -263,6 +366,19 @@ static int gatt_gap_event(struct ble_gap_event *event, void *arg)
         ESP_LOGI(TAG, "advertise complete; reason=%d", event->adv_complete.reason);
         gatt_advertise();
         return 0;
+
+    case BLE_GAP_EVENT_ENC_CHANGE: {
+        ESP_LOGI(TAG, "encryption change; conn_handle=%d status=%d",
+                 event->enc_change.conn_handle, event->enc_change.status);
+        if (event->enc_change.status != 0 || !s_pairing_mode_active) return 0;
+
+        struct ble_gap_conn_desc desc;
+        if (ble_gap_conn_find(event->enc_change.conn_handle, &desc) == 0 && desc.sec_state.bonded) {
+            ESP_LOGI(TAG, "new bond established, closing pairing window early");
+            exit_pairing_mode();
+        }
+        return 0;
+    }
 
     case BLE_GAP_EVENT_SUBSCRIBE:
         ESP_LOGI(TAG, "subscribe event; conn_handle=%d attr_handle=%d cur_notify=%d",
@@ -295,6 +411,7 @@ static void gatt_on_sync(void)
         return;
     }
 
+    refresh_whitelist(); /* restore bonds from NVS before the first advertise */
     gatt_advertise();
 }
 
@@ -319,6 +436,27 @@ void ble_gatt_start(void)
     ble_hs_cfg.reset_cb = gatt_on_reset;
     ble_hs_cfg.sync_cb = gatt_on_sync;
     ble_hs_cfg.gatts_register_cb = gatt_register_cb;
+    ble_hs_cfg.store_status_cb = ble_store_util_status_rr;
+
+    /* Bonding (Phase 5, docs/DECISIONS.md D5). sm_mitm=0: the security
+     * model here is physical access to the button (link-layer whitelist
+     * gating, see gatt_advertise()), not cryptographic MITM resistance -
+     * this device has no display/keyboard for anything stronger than
+     * Just Works anyway. */
+    ble_hs_cfg.sm_bonding = 1;
+    ble_hs_cfg.sm_mitm = 0;
+    ble_hs_cfg.sm_sc = 1;
+    ble_hs_cfg.sm_io_cap = BLE_SM_IO_CAP_NO_IO;
+    ble_hs_cfg.sm_our_key_dist = BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID;
+    ble_hs_cfg.sm_their_key_dist = BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID;
+
+    ble_store_config_init();
+
+    const esp_timer_create_args_t pairing_timer_args = {
+        .callback = pairing_timeout_cb,
+        .name = "ble_pairing",
+    };
+    esp_timer_create(&pairing_timer_args, &s_pairing_timer);
 
     ble_svc_gap_init();
     ble_svc_gatt_init();
@@ -360,4 +498,20 @@ void ble_gatt_notify_stats(const aggregate_record_t *rec)
     if (rc != 0) {
         ESP_LOGW(TAG, "stats notify failed; rc=%d", rc);
     }
+}
+
+void ble_gatt_enter_pairing_mode(void)
+{
+    if (s_pairing_mode_active) return; /* already open, ignore a repeat click */
+
+    s_pairing_mode_active = true;
+    ESP_LOGI(TAG, "pairing mode entered, window=%ds", CONFIG_PRINTBACK_PAIRING_WINDOW_SECONDS);
+    gatt_advertise();
+    esp_timer_start_once(s_pairing_timer,
+                          (uint64_t)CONFIG_PRINTBACK_PAIRING_WINDOW_SECONDS * 1000000ULL);
+}
+
+bool ble_gatt_pairing_mode_active(void)
+{
+    return s_pairing_mode_active;
 }

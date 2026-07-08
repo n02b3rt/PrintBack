@@ -1,5 +1,7 @@
 #pragma once
 
+#include <stdbool.h>
+
 #include "sd_paths.h"
 
 /* Starts the NimBLE host stack: registers the GATT service (STATS +
@@ -20,3 +22,18 @@ void ble_gatt_start(void);
  * check_aggregation_rollover() right after aggregate_run_hourly()/
  * aggregate_run_daily_rollover() produce a new record. */
 void ble_gatt_notify_stats(const aggregate_record_t *rec);
+
+/* Opens the pairing window (docs/DECISIONS.md D5, docs/TASKS.md Phase 5):
+ * temporarily accepts connections from ANY device (normally only
+ * already-bonded peers can connect at all, see gatt_advertise() in
+ * ble_gatt.c), for CONFIG_PRINTBACK_PAIRING_WINDOW_SECONDS or until a new
+ * bond completes, whichever comes first. Call from main.c's
+ * on_ui_event() on UI_EVENT_SHORT_CLICK. No-op if already in pairing
+ * mode (a second click during an open window doesn't restart the
+ * timer). */
+void ble_gatt_enter_pairing_mode(void);
+
+/* True while the pairing window opened by ble_gatt_enter_pairing_mode()
+ * is still open. main.c's housekeeper polls this (same pattern as the
+ * existing armed-window check) to know when to revert the LED to IDLE. */
+bool ble_gatt_pairing_mode_active(void);

@@ -12,6 +12,8 @@ idf_component_register(
         "sd_storage.c"
         "aggregate.c"
         "ble_gatt.c"
+        "runtime_config_parse.c"
+        "runtime_config.c"
     INCLUDE_DIRS "."
     REQUIRES
         esp_wifi

@@ -81,7 +81,31 @@
       BLE off 22 observations/6 devices - no measurable WiFi packet loss
       from BLE, satisfying docs/TASKS.md's Phase 4 acceptance criterion.
       See docs/LEARNINGS.md for the full investigation and resolution.
-- [ ] Phase 5: pairing button + bonding
+- [x] Phase 5: pairing (button + bonding) (2026-07-09). Short click on the
+      tact switch (new `UI_EVENT_SHORT_CLICK` in `ui.c`, purely additive
+      to the existing 3s long-press whitelist-arm gesture) opens a
+      60-second pairing window (`UI_STATE_PAIRING`, cyan pulse). Physical-
+      access gating (docs/DECISIONS.md D5) enforced at the link layer, not
+      the SM layer: the controller's connection whitelist
+      (`ble_gap_wl_set()`/`filter_policy`) only accepts connections from
+      already-bonded peers normally (`BLE_HCI_ADV_FILT_CONN`), switching
+      to accept-anyone (`BLE_HCI_ADV_FILT_NONE`) only during the open
+      window - Just Works (`BLE_SM_IO_CAP_NO_IO`) has no app-level hook to
+      refuse pairing itself, so the whitelist is what actually enforces
+      "physical access required". New `runtime_config_parse.c`/`.h`
+      (pure, host-tested) + `runtime_config.c`/`.h` (NVS-backed) make RSSI
+      floor and returning-window days runtime-configurable; CONFIG's
+      write is now implemented (`BLE_GATT_CHR_F_WRITE_ENC`, applies and
+      persists via `runtime_config_apply_json()`).
+      Verified on real hardware: pairing completes automatically on
+      connection within the window (`encryption change; status=0` →
+      `new bond established` → `whitelist refreshed: 1 bonded peer(s)`),
+      and the bond survives a full device restart (`whitelist refreshed:
+      1 bonded peer(s)` again after reboot). Hit and fixed three bugs
+      along the way (`ble_store_config_init()` not exposed by any header,
+      `CONFIG_BT_NIMBLE_NVS_PERSIST` needing a direct sdkconfig edit same
+      as earlier phases, `BLE_GATT_CHR_F_WRITE_ENC` needing the base
+      `_WRITE` flag alongside it), see docs/LEARNINGS.md.
 - [ ] Phase 6: mobile Flutter skeleton
 - [ ] Phase 7: docs/compliance/README.md + README.md, final documentation
 
@@ -89,4 +113,4 @@ Note: the current code in `firmware/` and `app/` is still the old
 architecture (USB-CDC → Python desktop dashboard, SQLite). Don't remove /
 change it until the new path (BLE+SD) is ready and tested in parallel.
 
-Last updated: 2026-07-08 (Phase 4).
+Last updated: 2026-07-09 (Phase 5).

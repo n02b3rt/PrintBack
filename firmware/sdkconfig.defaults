@@ -15,6 +15,10 @@ CONFIG_BT_ENABLED=y
 CONFIG_BT_NIMBLE_ENABLED=y
 CONFIG_BT_NIMBLE_HCI_EVT_BUF_SIZE=70
 
+# Phase 5: bonding keys must survive a reboot (docs/TASKS.md acceptance
+# criteria - "bonding survives a restart"). Defaults to n upstream.
+CONFIG_BT_NIMBLE_NVS_PERSIST=y
+
 # Explicit even though this defaults to y automatically once WiFi+BT are
 # both enabled (components/esp_coex/Kconfig): the docs used to reference
 # the wrong flag name (CONFIG_SW_COEXIST_ENABLE, doesn't exist), verified
@@ -93,3 +97,6 @@ CONFIG_PRINTBACK_JSON_OUTPUT=y
 CONFIG_PRINTBACK_LONG_PRESS_MS=3000
 CONFIG_PRINTBACK_ARMED_TIMEOUT_SECONDS=30
 CONFIG_PRINTBACK_ARMED_RSSI_THRESHOLD=-45
+
+# --- PrintBack: pairing (Phase 5, BLE bonding) ---------------------------
+CONFIG_PRINTBACK_PAIRING_WINDOW_SECONDS=60
