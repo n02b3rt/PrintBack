@@ -76,3 +76,33 @@ bool sd_is_purge_candidate(uint32_t file_unix_day, uint32_t today_unix_day,
     uint32_t age_days = today_unix_day - file_unix_day;
     return age_days > retention_days;
 }
+
+int sd_hour_from_unix_s(uint32_t unix_s)
+{
+    return (int)((unix_s % 86400u) / 3600u);
+}
+
+int sd_format_stats_hourly_path(uint32_t unix_day, char *out, size_t out_len)
+{
+    if (out_len < SD_STATS_PATH_MAX_LEN) return -1;
+
+    int y; unsigned m, d;
+    civil_from_days((int64_t)unix_day, &y, &m, &d);
+
+    int n = snprintf(out, out_len, "/sdcard/logs/stats/hourly/%04d%02u%02u.bin", y, m, d);
+    return (n > 0 && (size_t)n < out_len) ? 0 : -1;
+}
+
+int sd_format_stats_today_path(char *out, size_t out_len)
+{
+    if (out_len < SD_STATS_PATH_MAX_LEN) return -1;
+    int n = snprintf(out, out_len, "/sdcard/logs/stats/today.bin");
+    return (n > 0 && (size_t)n < out_len) ? 0 : -1;
+}
+
+int sd_format_stats_daily_path(char *out, size_t out_len)
+{
+    if (out_len < SD_STATS_PATH_MAX_LEN) return -1;
+    int n = snprintf(out, out_len, "/sdcard/logs/stats/daily.bin");
+    return (n > 0 && (size_t)n < out_len) ? 0 : -1;
+}

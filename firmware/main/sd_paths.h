@@ -67,3 +67,39 @@ uint32_t sd_unix_day_from_unix_s(uint32_t unix_s);
  * never purge it. */
 bool sd_is_purge_candidate(uint32_t file_unix_day, uint32_t today_unix_day,
                             uint32_t retention_days);
+
+/* Extracts the hour-of-day (0-23, UTC) from a unix timestamp. Pure
+ * modular arithmetic, no time.h, same portability rationale as
+ * civil_from_days in sd_paths.c. */
+int sd_hour_from_unix_s(uint32_t unix_s);
+
+/* strlen("/sdcard/logs/stats/hourly/YYYYMMDD.bin") + 1. Shared by all
+ * three stats path formatters below (today.bin/daily.bin are shorter,
+ * this is just the one buffer size callers need to allocate). */
+#define SD_STATS_PATH_MAX_LEN 39
+
+/* Formats "/sdcard/logs/stats/hourly/YYYYMMDD.bin" for a given day.
+ * Same unit/contract as sd_format_raw_path. */
+int sd_format_stats_hourly_path(uint32_t unix_day, char *out, size_t out_len);
+
+/* Formats the fixed path "/sdcard/logs/stats/today.bin" (single mutable
+ * record, no date in the name). */
+int sd_format_stats_today_path(char *out, size_t out_len);
+
+/* Formats the fixed path "/sdcard/logs/stats/daily.bin" (append-only,
+ * finalized days). */
+int sd_format_stats_daily_path(char *out, size_t out_len);
+
+/* Format: docs/DATA_MODEL.md "Aggregate record". Packed, fixed 12 bytes.
+ * `hour_or_day`: 0-23 for an hourly bucket, -1 for a whole-day record. */
+typedef struct __attribute__((packed)) {
+    uint32_t date_unix_day;
+    int8_t   hour_or_day;
+    uint16_t unique_count;
+    uint16_t returning_count;
+    uint8_t  k_anonymity_applied;
+    uint8_t  _reserved[2];
+} aggregate_record_t;
+
+_Static_assert(sizeof(aggregate_record_t) == 12,
+               "aggregate_record_t must stay 12 bytes, see docs/DATA_MODEL.md");

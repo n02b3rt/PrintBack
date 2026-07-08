@@ -89,6 +89,28 @@ int main(void)
     CHECK(rec.flags == (SD_RAW_FLAG_NEW | SD_RAW_FLAG_WHITELISTED),
           "record: fresh+whitelisted => both bits, never RETURNING");
 
+    /* sd_hour_from_unix_s: pure modular arithmetic, UTC. */
+    CHECK(sd_hour_from_unix_s(1782950400u) == 0,               "hour at midnight");
+    CHECK(sd_hour_from_unix_s(1782950400u + 3600u * 14) == 14, "hour at 14:00");
+    CHECK(sd_hour_from_unix_s(1782950400u + 3600u * 23 + 3599u) == 23, "hour at 23:59:59");
+
+    /* Stats path formatters (Phase 3), same 8.3-safe convention as raw. */
+    {
+        char buf[SD_STATS_PATH_MAX_LEN];
+
+        CHECK(sd_format_stats_hourly_path(20636u, buf, sizeof(buf)) == 0 &&
+              strcmp(buf, "/sdcard/logs/stats/hourly/20260702.bin") == 0,
+              "stats hourly path for 2026-07-02");
+
+        CHECK(sd_format_stats_today_path(buf, sizeof(buf)) == 0 &&
+              strcmp(buf, "/sdcard/logs/stats/today.bin") == 0,
+              "stats today.bin path");
+
+        CHECK(sd_format_stats_daily_path(buf, sizeof(buf)) == 0 &&
+              strcmp(buf, "/sdcard/logs/stats/daily.bin") == 0,
+              "stats daily.bin path");
+    }
+
     if (failures) {
         printf("%d test(s) FAILED\n", failures);
         return 1;
