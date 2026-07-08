@@ -19,7 +19,25 @@
       unaffected. Hit and fixed one real bug along the way: FAT short
       (8.3) filenames don't fit `YYYY-MM-DD.bin`, switched to
       `YYYYMMDD.bin`, see docs/LEARNINGS.md.
-- [ ] Phase 3: on-device aggregation, drop raw MAC
+- [x] Phase 3: on-device aggregation, drop raw MAC (2026-07-08). `"mac"`
+      field gone from the USB JSON line for good (`output.c`). New
+      `aggregate.c`: hourly scan of today's raw log, dedup, k-anonymity
+      gate (`kanon_hourly_publishable()`), 30-day returning-window
+      history set rebuilt once per day, writes to
+      `stats/hourly/YYYYMMDD.bin` (only when publishable) and
+      `stats/today.bin` (always, running total), folded into
+      `stats/daily.bin` on rollover. `sd_paths.c` extended with the stats
+      path formatters and an hour-of-day helper, host tests updated.
+      Wired into the existing housekeeper tick (hour/day-rollover check,
+      same pattern as Phase 2's SD day-rollover). Verified on real
+      hardware with synthetic probes (no real WiFi traffic available to
+      test with): `hour 10: unique=6 returning=0 published=yes`, then
+      `hour 23: unique=6 ... published=yes` immediately followed by
+      `daily rollover: history set rebuilt, 6 unique fp over last 30
+      days`. Hit and fixed a real bug along the way: aggregation
+      couldn't see its own SD writes (missing `stats/` directories +
+      `fflush()` alone isn't enough on FatFs, needs `fsync()` too), see
+      docs/LEARNINGS.md.
 - [ ] Phase 4: BLE GATT server
 - [ ] Phase 5: pairing button + bonding
 - [ ] Phase 6: mobile Flutter skeleton

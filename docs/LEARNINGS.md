@@ -88,6 +88,30 @@ hardware afterward: `sd_bytes=16` after one record, and a follow-up test
 `purge: deleted 1 raw log file(s)` too.
 Status: RESOLVED (2026-07-08)
 
+## [FIRMWARE] aggregate.c read its own SD writes as empty (missing dir, missing fsync)
+Date: 2026-07-08
+Problem: Phase 3 aggregation always saw `unique=0` for an hour that
+definitely had probe data written to it, and separately hit
+`failed to open /sdcard/logs/stats/today.bin for write`.
+Root cause: two distinct bugs found in the same test pass.
+(1) `sd_storage_init()` only created `/sdcard/logs/raw`, never
+`/sdcard/logs/stats` or `/sdcard/logs/stats/hourly`, so any fopen() into
+those directories failed outright (FAT doesn't create missing parent
+directories). (2) Even after fixing that, hourly scans still read 0
+records. `sd_storage_write_raw()` keeps one `FILE*` open all day
+(append) while `aggregate.c` opens a second, independent `FILE*` on the
+same path to read it. A plain `fflush()` on the writer only pushes the C
+stdio buffer down to the VFS layer; ESP-IDF's FatFs doesn't update the
+directory entry's recorded file size until an explicit sync, so a fresh
+`fopen()` elsewhere still saw a 0-byte file even after fflush().
+Fix: `ensure_dir()` now also creates `stats/` and `stats/hourly/` at
+init. `sd_storage_write_raw()` now calls both `fflush()` and
+`fsync(fileno(s_raw_fp))` after every write. Confirmed on hardware:
+`hour 10: unique=6 returning=0 published=yes`, then a day-rollover test
+confirmed `daily rollover: history set rebuilt, 6 unique fp over last
+30 days` too.
+Status: RESOLVED (2026-07-08)
+
 ## Things that DON'T work: don't try again
 
 - WiFi monitor mode + Thread (802.15.4) on one ESP32-C6 radio: confirmed
