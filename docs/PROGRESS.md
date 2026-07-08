@@ -64,17 +64,19 @@
       the way: BLE advertisement data (flags + name + 128-bit UUID)
       exceeded the 31-byte legacy advertising limit, fixed by moving the
       device name into the scan response packet, see docs/LEARNINGS.md.
-      One acceptance criterion from docs/TASKS.md not met, and it's more
-      than a missing measurement: a deep investigation (BLE on/off A/B,
-      raw promiscuous-callback counters, comparison against ESP-IDF's own
-      sniffer example, and a plain active WiFi scan) found that this unit
-      receives **zero WiFi packets of any kind**, independent of BLE -
-      confirmed via `esp_wifi_scan_start()` finding 0 access points in a
-      normal apartment. This is a hardware issue (antenna/RF path
-      suspected, see docs/LEARNINGS.md), predates this refactor entirely
-      (`wifi_sniffer.c` is byte-identical to `main`), and blocks any real
-      WiFi capture on this specific physical unit until fixed. BLE itself
-      is fully confirmed working and unaffected by it.
+      Along the way, a deep investigation (BLE on/off A/B, raw
+      promiscuous-callback counters, comparison against ESP-IDF's own
+      sniffer example, a plain active WiFi scan finding 0 access points)
+      traced a "zero WiFi packets captured" symptom to a loose antenna
+      connection on the XIAO ESP32-C6, unrelated to BLE/coexistence and
+      predating this refactor entirely (`wifi_sniffer.c` is
+      byte-identical to `main`). User reseated the antenna; the same
+      firmware immediately started capturing real ambient probes with
+      BLE fully active (`active=1 obs=12 rssi=[-61,-52]`, growing
+      `sd_bytes` on the card) - the first real (non-synthetic) WiFi
+      capture confirmed end-to-end in this project, happening
+      concurrently with BLE, i.e. direct evidence coexistence works.
+      See docs/LEARNINGS.md for the full investigation and resolution.
 - [ ] Phase 5: pairing button + bonding
 - [ ] Phase 6: mobile Flutter skeleton
 - [ ] Phase 7: docs/compliance/README.md + README.md, final documentation

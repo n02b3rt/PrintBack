@@ -187,14 +187,22 @@ this same hardware, and running BLE alongside the (non-functional) WiFi
 sniffer caused no crashes across many multi-minute test windows - so
 whatever the WiFi antenna problem is, it is unrelated to BLE and to
 Phase 4's own scope.
-Next step: needs the user's hands-on hardware inspection (antenna
-keep-out zone / wiring clearance on the XIAO ESP32-C6, per Seeed's board
-docs) - not fixable by further firmware changes. Until resolved, no real
-packets/min WiFi+BLE comparison from docs/TASKS.md's Phase 4 acceptance
-criteria is possible on this unit, and no ambient probe capture at all
-works on either branch.
-Status: OPEN, hardware suspected (antenna/RF path), needs physical
-inspection
+Confirmed: user physically reseated the antenna connection on the XIAO
+ESP32-C6. Immediately after, the same firmware (no code changes) started
+capturing real ambient probes with BLE fully active: `active=1 obs=12
+rssi=[-61,-52]` in one 30s window, `sd_bytes` climbing on the SD card as
+expected. This is the first real (non-synthetic) WiFi capture confirmed
+end-to-end in this project's history, and it happened with BLE running
+the whole time - direct evidence WiFi+BLE coexistence itself was never
+the problem.
+Fix: physical - reseat/fix the antenna connection on the XIAO ESP32-C6.
+No firmware change involved. All temporary diagnostic code (raw packet
+counters, active-scan probe) was reverted after use, not committed.
+Status: RESOLVED (2026-07-08) - root cause was the antenna connection,
+not software. Real WiFi+BLE coexistence testing is now possible on this
+unit; a proper packets/min before/after comparison (docs/TASKS.md
+acceptance criteria) can be revisited now that ambient traffic is
+reachable.
 
 ## Things that DON'T work: don't try again
 
