@@ -31,9 +31,11 @@ typedef struct __attribute__((packed)) {
 } sd_raw_record_t;                        /* 16 bytes, one record = one probe */
 ```
 
-File: `/sdcard/logs/raw/YYYY-MM-DD.bin`, append-only, fixed-length
+File: `/sdcard/logs/raw/YYYYMMDD.bin`, append-only, fixed-length
 records, record N sits at offset N×16, trivial seek/truncate for the
-30-day purge.
+30-day purge. No dashes in the date: FAT short (8.3) filenames don't fit
+`YYYY-MM-DD` without enabling Long File Name support, learned the hard
+way on real hardware, see docs/LEARNINGS.md.
 
 ## Aggregate record
 
@@ -64,7 +66,7 @@ typedef struct __attribute__((packed)) {
 } aggregate_record_t;              /* 12 bytes */
 ```
 
-Files: `/sdcard/logs/stats/hourly/YYYY-MM-DD.bin` (append-only, immutable
+Files: `/sdcard/logs/stats/hourly/YYYYMMDD.bin` (append-only, immutable
 once the hour closes), `/sdcard/logs/stats/today.bin` (one record,
 overwritten in place, lets BLE serve "today so far" without waiting for
 midnight), `/sdcard/logs/stats/daily.bin` (append-only, finalized days,

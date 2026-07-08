@@ -76,12 +76,11 @@ line:
 ```
 
 A per-probe USB-CDC debug line still exists today for bench debugging
-(115200 baud). Its `"mac"` field is getting removed in Phase 3: raw MAC
-must never appear outside the device's own SD card, including today's USB
-debug output:
+(115200 baud). No MAC field: raw MAC never appears outside the device's
+own SD card, not even in USB debug output:
 
 ```json
-{"t":12345678,"fp":"cba68c5d230c5649","mac":"a4c1380c2e3f","rssi":-67,"ch":6,"ies":11,"new":true,"wl":false}
+{"t":12345678,"fp":"cba68c5d230c5649","rssi":-67,"ch":6,"ies":11,"new":true,"wl":false}
 ```
 
 ### App (current, main branch)

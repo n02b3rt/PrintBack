@@ -69,13 +69,13 @@ separate, named phase, not something that's "already" happening.
 │ tracker.c                 (unchanged: RAM, 5-min window, "who's here now")  │
 │        ▼                                                                   │
 │ [NEW] sd_storage: write sd_raw_record_t (16B, NO MAC)                      │
-│        → /sdcard/logs/raw/YYYY-MM-DD.bin      (30-day rolling purge)       │
+│        → /sdcard/logs/raw/YYYYMMDD.bin        (30-day rolling purge)       │
 │        ▼  once/hour + once/day on rollover                                 │
 │ [NEW] aggregation: unique_count / returning_count from today's raw         │
 │    kanon_hourly_publishable(unique_count)?  (already done: firmware/main/  │
 │    kanon.c)                                                                 │
 │       yes → append an hourly aggregate_record_t (k_anonymity_applied=0)    │
-│             → /sdcard/logs/stats/hourly/YYYY-MM-DD.bin                     │
+│             → /sdcard/logs/stats/hourly/YYYYMMDD.bin                       │
 │       no → add to running daily total, k_anonymity_applied=1               │
 │             → /sdcard/logs/stats/today.bin (mutable) → daily.bin on        │
 │               rollover                                                     │
@@ -126,9 +126,10 @@ Phase 2 implementation detail. Decision and rationale: docs/DECISIONS.md D6.
 
 ## SD layout
 
-- `/sdcard/logs/raw/YYYY-MM-DD.bin`: raw, fixed-length 16-byte records,
-  append-only, 30-day rolling purge (see DATA_MODEL.md).
-- `/sdcard/logs/stats/hourly/YYYY-MM-DD.bin`: hourly aggregates,
+- `/sdcard/logs/raw/YYYYMMDD.bin`: raw, fixed-length 16-byte records,
+  append-only, 30-day rolling purge (see DATA_MODEL.md). No dashes: FAT
+  short (8.3) filenames don't fit `YYYY-MM-DD`, see docs/LEARNINGS.md.
+- `/sdcard/logs/stats/hourly/YYYYMMDD.bin`: hourly aggregates,
   append-only, never deleted (aggregates aren't personal data, D3).
 - `/sdcard/logs/stats/today.bin`: one mutable record, "day in progress",
   lets BLE serve "today so far" without waiting for midnight.
