@@ -64,14 +64,17 @@
       the way: BLE advertisement data (flags + name + 128-bit UUID)
       exceeded the 31-byte legacy advertising limit, fixed by moving the
       device name into the scan response packet, see docs/LEARNINGS.md.
-      One acceptance criterion from docs/TASKS.md not fully met: couldn't
-      get a clean WiFi packets/min before-vs-after number, no ambient
-      probe traffic was reachable in the test environment even with BLE
-      fully disabled (controlled A/B test, see docs/LEARNINGS.md) - so
-      while no coexistence regression was found (both stacks ran
-      simultaneously for many minutes without a crash or visible
-      interference), the specific packet-loss measurement remains an open
-      gap pending a proper traffic source.
+      One acceptance criterion from docs/TASKS.md not met, and it's more
+      than a missing measurement: a deep investigation (BLE on/off A/B,
+      raw promiscuous-callback counters, comparison against ESP-IDF's own
+      sniffer example, and a plain active WiFi scan) found that this unit
+      receives **zero WiFi packets of any kind**, independent of BLE -
+      confirmed via `esp_wifi_scan_start()` finding 0 access points in a
+      normal apartment. This is a hardware issue (antenna/RF path
+      suspected, see docs/LEARNINGS.md), predates this refactor entirely
+      (`wifi_sniffer.c` is byte-identical to `main`), and blocks any real
+      WiFi capture on this specific physical unit until fixed. BLE itself
+      is fully confirmed working and unaffected by it.
 - [ ] Phase 5: pairing button + bonding
 - [ ] Phase 6: mobile Flutter skeleton
 - [ ] Phase 7: docs/compliance/README.md + README.md, final documentation

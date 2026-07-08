@@ -135,39 +135,66 @@ scoped-down feature. Confirmed on hardware: log now shows `NimBLE: GAP
 procedure initiated: advertise` with no error, device visible over BLE.
 Status: RESOLVED (2026-07-08)
 
-## [FIRMWARE] Testing WiFi+BLE packet loss needs traffic, and none is
-available in this environment
+## [FIRMWARE] Zero WiFi packets ever received - hardware/antenna, not
+coexistence, not a code bug
 Date: 2026-07-08
 Problem: Phase 4's acceptance criteria (docs/TASKS.md) call for comparing
-WiFi probe capture rate before/after enabling BLE. With BLE active and a
-phone connected over GATT, `housekeeper()`'s log showed `obs=0` across
-every attempt: toggling the phone's WiFi off/on, manually refreshing its
-WiFi scan list, and a 3-minute passive capture waiting for ambient
-household devices to probe on their own. Zero probe requests were
-captured by any method.
-Root cause: not a coexistence bug. Confirmed with a controlled A/B test:
-temporarily removed the `ble_gatt_start()` call from `app_main()`,
-rebuilt, reflashed, and ran the same 3-minute passive capture with BLE
-fully disabled. Result: also `obs=0`, identical to the BLE-enabled run.
-Since the WiFi-only build shows the exact same zero, the missing traffic
-is an environmental/methodology gap (no probe requests reaching the
-device in this location right now - modern Android throttles/avoids
-probing when near a known AP, matching the same difficulty already noted
-during Phase 2/3 testing), not something BLE introduced.
-Fix: none needed for coexistence itself - no regression found. What *is*
-confirmed on hardware, with BLE active: `wifi_sniffer`'s promiscuous mode
-stayed up (`sniffer: promiscuous mode active`), `channel_hopper` kept
-running, the device never reset, and BLE GATT reads/notify-subscribe
-worked correctly throughout multiple back-to-back multi-minute capture
-windows - i.e. both stacks ran simultaneously without crashing or
-visibly interfering with each other, just without a clean packets/min
-number since there was nothing to count either with or without BLE. A
-real packets/min comparison needs a controlled traffic source (e.g. a
-second, dedicated test device known to probe reliably); revisit if that
-becomes available, otherwise this remains an open gap in what Phase 4
-could verify.
-Status: OPEN (coexistence itself not shown broken, but packet-loss number
-from docs/TASKS.md's acceptance criteria not obtained)
+WiFi probe capture rate before/after enabling BLE. `housekeeper()`'s log
+showed `obs=0` across every attempt: toggling the phone's WiFi off/on,
+manually refreshing its WiFi scan list, a 3-minute passive capture, and
+holding the phone right next to the board's antenna. Zero probe requests
+captured by any method, ever.
+Investigation (in order, each step ruling out one layer):
+1. A/B test, `ble_gatt_start()` removed entirely: still `obs=0`. Rules out
+   BLE/coexistence as the cause.
+2. Added a raw counter in `on_packet()` incremented unconditionally,
+   before any type/subtype filtering (`wifi_sniffer_debug_counts()`,
+   temporary, reverted): result `cb_total=0 cb_mgmt=0`, with BLE both on
+   and off. The promiscuous callback never fires for ANY frame type, not
+   just probe requests - rules out a subtype-filtering bug in
+   `on_packet()`.
+2b. Compared against ESP-IDF's own `examples/network/simple_sniffer`
+   (confirmed to list esp32c6 as a supported target): tried dropping
+   `esp_wifi_start()` to match it exactly (no change), tried
+   `WIFI_MODE_STA` instead of `WIFI_MODE_NULL`, a very common pattern in
+   other ESP32 sniffer projects (no change). Both are legitimate, correct
+   patterns elsewhere; neither helped here, weakening "our WiFi init
+   sequence is wrong" as an explanation.
+3. Decisive test: a completely different, standard API path - a normal
+   active WiFi scan (`esp_wifi_scan_start()`, blocking, then
+   `esp_wifi_scan_get_ap_num()`), which bypasses promiscuous mode
+   entirely and must receive real beacon frames from nearby access points
+   to report anything. Result: **`DIAG: active scan found 0 AP(s)`** in a
+   normal residential apartment, where at minimum the user's own router
+   should be detected. This is not something a code bug in this project
+   could cause - it means the radio is not receiving 2.4GHz signals at
+   all, full stop.
+Root cause: hardware, not software. Most likely candidate given the
+physical setup (photographed: XIAO ESP32-C6 on a breadboard with SD-card
+jumper wires routed close to the board edge): the antenna keep-out zone
+being obstructed, or an antenna path/selection issue specific to this
+board. `wifi_sniffer.c`/`tracker.c` are byte-identical between `main` and
+`refactor/ble-sd-flutter` (confirmed via `git diff`), so this predates
+the whole refactor and isn't a regression from Phase 2/3/4 - real ambient
+WiFi capture was never actually confirmed end-to-end on this specific
+physical unit before now (Phase 2/3 hardware verification both used
+synthetic injected probes, never real ones).
+Fix: none possible from firmware. All temporary diagnostic code (raw
+packet counters, active-scan probe) was reverted after use - not
+committed, not left in the tree. What Phase 4 *did* confirm, independent
+of this: BLE GATT (advertise/connect/read/notify) all work correctly on
+this same hardware, and running BLE alongside the (non-functional) WiFi
+sniffer caused no crashes across many multi-minute test windows - so
+whatever the WiFi antenna problem is, it is unrelated to BLE and to
+Phase 4's own scope.
+Next step: needs the user's hands-on hardware inspection (antenna
+keep-out zone / wiring clearance on the XIAO ESP32-C6, per Seeed's board
+docs) - not fixable by further firmware changes. Until resolved, no real
+packets/min WiFi+BLE comparison from docs/TASKS.md's Phase 4 acceptance
+criteria is possible on this unit, and no ambient probe capture at all
+works on either branch.
+Status: OPEN, hardware suspected (antenna/RF path), needs physical
+inspection
 
 ## Things that DON'T work: don't try again
 
