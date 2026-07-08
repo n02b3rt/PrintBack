@@ -5,11 +5,10 @@ import time
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QAction, QActionGroup, QCloseEvent
+from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
     QLabel,
     QMainWindow,
-    QMessageBox,
     QSplitter,
     QStatusBar,
     QTabWidget,
@@ -52,7 +51,6 @@ class MainWindow(QMainWindow):
         self._conn_msg = tr("status.connecting")
 
         self._build_ui(db_path)
-        self._build_menu()
         self.setStyleSheet(theme.QSS)
 
         try:
@@ -108,37 +106,6 @@ class MainWindow(QMainWindow):
         db_label = QLabel(tr("status.db", path=str(db_path)))
         db_label.setStyleSheet(f"color: {theme.MUTED};")
         self.statusBar().addPermanentWidget(db_label)
-
-    def _build_menu(self) -> None:
-        menu_bar = self.menuBar()
-        settings_menu = menu_bar.addMenu(tr("menu.settings"))
-        language_menu = settings_menu.addMenu(tr("menu.language"))
-
-        group = QActionGroup(self)
-        group.setExclusive(True)
-
-        for locale_code, label_key in (("pl", "menu.language.pl"),
-                                       ("en", "menu.language.en")):
-            act = QAction(tr(label_key), self, checkable=True)
-            act.setData(locale_code)
-            act.setChecked(self.config.locale == locale_code)
-            group.addAction(act)
-            language_menu.addAction(act)
-
-        group.triggered.connect(self._on_language_changed)
-
-    def _on_language_changed(self, action: QAction) -> None:
-        new_locale = action.data()
-        if new_locale == self.config.locale:
-            return
-        self.config.locale = new_locale
-        try:
-            self.config.save(self.config_path)
-        except OSError as e:
-            print(f"warning: config save failed: {e}", file=sys.stderr)
-        QMessageBox.information(
-            self, tr("dialog.restart_title"), tr("dialog.restart_msg")
-        )
 
     def _on_connection(self, ok: bool, msg: str) -> None:
         self._conn_ok = ok
