@@ -33,8 +33,6 @@ No cloud, no server, no third-party services.
   identifiers ([docs/DECISIONS.md](docs/DECISIONS.md) D3).
 - k-anonymity enforced on-device: hourly aggregates below a 5-event
   threshold get folded into the daily total instead of published hourly.
-- Bilingual UI, Polish/English (current desktop app; mobile carries this
-  forward in Phase 6).
 
 ## Repository layout
 

@@ -70,3 +70,15 @@ BLE scanner (nRF Connect) used for verification in Phase 4
 verifying the hardware solo harder. JSON needs no new on-device
 dependency (and the coexistence build, NimBLE + WiFi + SD + FAT, is
 already complex enough), Flutter has `dart:convert` built in.
+
+## D8: Drop the Python desktop app's PL/EN language switcher
+
+Rejected: keeping the `app/printback/i18n.py` bilingual dictionary and
+the Settings > Language menu in the current desktop app.
+
+Reason: the desktop app is being phased out after this refactor anyway
+(see PROGRESS.md), and carrying two languages through it added ongoing
+translation upkeep for a UI with a limited remaining lifetime. English
+only for the desktop app going forward. If a bilingual UI is wanted, it
+belongs in the Flutter mobile app's UI (Phase 6), built once, not
+maintained twice across two UIs.

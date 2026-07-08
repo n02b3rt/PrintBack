@@ -134,8 +134,7 @@ These constraints are baked into the code, not just declared:
   "auto_wl_window_hours": 8,
   "auto_wl_min_distinct_hours": 6,
   "auto_wl_min_observations": 30,
-  "backup_keep_days": 7,
-  "locale": "pl"
+  "backup_keep_days": 7
 }
 ```
 
