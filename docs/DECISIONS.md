@@ -1,43 +1,84 @@
-# Decyzje architektoniczne (ADR-lite) — refaktor PrintBack (BLE + SD + Flutter)
+# Architectural decisions (ADR-lite): PrintBack refactor (BLE + SD + Flutter)
 
-Krótki log "dlaczego zrobiliśmy tak, a nie inaczej", żeby świeża sesja nie
-próbowała "poprawić" architektury na coś co wygląda lepiej, nie wiedząc, że
-już to rozważaliśmy i odrzuciliśmy.
+A short log of "why we did it this way and not another", so a fresh
+session doesn't try to "improve" the architecture into something that
+looks nicer without knowing we already considered and rejected it.
 
-## D1: BLE zamiast WiFi AP + PWA do syncu danych
+## D1: BLE instead of WiFi AP + PWA for data sync
 
-Odrzucone: C6 jako WiFi AP + HTTP server serwujący PWA.
+Rejected: C6 as a WiFi AP + HTTP server serving a PWA.
 
-Powód: WiFi monitor mode (sniffing) i AP mode nie mogą działać jednocześnie
-na tym samym radiu bez przełączania trybów i utraty pakietów. BLE koegzystuje
-z monitor mode dużo lepiej (osobny softowy coex, nie wymaga przełączania trybu
-WiFi).
+Reason: WiFi monitor mode (sniffing) and AP mode can't run at the same
+time on the same radio without switching modes and losing packets. BLE
+coexists with monitor mode much better (separate software coex, no WiFi
+mode switching needed).
 
-## D2: Flutter zamiast PWA dla apki mobilnej
+## D2: Flutter instead of PWA for the mobile app
 
-Odrzucone: PWA z Web Bluetooth.
+Rejected: PWA with Web Bluetooth.
 
-Powód: Web Bluetooth nie działa w Safari/iOS w ogóle, brak obejścia. Flutter
-daje jeden kod na Android+iOS z natywnym BLE.
+Reason: Web Bluetooth doesn't work in Safari/iOS at all, no workaround.
+Flutter gives one codebase for Android+iOS with native BLE.
 
-## D3: Agregaty na telefonie, raw dane tylko na SD w urządzeniu
+## D3: Aggregates on the phone, raw data only on the device's SD
 
-Powód: RODO — zagregowane liczby (bez identyfikatora per-klient) nie są
-danymi osobowymi, więc mogą być trzymane bez limitu retencji. Raw dane (nawet
-zahashowany MAC) są nadal danymi osobowymi w rozumieniu RODO — stąd twardy
-limit 30 dni i to, że NIGDY nie opuszczają urządzenia.
+Reason: GDPR. Aggregated counts (with no per-client identifier) aren't
+personal data, so they can be kept without a retention limit. Raw data
+(even a hashed MAC) is still personal data under GDPR, hence the hard
+30-day limit and the fact that it NEVER leaves the device.
 
-## D4: C6 (nie H2/C6-Thread) do WiFi+BLE
+## D4: C6 (not H2/C6-Thread) for WiFi+BLE
 
-Powód: jeden radio 2.4GHz dzielony softowo (CONFIG_SW_COEXIST_ENABLE) działa
-dobrze dla WiFi+BLE (dojrzały, popularny use case — np. BLE provisioning).
-WiFi+Thread na tym samym radiu ma dużo gorszy coexistence, potwierdzone
-wcześniejszymi testami w innym projekcie — patrz docs/LEARNINGS.md.
+Reason: one 2.4GHz radio shared in software (CONFIG_SW_COEXIST_ENABLE)
+works well for WiFi+BLE (a mature, common use case, e.g. BLE
+provisioning). WiFi+Thread on the same radio has much worse coexistence,
+confirmed by earlier tests on another project, see docs/LEARNINGS.md.
 
-## D5: Parowanie — fizyczny przycisk + BLE bonding
+## D5: Pairing, physical button + BLE bonding
 
-Odrzucone: Just Works bez interakcji fizycznej (podatne na zdalny MITM przy
-pierwszym parowaniu).
+Rejected: Just Works with no physical interaction (vulnerable to a
+remote MITM on first pairing).
 
-Wybrane: przycisk na urządzeniu uruchamia tryb parowania na czas X, potem
-bonding w NVS — wymaga fizycznego dostępu do urządzenia przy pierwszym razie.
+Chosen: a button on the device starts pairing mode for time X, then
+bonding in NVS, requires physical access to the device the first time.
+
+## D6: Phone as the wall-clock time source
+
+Rejected: a hardware RTC (e.g. DS3231 on I2C), a new BOM component, new
+wiring, never planned anywhere in the project before.
+
+Rejected: time purely relative to boot, with no calendar dates, deviates
+from the file naming in docs/TASKS.md (`YYYY-MM-DD.bin`) and makes
+reading dates directly harder.
+
+Chosen: the phone sends the current unix time on every BLE connection.
+Reason: the device has no RTC or WiFi-STA/NTP (deliberately, the "no
+network calls" rule), and the phone already has to be physically present
+for pairing and every sync (D5), zero new hardware. The device keeps
+`esp_timer_get_time()` as a monotonic source + an offset corrected on
+every sync; drift is only possible if the phone doesn't connect for a
+long time.
+
+## D7: JSON instead of CBOR for BLE STATS
+
+Rejected: CBOR.
+
+Reason: the payload is small anyway (<100B/record), so CBOR's ~30-50%
+savings don't matter at this scale. JSON renders readably in a generic
+BLE scanner (nRF Connect) used for verification in Phase 4
+(docs/TASKS.md), CBOR would need a separate decoder, which makes
+verifying the hardware solo harder. JSON needs no new on-device
+dependency (and the coexistence build, NimBLE + WiFi + SD + FAT, is
+already complex enough), Flutter has `dart:convert` built in.
+
+## D8: Drop the Python desktop app's PL/EN language switcher
+
+Rejected: keeping the `app/printback/i18n.py` bilingual dictionary and
+the Settings > Language menu in the current desktop app.
+
+Reason: the desktop app is being phased out after this refactor anyway
+(see PROGRESS.md), and carrying two languages through it added ongoing
+translation upkeep for a UI with a limited remaining lifetime. English
+only for the desktop app going forward. If a bilingual UI is wanted, it
+belongs in the Flutter mobile app's UI (Phase 6), built once, not
+maintained twice across two UIs.

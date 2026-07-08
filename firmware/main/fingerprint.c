@@ -12,7 +12,7 @@ static bool ie_is_volatile(uint8_t tag)
         case 3:    /* DS Parameter Set (channel) */
         case 7:    /* Country */
         case 11:   /* QBSS Load */
-        case 221:  /* Vendor Specific — handled separately */
+        case 221:  /* Vendor Specific, handled separately */
             return true;
         default:
             return false;
@@ -54,7 +54,7 @@ int fingerprint_from_ies(const uint8_t *ie_buf, size_t ie_len,
             mbedtls_sha256_update(&ctx, val, len);
             count++;
         } else if (tag == 221 && len >= 3) {
-            /* Hash only the OUI of vendor-specific IEs — the payload
+            /* Hash only the OUI of vendor-specific IEs; the payload
              * often carries WPS UUIDs and other per-device randoms. */
             mbedtls_sha256_update(&ctx, &tag, 1);
             mbedtls_sha256_update(&ctx, val, 3);

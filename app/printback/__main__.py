@@ -10,7 +10,6 @@ from pathlib import Path
 from PySide6.QtWidgets import QApplication
 
 from .config import Config, default_app_dir
-from .i18n import set_locale
 from .ui.main_window import MainWindow
 
 
@@ -68,7 +67,6 @@ def main() -> int:
     config = Config.load(args.config)
     if args.baud is not None:
         config.serial_baud = args.baud
-    set_locale(config.locale)
 
     port = args.port or detect_port()
     if port is None:

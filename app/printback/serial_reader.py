@@ -11,7 +11,7 @@ from .models import Observation
 
 # Firmware emits a heartbeat log line every CONFIG_PRINTBACK_STATS_INTERVAL_SECONDS
 # (default 30s) regardless of probe traffic. If the host sees no bytes for
-# substantially longer than that, the device or USB stack is hung — close the
+# substantially longer than that, the device or USB stack is hung; close the
 # port and let the outer loop reopen it.
 _STALE_RECONNECT_SECONDS = 90
 

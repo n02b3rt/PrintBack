@@ -38,19 +38,19 @@ config PRINTBACK_PIN_BUTTON
         D2 on XIAO ESP32-C6. Other pin → GND. Internal pull-up is used.
 
 config PRINTBACK_PIN_LED_R
-    int "RGB LED — Red GPIO"
+    int "RGB LED, Red GPIO"
     default 21
     help
         D3 on XIAO ESP32-C6.
 
 config PRINTBACK_PIN_LED_G
-    int "RGB LED — Green GPIO"
+    int "RGB LED, Green GPIO"
     default 23
     help
         D5 on XIAO ESP32-C6.
 
 config PRINTBACK_PIN_LED_B
-    int "RGB LED — Blue GPIO"
+    int "RGB LED, Blue GPIO"
     default 22
     help
         D4 on XIAO ESP32-C6.
@@ -61,6 +61,58 @@ config PRINTBACK_LED_COMMON_ANODE
     help
         Enable if the long leg of your RGB LED goes to 3V3 instead of GND.
         Inverts PWM duty so colour logic stays positive.
+
+config PRINTBACK_PIN_SD_MOSI
+    int "SD card SPI MOSI GPIO"
+    default 18
+    help
+        D10 on XIAO ESP32-C6, hardware SPI2 MOSI.
+
+config PRINTBACK_PIN_SD_MISO
+    int "SD card SPI MISO GPIO"
+    default 20
+    help
+        D9 on XIAO ESP32-C6, hardware SPI2 MISO.
+
+config PRINTBACK_PIN_SD_SCK
+    int "SD card SPI SCK GPIO"
+    default 19
+    help
+        D8 on XIAO ESP32-C6, hardware SPI2 SCK.
+
+config PRINTBACK_PIN_SD_CS
+    int "SD card SPI CS GPIO"
+    default 1
+    help
+        D1 on XIAO ESP32-C6. General-purpose GPIO, deliberately not
+        GPIO16/17 (U0TXD/U0RXD): the generated sdkconfig isn't tracked in
+        this repo, so we can't be sure the console isn't routed there on
+        every build. GPIO1 has no default system role.
+
+endmenu
+
+menu "SD storage"
+
+config PRINTBACK_SD_RETENTION_DAYS
+    int "Raw log retention on SD (days)"
+    range 1 365
+    default 30
+    help
+        Hard limit on raw data retention (docs/compliance/README.md). Files
+        older than this are purged on a rolling basis, see
+        docs/ARCHITECTURE.md "SD layout".
+
+config PRINTBACK_FALLBACK_UNIX_EPOCH
+    int "Fallback wall-clock time at boot (unix seconds, UTC)"
+    default 1783468800
+    help
+        The device has no RTC (docs/ARCHITECTURE.md "Wall-clock time").
+        Until BLE time sync exists (Phase 4/5), this seeds
+        sd_storage's wall clock at boot so raw log file names
+        (YYYY-MM-DD.bin) are meaningful today. Bump this in menuconfig
+        before flashing if you're testing weeks after this default was
+        set. sd_storage_set_wallclock_unix_s() overrides it at runtime
+        once BLE sync lands.
 
 endmenu
 

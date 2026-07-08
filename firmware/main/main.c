@@ -14,6 +14,7 @@
 #include "output.h"
 #include "whitelist.h"
 #include "ui.h"
+#include "sd_storage.h"
 
 static const char *TAG = "printback";
 
@@ -90,6 +91,7 @@ static void on_probe(const probe_observation_t *obs)
 
     bool fresh = tracker_observe(obs);
     output_emit(obs, fresh, whitelisted);
+    sd_storage_write_raw(obs, fresh, whitelisted);
 }
 
 static void channel_hopper(void *arg)
@@ -143,12 +145,13 @@ static void housekeeper(void *arg)
         uint32_t min_heap  = esp_get_minimum_free_heap_size();
         ESP_LOGI(TAG,
                  "active=%" PRIu32 " obs=%" PRIu32 " evicted=%" PRIu32
-                 " wl=%u rssi=[%d,%d] heap=%" PRIu32 " min_heap=%" PRIu32,
+                 " wl=%u rssi=[%d,%d] heap=%" PRIu32 " min_heap=%" PRIu32
+                 " sd_bytes=%" PRIu32,
                  s.unique_devices, s.total_observations, evicted,
                  whitelist_count(), s.rssi_min, s.rssi_max,
-                 free_heap, min_heap);
+                 free_heap, min_heap, sd_storage_raw_bytes_written());
         if (free_heap < LOW_HEAP_WARN_BYTES) {
-            ESP_LOGW(TAG, "low free heap: %" PRIu32 " bytes — leak suspected",
+            ESP_LOGW(TAG, "low free heap: %" PRIu32 " bytes, leak suspected",
                      free_heap);
         }
     }
@@ -164,6 +167,7 @@ void app_main(void)
     tracker_init();
     ui_init();
     ui_set_event_handler(on_ui_event);
+    sd_storage_init(); /* logs its own error and keeps going without SD if this fails */
     wifi_sniffer_start(on_probe);
     xTaskCreate(channel_hopper,   "hop",     2048, NULL, 4, NULL);
     xTaskCreate(housekeeper,      "house",   3072, NULL, 3, NULL);

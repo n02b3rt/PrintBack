@@ -18,7 +18,7 @@ CONFIG_MBEDTLS_HARDWARE_SHA=y
 
 # --- Task Watchdog Timer -------------------------------------------------
 # Hardware-level recovery from firmware hangs. Resets the chip if any task
-# (including the idle task — which catches CPU starvation / blocked main
+# (including the idle task, which catches CPU starvation / blocked main
 # loop) does not run for >10s. Paired with the host-side serial watchdog
 # this gives end-to-end auto recovery: ESP resets within 10s, host re-opens
 # the port within the next ~20s, no manual unplug/replug needed.
@@ -50,6 +50,19 @@ CONFIG_PRINTBACK_PIN_LED_B=21
 
 # Flip to =y if your RGB LED's long leg goes to 3V3 (common-anode).
 CONFIG_PRINTBACK_LED_COMMON_ANODE=n
+
+# --- PrintBack: SD card (Phase 2, SPI, XIAO ESP32-C6 hardware SPI2 pins) -
+# MOSI=D10/GPIO18, MISO=D9/GPIO20, SCK=D8/GPIO19, CS=D1/GPIO1 (general
+# purpose, avoids GPIO16/17 console ambiguity, see Kconfig.projbuild).
+CONFIG_PRINTBACK_PIN_SD_MOSI=18
+CONFIG_PRINTBACK_PIN_SD_MISO=20
+CONFIG_PRINTBACK_PIN_SD_SCK=19
+CONFIG_PRINTBACK_PIN_SD_CS=1
+CONFIG_PRINTBACK_SD_RETENTION_DAYS=30
+
+# Wall-clock fallback until BLE time sync exists (Phase 4/5). Bump before
+# flashing if testing long after this default was set.
+CONFIG_PRINTBACK_FALLBACK_UNIX_EPOCH=1783468800
 
 # --- PrintBack: tracker --------------------------------------------------
 CONFIG_PRINTBACK_TRACKER_CAPACITY=1024

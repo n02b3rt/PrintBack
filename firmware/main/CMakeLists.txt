@@ -7,6 +7,9 @@ idf_component_register(
         "output.c"
         "whitelist.c"
         "ui.c"
+        "kanon.c"
+        "sd_paths.c"
+        "sd_storage.c"
     INCLUDE_DIRS "."
     REQUIRES
         esp_wifi
@@ -15,4 +18,7 @@ idf_component_register(
         mbedtls
         esp_timer
         driver
+        fatfs
+        sdmmc
+        esp_driver_sdspi
 )
