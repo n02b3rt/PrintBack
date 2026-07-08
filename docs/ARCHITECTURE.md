@@ -1,161 +1,159 @@
 # Architecture: PrintBack (BLE + SD + Flutter)
 
-Ten plik opisuje **docelową** architekturę na gałęzi `refactor/ble-sd-flutter`.
-`main` to dzisiejszy, działający system (USB-CDC → Python/PySide6 desktop +
-SQLite), patrz [README.md](../README.md) i
-[docs/compliance/README.md](compliance/README.md). Co z tego faktycznie
-zbudowane na tej gałęzi: [docs/PROGRESS.md](PROGRESS.md).
+This file describes the **target** architecture on the `refactor/ble-sd-flutter`
+branch. `main` is today's working system (USB-CDC → Python/PySide6 desktop +
+SQLite), see [README.md](../README.md) and
+[docs/compliance/README.md](compliance/README.md). What's actually built on
+this branch: [docs/PROGRESS.md](PROGRESS.md).
 
 ## System overview
 
-Dwa węzły, zero trzeciego:
+Two nodes, zero third:
 
-- **ESP32-C6**: sniffuje WiFi probe requesty, hashuje on-chip, zapisuje raw
-  dane na SD (30 dni), liczy agregaty godzinowe/dzienne on-device, serwuje
-  TYLKO te agregaty przez BLE GATT.
-- **Telefon (Flutter)**: BLE central, cache'uje odebrane agregaty lokalnie,
-  pokazuje dashboard. Nigdy nie liczy niczego z surowych danych, bo ich
-  nigdy nie dostaje.
+- **ESP32-C6**: sniffs WiFi probe requests, hashes on-chip, writes raw data
+  to SD (30 days), computes hourly/daily aggregates on-device, serves ONLY
+  those aggregates over BLE GATT.
+- **Phone (Flutter)**: BLE central, caches received aggregates locally,
+  shows the dashboard. Never computes anything from raw data, because it
+  never receives any.
 
-Żadnej chmury, żadnego serwera, żadnego trzeciego węzła, zgodnie z etosem
-całego projektu (docs/compliance/README.md).
+No cloud, no server, no third node, in keeping with the whole project's
+ethos (docs/compliance/README.md).
 
-## Diagram A: dziś (main branch)
+## Diagram A: today (main branch)
 
 ```
 [nearby phone]
       │ 802.11 probe request (mgmt frame)
       ▼
 ┌────────────────────────── ESP32-C6 (firmware/) ──────────────────────────┐
-│ wifi_sniffer.c  promiscuous mode, channel-hop {1,6,11} co 400ms           │
+│ wifi_sniffer.c  promiscuous mode, channel-hop {1,6,11} every 400ms        │
 │        │ on_packet()                                                     │
 │        ▼                                                                 │
 │ main.c: on_probe()                                                       │
-│    ├─ fingerprint_from_ies()   SHA-256 po stabilnych IE → 8-bajtowy hash │
-│    ├─ whitelist_contains(fp)   NVS : RĘCZNY capture przyciskiem, nie ma  │
-│    │                           auto-heurystyki mimo że compliance/       │
-│    │                           README.md ją opisuje (patrz uwaga niżej) │
-│    ├─ tracker_observe(obs)     RAM hash table, 5-minutowe aktywne okno   │
+│    ├─ fingerprint_from_ies()   SHA-256 over stable IEs → 8-byte hash     │
+│    ├─ whitelist_contains(fp)   NVS: MANUAL button capture, not the auto- │
+│    │                           heuristic compliance/README.md describes  │
+│    │                           (see note below)                         │
+│    ├─ tracker_observe(obs)     RAM hash table, 5-minute active window    │
 │    └─ output_emit(obs,...)                                               │
 │              │                                                           │
-│              ▼  jedna linia JSON na probe, USB-CDC 115200 baud           │
+│              ▼  one JSON line per probe, USB-CDC 115200 baud             │
 │  {"t":..,"fp":..,"mac":..,"rssi":..,"ch":..,"ies":..,"new":..,"wl":..}   │
 └──────────────────────────────┬─────────────────────────────────────────┘
-                                 │ kabel USB
+                                 │ USB cable
                                  ▼
-                  app/ (Python/PySide6 desktop, komputer operatora)
+                  app/ (Python/PySide6 desktop, operator's computer)
                   JSON → SQLite (L1 raw 30d / L2 daily-per-fp 365d /
                   L3 daily totals ∞) → dashboard
 ```
 
-**Uwaga o rozjeździe dokumentacja/kod:** `docs/compliance/README.md` opisuje
-auto-whitelist ("6+ godzin w 8h oknie → automatycznie na whitelistę"). Ten
-mechanizm **nie istnieje w firmware**: dziś whitelistę buduje się wyłącznie
-ręcznym przytrzymaniem przycisku (`ui.c`, `UI_EVENT_LONG_PRESS`, 3000ms).
-Nie przenosimy tej nieścisłości do nowej architektury bez świadomej decyzji:
-jeśli auto-heurystyka ma powstać, to osobna, nazwana faza, nie coś co się
-"już" dzieje.
+**Note on the documentation/code gap:** `docs/compliance/README.md` describes
+auto-whitelist ("6+ hours in an 8h window → automatically whitelisted"). This
+mechanism **doesn't exist in the firmware**: today the whitelist is built
+exclusively by manually holding the button (`ui.c`, `UI_EVENT_LONG_PRESS`,
+3000ms). We're not carrying that inaccuracy into the new architecture
+without a conscious decision: if the auto-heuristic gets built, it's a
+separate, named phase, not something that's "already" happening.
 
-## Diagram B: docelowo (ta gałąź, po Fazach 2-6)
+## Diagram B: target (this branch, after Phases 2-6)
 
 ```
 [nearby phone]
       │ 802.11 probe request
       ▼
 ┌───────────────────────────────── ESP32-C6 ─────────────────────────────────┐
-│ wifi_sniffer.c            (bez zmian)                                      │
+│ wifi_sniffer.c            (unchanged)                                      │
 │ main.c: on_probe() → fingerprint_from_ies() → whitelist_contains()         │
 │        ▼                                                                   │
-│ tracker.c                 (bez zmian : RAM, 5-min okno, "kto tu jest teraz")│
+│ tracker.c                 (unchanged: RAM, 5-min window, "who's here now")  │
 │        ▼                                                                   │
-│ [NOWE] sd_storage: zapis sd_raw_record_t (16B, BEZ MAC)                    │
-│        → /sdcard/logs/raw/YYYY-MM-DD.bin      (30-dniowy rolling purge)    │
-│        ▼  raz/godzinę + raz/dzień przy rollover                            │
-│ [NOWE] agregacja: unique_count / returning_count z dzisiejszych raw        │
-│    kanon_hourly_publishable(unique_count)?  (już gotowe: firmware/main/    │
+│ [NEW] sd_storage: write sd_raw_record_t (16B, NO MAC)                      │
+│        → /sdcard/logs/raw/YYYY-MM-DD.bin      (30-day rolling purge)       │
+│        ▼  once/hour + once/day on rollover                                 │
+│ [NEW] aggregation: unique_count / returning_count from today's raw         │
+│    kanon_hourly_publishable(unique_count)?  (already done: firmware/main/  │
 │    kanon.c)                                                                 │
-│       tak → dopisz aggregate_record_t godzinowy (k_anonymity_applied=0)    │
+│       yes → append an hourly aggregate_record_t (k_anonymity_applied=0)    │
 │             → /sdcard/logs/stats/hourly/YYYY-MM-DD.bin                     │
-│       nie → dolicz do running daily total, k_anonymity_applied=1           │
-│             → /sdcard/logs/stats/today.bin (mutowalny) → daily.bin przy    │
+│       no → add to running daily total, k_anonymity_applied=1               │
+│             → /sdcard/logs/stats/today.bin (mutable) → daily.bin on        │
 │               rollover                                                     │
 │        ▼                                                                   │
-│ [NOWE] BLE GATT server (CONFIG_SW_COEXIST_ENABLE, jeden rdzeń HP,          │
-│        priorytety obok WiFi sniff : patrz "Task scheduling")              │
-│    STATS (read+notify) : jeden agregat JSON na notification                │
-│    CONFIG (read/write) : progi (RSSI, okno returning)                      │
-│    PAIRING_STATUS (read+notify) : stan trybu parowania                     │
+│ [NEW] BLE GATT server (CONFIG_SW_COEXIST_ENABLE, one HP core,              │
+│        priorities alongside WiFi sniff, see "Task scheduling")            │
+│    STATS (read+notify): one aggregate JSON per notification                │
+│    CONFIG (read/write): thresholds (RSSI, returning window)                │
+│    PAIRING_STATUS (read+notify): pairing mode state                        │
 └──────────────────────────────────┬─────────────────────────────────────────┘
-                                     │ BLE GATT, bonded (D5: przycisk + bonding)
+                                     │ BLE GATT, bonded (D5: button + bonding)
                                      ▼
                        mobile/ (Flutter, flutter_blue_plus)
-                       subskrypcja STATS → lokalny cache agregatów → dashboard
-                       zero raw danych, zero identyfikatorów per-klient
+                       STATS subscription → local aggregate cache → dashboard
+                       zero raw data, zero per-client identifiers
 ```
 
-## Podział odpowiedzialności
+## Division of responsibility
 
-Urządzenie robi wszystko: sniffing, hashing, dedup, CAŁĄ agregację,
-egzekwowanie k-anonymity, retencję/purge. Telefon: BLE central + parowanie/
-bonding, cache agregatów lokalnie, render dashboardu, zapis wartości CONFIG.
-Telefon **nigdy** nie liczy agregatu z surowych danych, bo surowych danych
-nigdy nie dostaje. To twarda, bezwarunkowa zasada (patrz docs/DECISIONS.md D3).
+The device does everything: sniffing, hashing, dedup, ALL aggregation,
+k-anonymity enforcement, retention/purge. Phone: BLE central + pairing/
+bonding, local aggregate cache, dashboard rendering, writing CONFIG values.
+The phone **never** computes an aggregate from raw data, because it never
+receives raw data. This is a hard, unconditional rule (docs/DECISIONS.md D3).
 
 ## Task scheduling
 
-ESP32-C6 ma **jeden rdzeń HP (RISC-V, do 160 MHz)** plus osobny co-procesor
-LP, który nie odpala ogólnych zadań FreeRTOS (tylko minimalny firmware
-wake-source w deep-sleep), nie ma tu podziału na dwa rdzenie do
-harmonogramowania. Dziś priorytety FreeRTOS to: `ui_task` (5), `channel_hopper`
-(4), `housekeeper` (3), `usb_link_monitor` (2), wszystkie zwykłym
-`xTaskCreate` bez pinningu. Docelowo dochodzi BLE stack + zadanie SD/agregacji,
-dokładne priorytety to szczegół implementacyjny Fazy 4, nie fiksujemy ich
-tutaj.
+The ESP32-C6 has **one HP core (RISC-V, up to 160 MHz)** plus a separate
+LP co-processor that doesn't run general FreeRTOS tasks (only a minimal
+wake-source firmware in deep sleep), so there's no two-core split for
+scheduling here. Today's FreeRTOS priorities are: `ui_task` (5),
+`channel_hopper` (4), `housekeeper` (3), `usb_link_monitor` (2), all
+plain `xTaskCreate` with no pinning. The target adds the BLE stack +
+SD/aggregation task; exact priorities are a Phase 4 implementation
+detail, not fixed here.
 
 ## Wall-clock time
 
-Urządzenie nie ma zegara czasu rzeczywistego, tylko `esp_timer_get_time()`
-(mikrosekundy od bootu, zeruje się przy każdym resecie), zero RTC, zero
-WiFi-STA/NTP (świadomie, zgodnie z zasadą "no network calls"). Żeby móc
-nazywać pliki na SD po dacie kalendarzowej: **telefon wysyła bieżący unix
-time przy każdym połączeniu BLE** (i tak musi być fizycznie obecny do
-parowania/synchronizacji, D5). Urządzenie trzyma `esp_timer_get_time()` jako
-źródło monotoniczne + offset korygowany przy każdym sync. Przed pierwszym
-sparowaniem: brak sensownej daty kalendarzowej, zachowanie na ten wypadek to
-implementacja Fazy 2. Decyzja i uzasadnienie: docs/DECISIONS.md D6.
+The device has no real-time clock, only `esp_timer_get_time()`
+(microseconds since boot, resets on every reboot), zero RTC, zero
+WiFi-STA/NTP (deliberately, per the "no network calls" rule). To be able
+to name SD files by calendar date: **the phone sends the current unix
+time on every BLE connection** (it already has to be physically present
+for pairing/syncing anyway, D5). The device keeps `esp_timer_get_time()`
+as a monotonic source + an offset corrected on every sync. Before the
+first pairing: no meaningful calendar date, behavior for that case is a
+Phase 2 implementation detail. Decision and rationale: docs/DECISIONS.md D6.
 
 ## SD layout
 
-- `/sdcard/logs/raw/YYYY-MM-DD.bin`: raw, 16-bajtowe rekordy stałej
-  długości, append-only, 30-dniowy rolling purge (patrz DATA_MODEL.md).
-- `/sdcard/logs/stats/hourly/YYYY-MM-DD.bin`: agregaty godzinowe,
-  append-only, nie kasowane (agregaty to nie dane osobowe, D3).
-- `/sdcard/logs/stats/today.bin`: jeden mutowalny rekord, "dzień w
-  trakcie", pozwala serwować "dziś do tej pory" przez BLE bez czekania do
-  północy.
-- `/sdcard/logs/stats/daily.bin`: sfinalizowane dni, append-only, bez
-  limitu retencji.
+- `/sdcard/logs/raw/YYYY-MM-DD.bin`: raw, fixed-length 16-byte records,
+  append-only, 30-day rolling purge (see DATA_MODEL.md).
+- `/sdcard/logs/stats/hourly/YYYY-MM-DD.bin`: hourly aggregates,
+  append-only, never deleted (aggregates aren't personal data, D3).
+- `/sdcard/logs/stats/today.bin`: one mutable record, "day in progress",
+  lets BLE serve "today so far" without waiting for midnight.
+- `/sdcard/logs/stats/daily.bin`: finalized days, append-only, unlimited retention.
 
-## BLE GATT (szkic)
+## BLE GATT (sketch)
 
-Trzy characteristics, dokładne UUID-y i payloady CONFIG/PAIRING_STATUS to
-zakres Fazy 4, nie fiksujemy ich tutaj:
+Three characteristics, exact UUIDs and CONFIG/PAIRING_STATUS payloads are
+Phase 4 scope, not fixed here:
 
-- **STATS** (read + notify): jeden wiersz agregatu JSON na notification,
+- **STATS** (read + notify): one aggregate JSON row per notification,
   format: docs/DATA_MODEL.md.
-- **CONFIG** (read/write): próg RSSI, okno "returning", trigger resetu.
-- **PAIRING_STATUS** (read + notify): stan trybu parowania.
+- **CONFIG** (read/write): RSSI threshold, "returning" window, reset trigger.
+- **PAIRING_STATUS** (read + notify): pairing mode state.
 
 ## Coexistence
 
-WiFi monitor mode + BLE: OK, softowy coex (`CONFIG_SW_COEXIST_ENABLE`),
-patrz docs/DECISIONS.md D4. WiFi + Thread/802.15.4 na tym samym radiu: NIE,
-potwierdzone w innym projekcie, patrz docs/LEARNINGS.md. Nie dotyczy tego
-projektu bezpośrednio (nie ma tu Thread), ale zasada obowiązuje na zawsze.
+WiFi monitor mode + BLE: OK, software coex (`CONFIG_SW_COEXIST_ENABLE`),
+see docs/DECISIONS.md D4. WiFi + Thread/802.15.4 on the same radio: NO,
+confirmed on another project, see docs/LEARNINGS.md. Doesn't apply to this
+project directly (no Thread here), but the rule holds forever.
 
 ## Pairing/bonding
 
-Fizyczny przycisk + BLE bonding w NVS (docs/DECISIONS.md D5). Dziś przycisk
-zna tylko jeden gest (`UI_EVENT_LONG_PRESS`, 3000ms, uzbraja whitelist
-capture), dodanie drugiego gestu do wejścia w tryb parowania to szczegół
-implementacyjny Fazy 5, nie projektujemy go teraz.
+Physical button + BLE bonding in NVS (docs/DECISIONS.md D5). Today the
+button only knows one gesture (`UI_EVENT_LONG_PRESS`, 3000ms, arms
+whitelist capture); adding a second gesture for entering pairing mode is
+a Phase 5 implementation detail, not designed here.

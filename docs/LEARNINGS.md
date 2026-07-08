@@ -1,25 +1,25 @@
 # Learnings & known issues
 
-Append-only log problemów napotkanych podczas pracy nad firmware/mobile i ich
-rozwiązań, żeby nie próbować po raz trzeci czegoś, co już nie zadziałało.
-Zawsze dopisuj na dole, nigdy nie kasuj starych wpisów, chyba że problem
-przestał być aktualny, wtedy oznacz jako RESOLVED z datą.
+Append-only log of problems hit while working on firmware/mobile and
+their fixes, so we don't try a third time something that already didn't
+work. Always append at the bottom, never delete old entries, unless a
+problem stops being relevant, then mark it RESOLVED with a date.
 
-Format wpisu:
+Entry format:
 
 ```
-## [FIRMWARE|MOBILE] Krótki tytuł problemu
-Data: RRRR-MM-DD
-Problem: co się dzieje / jaki błąd
-Root cause: (wypełnij po diagnozie)
-Fix: (wypełnij po naprawie)
-Status: OPEN / RESOLVED (data)
+## [FIRMWARE|MOBILE] Short problem title
+Date: YYYY-MM-DD
+Problem: what's happening / what error
+Root cause: (fill in after diagnosis)
+Fix: (fill in after the fix)
+Status: OPEN / RESOLVED (date)
 ```
 
-Brak wpisów jeszcze, pierwszy pojawi się przy realnej pracy nad refaktorem
-(Faza 2, SD card logging).
+No entries yet, the first one will show up during real work on the
+refactor (Phase 2, SD card logging).
 
-## Rzeczy które NIE działają: nie próbuj ponownie
+## Things that DON'T work: don't try again
 
-- WiFi monitor mode + Thread (802.15.4) na jednym radiu ESP32-C6: potwierdzone
-  kolizje radiowe w innym projekcie, nie testować od nowa. Patrz docs/DECISIONS.md D4.
+- WiFi monitor mode + Thread (802.15.4) on one ESP32-C6 radio: confirmed
+  radio collisions on another project, don't retest from scratch. See docs/DECISIONS.md D4.
