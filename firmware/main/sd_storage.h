@@ -29,6 +29,12 @@ void sd_storage_write_raw(const probe_observation_t *obs, bool fresh, bool white
  * sync once Phase 4/5 lands (docs/DECISIONS.md D6). */
 void sd_storage_set_wallclock_unix_s(uint32_t unix_s);
 
+/* Bytes written so far to the currently-open raw file (0 if none open
+ * or SD not ready). Operational visibility only, so "is SD actually
+ * accumulating data" is answerable from the serial log without pulling
+ * the card. */
+uint32_t sd_storage_raw_bytes_written(void);
+
 /* Deletes raw log files older than `retention_days` (docs/ARCHITECTURE.md
  * "SD layout"). Called once at init and again on every day rollover, so
  * callers outside sd_storage.c normally don't need to call this

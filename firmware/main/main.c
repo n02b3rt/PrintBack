@@ -145,10 +145,11 @@ static void housekeeper(void *arg)
         uint32_t min_heap  = esp_get_minimum_free_heap_size();
         ESP_LOGI(TAG,
                  "active=%" PRIu32 " obs=%" PRIu32 " evicted=%" PRIu32
-                 " wl=%u rssi=[%d,%d] heap=%" PRIu32 " min_heap=%" PRIu32,
+                 " wl=%u rssi=[%d,%d] heap=%" PRIu32 " min_heap=%" PRIu32
+                 " sd_bytes=%" PRIu32,
                  s.unique_devices, s.total_observations, evicted,
                  whitelist_count(), s.rssi_min, s.rssi_max,
-                 free_heap, min_heap);
+                 free_heap, min_heap, sd_storage_raw_bytes_written());
         if (free_heap < LOW_HEAP_WARN_BYTES) {
             ESP_LOGW(TAG, "low free heap: %" PRIu32 " bytes, leak suspected",
                      free_heap);
