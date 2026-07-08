@@ -66,10 +66,27 @@ flash` directly instead of through dev_cycle.py, and using
 `--skip-build --skip-flash` (pure pyserial capture, no subprocess) for
 the log-reading half, which works. dev_cycle.py's build/flash path
 itself needs a real fix (`shell=True`, or resolve to
-`sys.executable, idf.py path` explicitly) — didn't do that here since
+`sys.executable, idf.py path` explicitly), didn't do that here since
 it's a tooling fix orthogonal to Phase 2, flagging instead of guessing
 further per the "2 tries and stop" rule.
 Status: OPEN
+
+## [FIRMWARE] FAT short filenames silently broke raw log writes
+Date: 2026-07-08
+Problem: `sd_storage_write_raw()` never wrote a byte on real hardware.
+No error visible from probe traffic alone (write just silently no-ops
+when the file didn't open). A manual diagnostic write surfaced it:
+`E sd_storage: failed to open /sdcard/logs/raw/2026-07-08.bin for append`.
+Root cause: ESP-IDF's FATFS defaults to short (8.3) filenames, Long File
+Name support is off by default to save RAM. `YYYY-MM-DD` is a 10-character
+base name, too long for an 8.3 short name, so `fopen()` failed every time.
+Fix: switched the raw log filename format from `YYYY-MM-DD.bin` to
+`YYYYMMDD.bin` (8 characters, fits 8.3 without needing LFN). Updated
+`docs/DATA_MODEL.md`/`docs/ARCHITECTURE.md` to match. Confirmed on
+hardware afterward: `sd_bytes=16` after one record, and a follow-up test
+(clock advanced 2 days, retention set to 1 day) confirmed
+`purge: deleted 1 raw log file(s)` too.
+Status: RESOLVED (2026-07-08)
 
 ## Things that DON'T work: don't try again
 
