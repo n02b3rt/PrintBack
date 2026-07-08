@@ -72,18 +72,19 @@ overwritten in place, lets BLE serve "today so far" without waiting for
 midnight), `/sdcard/logs/stats/daily.bin` (append-only, finalized days,
 unlimited retention, per D3, aggregates aren't personal data).
 
-## BLE GATT service and characteristic UUIDs (Phase 4)
+## BLE GATT service and characteristic UUIDs
 
-One primary service, two characteristics (vendor-specific 128-bit UUIDs,
-randomly generated, no relation to any BLE SIG-adopted service).
+One primary service, three characteristics (vendor-specific 128-bit
+UUIDs, randomly generated, no relation to any BLE SIG-adopted service).
 PAIRING_STATUS is still not implemented - see docs/ARCHITECTURE.md "BLE
 GATT (sketch)".
 
-| Name    | UUID                                   | Properties       |
-|---------|-----------------------------------------|-------------------|
-| Service | `e794a7d8-6905-4552-b7a2-d0cdc9dae0f6`  | -                 |
-| STATS   | `1b1465c2-296e-4acd-b544-ba1a30ed7f13`  | read, notify      |
-| CONFIG  | `c5468eed-52a8-434b-bc6f-0d60c323f07f`  | read, write (bonded only) |
+| Name       | UUID                                   | Properties       |
+|------------|-----------------------------------------|-------------------|
+| Service    | `e794a7d8-6905-4552-b7a2-d0cdc9dae0f6`  | -                 |
+| STATS      | `1b1465c2-296e-4acd-b544-ba1a30ed7f13`  | read, notify      |
+| CONFIG     | `c5468eed-52a8-434b-bc6f-0d60c323f07f`  | read, write (bonded only) |
+| TIME_SYNC  | `5ebb01c3-8110-4ace-b139-436c1fa0b81f`  | write-only (bonded only) |
 
 ## BLE STATS payload: JSON (not CBOR)
 
@@ -133,6 +134,22 @@ unbonded connection can't even reach this point at all thanks to the
 connection whitelist (docs/DECISIONS.md D5). The "reset trigger" from
 docs/TASKS.md isn't implemented - no clear definition of what it should
 reset yet, not guessed at here.
+
+## BLE TIME_SYNC payload (write-only)
+
+Raw 4 bytes, little-endian `uint32`, unix seconds (UTC) - not JSON. A
+single scalar doesn't need the JSON overhead the other two
+characteristics have, matching DATA_MODEL.md's opening "Little-endian
+everywhere" convention: both sides (Dart's `ByteData` with
+`Endian.little`, the RISC-V HP core's native layout) agree on byte order
+without any conversion step.
+
+The phone writes this once, right after every successful connection
+(docs/DECISIONS.md D6) - not just the first pairing. The device has no
+RTC (docs/ARCHITECTURE.md "Wall-clock time"); this is the only way its
+clock is ever corrected after the Kconfig fallback at boot
+(`sd_storage_set_wallclock_unix_s()`, firmware/main/sd_storage.h). Write
+requires a bonded/encrypted link, same reasoning as CONFIG.
 
 **File format header (recommendation, beyond the letter of TASKS.md):**
 none of the structs above have a version/magic byte. If the layout ever
