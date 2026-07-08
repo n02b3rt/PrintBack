@@ -1,15 +1,15 @@
 # firmware/scripts
 
-`dev_cycle.py`: build + flash + bounded serial capture w jednym,
-nieinteraktywnym poleceniu. Wymaga aktywnego środowiska ESP-IDF (`idf.py` w
-PATH) i `pyserial` (już w środowisku Pythona na tej maszynie).
+`dev_cycle.py`: build + flash + bounded serial capture in one,
+non-interactive command. Requires an active ESP-IDF environment (`idf.py`
+in PATH) and `pyserial` (already in the Python environment on this machine).
 
 ```sh
-python dev_cycle.py                          # build + flash + 10s logu
+python dev_cycle.py                          # build + flash + 10s of log
 python dev_cycle.py --port COM5 --seconds 30
-python dev_cycle.py --skip-build --skip-flash # tylko podsłuchaj log
+python dev_cycle.py --skip-build --skip-flash # just tail the log
 ```
 
-Celowo nie używa `idf.py monitor`, to interaktywny terminal (wymaga Ctrl+]
-do wyjścia), więc nie da się go bezpiecznie odpalić skryptowo. Capture kończy
-się sam po zadanym czasie.
+Deliberately doesn't use `idf.py monitor`, that's an interactive terminal
+(needs Ctrl+] to exit), so it can't be safely launched from a script. The
+capture stops on its own after the given time.

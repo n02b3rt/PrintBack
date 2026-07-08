@@ -1,24 +1,24 @@
 # Host-side unit tests
 
-Testuje czystą logikę z `firmware/main/` bez sprzętu i bez ESP-IDF, zwykłym
-gcc na tym komputerze.
+Tests pure logic from `firmware/main/` without hardware and without
+ESP-IDF, plain gcc on this machine.
 
-## Konwencja
+## Convention
 
-Moduł kwalifikuje się do testowania tutaj, jeśli **nie** ma żadnych include'ów
-ESP-IDF/hardware (`freertos/*.h`, `esp_*.h`, `nvs*.h`, `driver/*.h`,
-`mbedtls/*.h`), czyli jest zwykłym, przenośnym C.
+A module qualifies for testing here if it **doesn't** have any
+ESP-IDF/hardware includes (`freertos/*.h`, `esp_*.h`, `nvs*.h`,
+`driver/*.h`, `mbedtls/*.h`), i.e. it's plain, portable C.
 
-Dla modułu `firmware/main/X.c` dodaj tu `test_X.c`. `run_tests.sh` sam
-znajdzie parę po nazwie i skompiluje ją hostowym gcc, bez CMake.
+For a module `firmware/main/X.c` add `test_X.c` here. `run_tests.sh`
+finds the pair by name on its own and compiles it with host gcc, no CMake.
 
-## Użycie
+## Usage
 
 ```sh
 ./run_tests.sh
 ```
 
-## Obecne testy
+## Current tests
 
-- `test_kanon.c`: próg k-anonymity (godzinowy
-  agregat < 5 zdarzeń → nie publikuj, zbij do dziennego)
+- `test_kanon.c`: the k-anonymity threshold (an
+  hourly aggregate < 5 events → don't publish, fold into the daily total)
