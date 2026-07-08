@@ -76,6 +76,10 @@
       `sd_bytes` on the card) - the first real (non-synthetic) WiFi
       capture confirmed end-to-end in this project, happening
       concurrently with BLE, i.e. direct evidence coexistence works.
+      Followed up with a clean back-to-back packets/min comparison (two
+      5-minute windows, same location): BLE on 23 observations/8 devices,
+      BLE off 22 observations/6 devices - no measurable WiFi packet loss
+      from BLE, satisfying docs/TASKS.md's Phase 4 acceptance criterion.
       See docs/LEARNINGS.md for the full investigation and resolution.
 - [ ] Phase 5: pairing button + bonding
 - [ ] Phase 6: mobile Flutter skeleton

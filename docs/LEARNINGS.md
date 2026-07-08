@@ -204,6 +204,22 @@ unit; a proper packets/min before/after comparison (docs/TASKS.md
 acceptance criteria) can be revisited now that ambient traffic is
 reachable.
 
+## [FIRMWARE] Phase 4 packets/min comparison, with real traffic (antenna fixed)
+Date: 2026-07-08
+With the antenna reseated, ran two clean 5-minute captures back to back,
+same location, same ambient conditions: one with `ble_gatt_start()`
+active, one with it commented out (temporary, reverted after).
+Result: BLE on: 23 observations, 8 unique devices. BLE off: 22
+observations, 6 unique devices. Both runs plateaued by ~t=180s then went
+quiet (bursty real-world traffic, not a steady rate). The ~4.5%
+difference is within the natural variance of ambient traffic between two
+separate 5-minute windows (different neighbors' devices happening to
+scan at different times), not a measurable WiFi packet loss from
+enabling BLE. No crashes, stable heap, in either run.
+Status: RESOLVED (2026-07-08) - docs/TASKS.md's Phase 4 acceptance
+criterion (WiFi+BLE run simultaneously without significant packet loss)
+confirmed with real traffic.
+
 ## Things that DON'T work: don't try again
 
 - WiFi monitor mode + Thread (802.15.4) on one ESP32-C6 radio: confirmed
