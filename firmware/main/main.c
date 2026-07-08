@@ -17,6 +17,7 @@
 #include "sd_paths.h"
 #include "sd_storage.h"
 #include "aggregate.h"
+#include "ble_gatt.h"
 
 static const char *TAG = "printback";
 
@@ -148,11 +149,19 @@ static void check_aggregation_rollover(void)
     }
     if (day == s_agg_day && hour == s_agg_hour) return;
 
+    aggregate_record_t rec;
     if (day != s_agg_day) {
-        aggregate_run_hourly(s_agg_day, 23); /* last hour of the day that just ended */
-        aggregate_run_daily_rollover(day);
+        /* last hour of the day that just ended */
+        if (aggregate_run_hourly(s_agg_day, 23, &rec)) {
+            ble_gatt_notify_stats(&rec);
+        }
+        if (aggregate_run_daily_rollover(day, &rec)) {
+            ble_gatt_notify_stats(&rec);
+        }
     } else {
-        aggregate_run_hourly(s_agg_day, s_agg_hour);
+        if (aggregate_run_hourly(s_agg_day, s_agg_hour, &rec)) {
+            ble_gatt_notify_stats(&rec);
+        }
     }
 
     s_agg_day = day;
@@ -206,6 +215,7 @@ void app_main(void)
     ui_set_event_handler(on_ui_event);
     sd_storage_init(); /* logs its own error and keeps going without SD if this fails */
     wifi_sniffer_start(on_probe);
+    ble_gatt_start(); /* runs its own NimBLE host task internally, no xTaskCreate here */
     xTaskCreate(channel_hopper,   "hop",     2048, NULL, 4, NULL);
     xTaskCreate(housekeeper,      "house",   3072, NULL, 3, NULL);
     xTaskCreate(usb_link_monitor, "usb_mon", 2048, NULL, 2, NULL);

@@ -72,6 +72,19 @@ overwritten in place, lets BLE serve "today so far" without waiting for
 midnight), `/sdcard/logs/stats/daily.bin` (append-only, finalized days,
 unlimited retention, per D3, aggregates aren't personal data).
 
+## BLE GATT service and characteristic UUIDs (Phase 4)
+
+One primary service, two characteristics ship in Phase 4 (vendor-specific
+128-bit UUIDs, randomly generated, no relation to any BLE SIG-adopted
+service). PAIRING_STATUS and CONFIG's write side are Phase 5 scope, see
+docs/ARCHITECTURE.md "BLE GATT (sketch)".
+
+| Name    | UUID                                   | Properties       |
+|---------|-----------------------------------------|-------------------|
+| Service | `e794a7d8-6905-4552-b7a2-d0cdc9dae0f6`  | -                 |
+| STATS   | `1b1465c2-296e-4acd-b544-ba1a30ed7f13`  | read, notify      |
+| CONFIG  | `c5468eed-52a8-434b-bc6f-0d60c323f07f`  | read-only in Phase 4 |
+
 ## BLE STATS payload: JSON (not CBOR)
 
 Decision and rationale: docs/DECISIONS.md D7. One aggregate row per
@@ -99,8 +112,24 @@ rare case.
 as consecutive individual STATS notifications (no new batch format),
 even after a full 30-day gap that's ~750 rows, trivial for BLE
 notification throughput. Tracking "what's already synced with this
-bond" (e.g. a per-bond last-synced timestamp in NVS) is a Phase 4/5
-implementation detail.
+bond" (e.g. a per-bond last-synced timestamp in NVS) needs a stable bond
+identity, which doesn't exist before Phase 5 (button + bonding); Phase 4
+only notifies new records produced while a connection is already active,
+it does not replay history on (re)connect. Full backfill is Phase 5
+scope, alongside bonding.
+
+## BLE CONFIG payload (read-only in Phase 4)
+
+```json
+{"rssi_floor":-85,"returning_window_days":30}
+```
+
+`rssi_floor`: `CONFIG_PRINTBACK_RSSI_FLOOR` (dBm). `returning_window_days`:
+`RETURNING_WINDOW_DAYS` (firmware/main/aggregate.h). Both are compile-time
+Kconfig/constant values today, just echoed back over BLE for visibility;
+write support (and the "reset trigger" from docs/TASKS.md) is Phase 5
+scope, gated behind bonding so an unauthenticated nearby BLE device can't
+reconfigure or reset the device.
 
 **File format header (recommendation, beyond the letter of TASKS.md):**
 none of the structs above have a version/magic byte. If the layout ever

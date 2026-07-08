@@ -45,6 +45,11 @@ uint32_t sd_unix_day_from_unix_s(uint32_t unix_s)
     return unix_s / 86400u;
 }
 
+void sd_civil_from_unix_day(uint32_t unix_day, int *year, unsigned *month, unsigned *day)
+{
+    civil_from_days((int64_t)unix_day, year, month, day);
+}
+
 /* Inverse of civil_from_days. Same source: Howard Hinnant,
  * "chrono-Compatible Low-Level Date Algorithms",
  * https://howardhinnant.github.io/date_algorithms.html#days_from_civil */

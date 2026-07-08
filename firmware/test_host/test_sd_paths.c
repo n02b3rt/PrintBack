@@ -39,6 +39,19 @@ int main(void)
     check_path(21184u, "/sdcard/logs/raw/20280101.bin");
     check_path(0u,     "/sdcard/logs/raw/19700101.bin");
 
+    /* sd_civil_from_unix_day: inverse direction of sd_unix_day_from_ymd,
+     * public wrapper around the same civil_from_days math (Phase 4: BLE
+     * STATS JSON needs a YYYY-MM-DD string from date_unix_day). */
+    {
+        int y; unsigned m, d;
+        sd_civil_from_unix_day(20636u, &y, &m, &d);
+        CHECK(y == 2026 && m == 7 && d == 2, "civil_from_unix_day: 20636 -> 2026-07-02");
+        sd_civil_from_unix_day(21184u, &y, &m, &d);
+        CHECK(y == 2028 && m == 1 && d == 1, "civil_from_unix_day: 21184 -> 2028-01-01 (leap rollover)");
+        sd_civil_from_unix_day(0u, &y, &m, &d);
+        CHECK(y == 1970 && m == 1 && d == 1, "civil_from_unix_day: 0 -> epoch");
+    }
+
     /* sd_unix_day_from_ymd: inverse of sd_format_raw_path's date math,
      * exercised on the same set of dates (including the leap-year
      * rollover 2027-12-31 -> 2028-01-01, and the epoch itself). */

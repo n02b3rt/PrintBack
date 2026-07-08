@@ -57,6 +57,13 @@ uint32_t sd_unix_day_from_ymd(int year, unsigned month, unsigned day);
  * UTC), the unit sd_format_raw_path and sd_is_purge_candidate use. */
 uint32_t sd_unix_day_from_unix_s(uint32_t unix_s);
 
+/* Converts a unix day back to a calendar date (UTC), the same math
+ * sd_format_raw_path uses internally to build YYYYMMDD filenames.
+ * Exposed publicly for Phase 4: the BLE STATS JSON payload
+ * (docs/DATA_MODEL.md) needs a "YYYY-MM-DD" date string built from
+ * aggregate_record_t.date_unix_day. */
+void sd_civil_from_unix_day(uint32_t unix_day, int *year, unsigned *month, unsigned *day);
+
 /* True if a file dated `file_unix_day` is strictly older than
  * `retention_days` relative to `today_unix_day` and should be purged.
  * A file exactly `retention_days` old is kept (hard limit means "up to
