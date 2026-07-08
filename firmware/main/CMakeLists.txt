@@ -10,6 +10,8 @@ idf_component_register(
         "kanon.c"
         "sd_paths.c"
         "sd_storage.c"
+        "aggregate.c"
+        "ble_gatt.c"
     INCLUDE_DIRS "."
     REQUIRES
         esp_wifi
@@ -21,4 +23,5 @@ idf_component_register(
         fatfs
         sdmmc
         esp_driver_sdspi
+        bt
 )

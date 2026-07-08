@@ -14,7 +14,10 @@
 #include "output.h"
 #include "whitelist.h"
 #include "ui.h"
+#include "sd_paths.h"
 #include "sd_storage.h"
+#include "aggregate.h"
+#include "ble_gatt.h"
 
 static const char *TAG = "printback";
 
@@ -123,6 +126,48 @@ static void usb_link_monitor(void *arg)
     }
 }
 
+/* Hour/day the aggregation module last saw. UINT32_MAX/-1 sentinel means
+ * "not initialized yet" (first tick after boot has nothing completed to
+ * aggregate). */
+static uint32_t s_agg_day = UINT32_MAX;
+static int      s_agg_hour = -1;
+
+/* Cheap on every housekeeper tick, same pattern as sd_storage's own
+ * day-rollover check in Phase 2: compares against the last-seen
+ * hour/day and only does real work (aggregate_run_hourly/
+ * aggregate_run_daily_rollover) when a boundary was actually crossed. */
+static void check_aggregation_rollover(void)
+{
+    uint32_t now_s = sd_storage_current_unix_s();
+    uint32_t day = sd_unix_day_from_unix_s(now_s);
+    int hour = sd_hour_from_unix_s(now_s);
+
+    if (s_agg_day == UINT32_MAX) {
+        s_agg_day = day;
+        s_agg_hour = hour;
+        return;
+    }
+    if (day == s_agg_day && hour == s_agg_hour) return;
+
+    aggregate_record_t rec;
+    if (day != s_agg_day) {
+        /* last hour of the day that just ended */
+        if (aggregate_run_hourly(s_agg_day, 23, &rec)) {
+            ble_gatt_notify_stats(&rec);
+        }
+        if (aggregate_run_daily_rollover(day, &rec)) {
+            ble_gatt_notify_stats(&rec);
+        }
+    } else {
+        if (aggregate_run_hourly(s_agg_day, s_agg_hour, &rec)) {
+            ble_gatt_notify_stats(&rec);
+        }
+    }
+
+    s_agg_day = day;
+    s_agg_hour = hour;
+}
+
 static void housekeeper(void *arg)
 {
     const int64_t window_us =
@@ -132,6 +177,7 @@ static void housekeeper(void *arg)
     for (;;) {
         vTaskDelay(period);
         int64_t now = esp_timer_get_time();
+        check_aggregation_rollover();
 
         if (atomic_load(&s_armed_until_us) > 0 && !is_armed(now)) {
             disarm();
@@ -169,6 +215,7 @@ void app_main(void)
     ui_set_event_handler(on_ui_event);
     sd_storage_init(); /* logs its own error and keeps going without SD if this fails */
     wifi_sniffer_start(on_probe);
+    ble_gatt_start(); /* runs its own NimBLE host task internally, no xTaskCreate here */
     xTaskCreate(channel_hopper,   "hop",     2048, NULL, 4, NULL);
     xTaskCreate(housekeeper,      "house",   3072, NULL, 3, NULL);
     xTaskCreate(usb_link_monitor, "usb_mon", 2048, NULL, 2, NULL);

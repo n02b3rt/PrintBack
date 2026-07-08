@@ -80,11 +80,10 @@ separate, named phase, not something that's "already" happening.
 │             → /sdcard/logs/stats/today.bin (mutable) → daily.bin on        │
 │               rollover                                                     │
 │        ▼                                                                   │
-│ [NEW] BLE GATT server (CONFIG_SW_COEXIST_ENABLE, one HP core,              │
+│ [NEW] BLE GATT server (ESP_COEX_SW_COEXIST_ENABLE, one HP core,            │
 │        priorities alongside WiFi sniff, see "Task scheduling")            │
 │    STATS (read+notify): one aggregate JSON per notification                │
-│    CONFIG (read/write): thresholds (RSSI, returning window)                │
-│    PAIRING_STATUS (read+notify): pairing mode state                        │
+│    CONFIG (read-only): thresholds (RSSI, returning window)                 │
 └──────────────────────────────────┬─────────────────────────────────────────┘
                                      │ BLE GATT, bonded (D5: button + bonding)
                                      ▼
@@ -137,17 +136,21 @@ Phase 2 implementation detail. Decision and rationale: docs/DECISIONS.md D6.
 
 ## BLE GATT (sketch)
 
-Three characteristics, exact UUIDs and CONFIG/PAIRING_STATUS payloads are
-Phase 4 scope, not fixed here:
+One service, two characteristics ship in Phase 4 (UUIDs: docs/DATA_MODEL.md):
 
 - **STATS** (read + notify): one aggregate JSON row per notification,
   format: docs/DATA_MODEL.md.
-- **CONFIG** (read/write): RSSI threshold, "returning" window, reset trigger.
-- **PAIRING_STATUS** (read + notify): pairing mode state.
+- **CONFIG** (read-only in Phase 4): RSSI threshold, "returning" window.
+
+**PAIRING_STATUS** (read + notify, pairing mode state) and CONFIG's write
+side (RSSI threshold, returning window, reset trigger) are Phase 5 scope:
+both need the button + bonding state machine (docs/DECISIONS.md D5) to
+exist first, so implementing them in Phase 4 would be either a meaningless
+stub or an unauthenticated write any nearby BLE device could hit.
 
 ## Coexistence
 
-WiFi monitor mode + BLE: OK, software coex (`CONFIG_SW_COEXIST_ENABLE`),
+WiFi monitor mode + BLE: OK, software coex (`ESP_COEX_SW_COEXIST_ENABLE`),
 see docs/DECISIONS.md D4. WiFi + Thread/802.15.4 on the same radio: NO,
 confirmed on another project, see docs/LEARNINGS.md. Doesn't apply to this
 project directly (no Thread here), but the rule holds forever.

@@ -9,6 +9,23 @@ CONFIG_ESP_WIFI_DYNAMIC_TX_BUFFER_NUM=32
 CONFIG_ESP_WIFI_AMPDU_RX_ENABLED=y
 CONFIG_ESP_WIFI_AMPDU_TX_ENABLED=y
 
+# --- PrintBack: BLE (Phase 4, NimBLE, ESP32-C6 has no BR/EDR radio, so ----
+# none of the classic-ESP32 BTDM_CTRL_MODE_* options apply here) ----------
+CONFIG_BT_ENABLED=y
+CONFIG_BT_NIMBLE_ENABLED=y
+CONFIG_BT_NIMBLE_HCI_EVT_BUF_SIZE=70
+
+# Explicit even though this defaults to y automatically once WiFi+BT are
+# both enabled (components/esp_coex/Kconfig): the docs used to reference
+# the wrong flag name (CONFIG_SW_COEXIST_ENABLE, doesn't exist), verified
+# against ESP-IDF 5.3.2 source in Phase 4, see docs/DECISIONS.md D4.
+CONFIG_ESP_COEX_SW_COEXIST_ENABLE=y
+
+# WiFi sniffer + FATFS + NimBLE together no longer fit the default 1MB
+# "factory" app partition (measured overflow ~81KB on first Phase 4
+# build); the 1.46MB single-app-large table has enough headroom.
+CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE=y
+
 # --- System --------------------------------------------------------------
 CONFIG_LOG_DEFAULT_LEVEL_INFO=y
 CONFIG_LOG_MAXIMUM_LEVEL_DEBUG=y

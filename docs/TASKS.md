@@ -96,18 +96,29 @@ Goal: the device serves aggregates over BLE, coexisting with WiFi
 monitor mode.
 
 Tasks:
-1. Enable `CONFIG_SW_COEXIST_ENABLE`, configure the BLE stack alongside
-   the existing WiFi monitor mode + channel hopping.
-2. Define a GATT service with three characteristics (UUIDs TBD):
+1. Enable `ESP_COEX_SW_COEXIST_ENABLE` (verified name, see
+   docs/DECISIONS.md D4; ESP-IDF auto-enables it once WiFi and Bluetooth
+   are both compiled in), configure the BLE stack alongside the existing
+   WiFi monitor mode + channel hopping.
+2. Define a GATT service. Two characteristics ship in this phase (UUIDs
+   in docs/DATA_MODEL.md):
    - STATS (read + notify): serves aggregates per the DATA_MODEL.md
      schema, chunked to the current MTU
-   - CONFIG (read/write): RSSI threshold, "returning" window, reset trigger
-   - PAIRING_STATUS (read/notify): pairing mode state
-3. Split the work between cores: WiFi sniff+hop on one core, BLE stack +
-   aggregation + SD writes on the other (check the current split in the
-   existing code and adapt it, don't guess from scratch).
+   - CONFIG (read-only in this phase): RSSI threshold, "returning" window
+   PAIRING_STATUS (read/notify) and CONFIG's write side are deferred to
+   Phase 5: both need the bonding/pairing state machine to exist first
+   (PAIRING_STATUS reports on it; CONFIG-write needs it to gate
+   unauthenticated writes from any nearby BLE device), so implementing
+   either now would be either a meaningless stub or a real security gap.
+3. Task/priority layout: the ESP32-C6 has a single HP core (RISC-V), so
+   there's no core split to do (docs/ARCHITECTURE.md "Task scheduling").
+   WiFi sniff+hop and the BLE stack + aggregation + SD writes all run as
+   FreeRTOS tasks time-sliced on that one core; `ESP_COEX_SW_COEXIST_ENABLE`
+   arbitrates radio access in software between the two stacks. Check the
+   current task priorities in `firmware/main/main.c` and add the NimBLE
+   host task at a sensible priority, don't guess from scratch.
 4. Test: connect with any generic BLE scanner (e.g. nRF Connect) and
-   verify the STATS characteristic returns valid JSON/CBOR, and WiFi
+   verify the STATS and CONFIG characteristics return valid JSON, and WiFi
    sniffing still catches probe requests without noticeable degradation
    (count packets/min before and after enabling BLE, record the result
    in LEARNINGS.md).

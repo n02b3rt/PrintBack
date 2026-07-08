@@ -18,8 +18,10 @@
 
 static const char *TAG = "sd_storage";
 
-#define MOUNT_POINT "/sdcard"
-#define RAW_DIR     MOUNT_POINT "/logs/raw"
+#define MOUNT_POINT   "/sdcard"
+#define RAW_DIR       MOUNT_POINT "/logs/raw"
+#define STATS_DIR     MOUNT_POINT "/logs/stats"
+#define STATS_HR_DIR  MOUNT_POINT "/logs/stats/hourly"
 
 static sdmmc_card_t *s_card = NULL;
 static bool s_ready = false;
@@ -45,6 +47,11 @@ void sd_storage_set_wallclock_unix_s(uint32_t unix_s)
 {
     s_wallclock_ref_unix_s = unix_s;
     s_wallclock_ref_boot_us = esp_timer_get_time();
+}
+
+uint32_t sd_storage_current_unix_s(void)
+{
+    return current_unix_s();
 }
 
 bool sd_storage_is_ready(void)
@@ -140,7 +147,16 @@ void sd_storage_write_raw(const probe_observation_t *obs, bool fresh, bool white
 
     if (fwrite(&rec, sizeof(rec), 1, s_raw_fp) != 1) {
         ESP_LOGW(TAG, "raw write failed, dropping record");
+        return;
     }
+    /* Without both of these, aggregate.c opening a second, independent
+     * handle on the same file (to scan it) sees a stale/empty view.
+     * fflush() only pushes the C stdio buffer down to the VFS layer;
+     * FatFs itself doesn't update the directory entry's file size until
+     * an explicit sync, so a fresh fopen() elsewhere still sees size 0
+     * without fsync() too. Found the hard way in Phase 3 testing. */
+    fflush(s_raw_fp);
+    fsync(fileno(s_raw_fp));
 }
 
 /* mkdir() that treats "already exists" as success: FAT doesn't create
@@ -158,7 +174,9 @@ esp_err_t sd_storage_init(void)
 
     esp_vfs_fat_sdmmc_mount_config_t mount_config = {
         .format_if_mount_failed = false,
-        .max_files = 3,
+        .max_files = 5, /* raw append handle stays open long-term (sd_storage), plus
+                          * aggregate.c briefly opens raw/hourly/today/daily during
+                          * hourly and daily-rollover aggregation */
         .allocation_unit_size = 16 * 1024,
     };
 
@@ -195,8 +213,9 @@ esp_err_t sd_storage_init(void)
         return ret;
     }
 
-    if (ensure_dir(MOUNT_POINT "/logs") != ESP_OK || ensure_dir(RAW_DIR) != ESP_OK) {
-        ESP_LOGE(TAG, "SD: failed to create %s, SD logging disabled", RAW_DIR);
+    if (ensure_dir(MOUNT_POINT "/logs") != ESP_OK || ensure_dir(RAW_DIR) != ESP_OK ||
+        ensure_dir(STATS_DIR) != ESP_OK || ensure_dir(STATS_HR_DIR) != ESP_OK) {
+        ESP_LOGE(TAG, "SD: failed to create log directories, SD logging disabled");
         esp_vfs_fat_sdcard_unmount(MOUNT_POINT, s_card);
         spi_bus_free(host.slot);
         return ESP_FAIL;
