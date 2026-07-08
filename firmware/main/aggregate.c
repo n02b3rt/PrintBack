@@ -9,6 +9,7 @@
 
 #include "fingerprint.h"
 #include "kanon.h"
+#include "runtime_config.h"
 #include "sd_paths.h"
 #include "sd_storage.h"
 
@@ -208,12 +209,14 @@ bool aggregate_run_daily_rollover(uint32_t new_unix_day, aggregate_record_t *out
 
     s_today_kanon_applied = false;
 
-    /* Rebuild the 30-day history set for the new day's returning_count.
-     * Files older than this may already be purged (Phase 2, 30-day raw
-     * retention) - a missing file just means no history from that day,
-     * not an error. */
+    /* Rebuild the returning-window history set for the new day's
+     * returning_count. Window length is runtime-configurable (Phase 5,
+     * BLE CONFIG write), default RETURNING_WINDOW_DAYS. Files older than
+     * this may already be purged (Phase 2, 30-day raw retention) - a
+     * missing file just means no history from that day, not an error. */
+    uint8_t returning_window_days = runtime_config_returning_window_days();
     s_history_count = 0;
-    for (uint32_t d = new_unix_day - RETURNING_WINDOW_DAYS; d < new_unix_day; d++) {
+    for (uint32_t d = new_unix_day - returning_window_days; d < new_unix_day; d++) {
         char path[SD_RAW_PATH_MAX_LEN];
         if (sd_format_raw_path(d, path, sizeof(path)) != 0) continue;
         FILE *f = fopen(path, "rb");
@@ -233,7 +236,7 @@ bool aggregate_run_daily_rollover(uint32_t new_unix_day, aggregate_record_t *out
         fclose(f);
     }
 
-    ESP_LOGI(TAG, "daily rollover: history set rebuilt, %u unique fp over last %d days",
-             s_history_count, RETURNING_WINDOW_DAYS);
+    ESP_LOGI(TAG, "daily rollover: history set rebuilt, %u unique fp over last %u days",
+             s_history_count, returning_window_days);
     return have_rec;
 }
