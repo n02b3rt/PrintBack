@@ -74,16 +74,16 @@ unlimited retention, per D3, aggregates aren't personal data).
 
 ## BLE GATT service and characteristic UUIDs (Phase 4)
 
-One primary service, two characteristics ship in Phase 4 (vendor-specific
-128-bit UUIDs, randomly generated, no relation to any BLE SIG-adopted
-service). PAIRING_STATUS and CONFIG's write side are Phase 5 scope, see
-docs/ARCHITECTURE.md "BLE GATT (sketch)".
+One primary service, two characteristics (vendor-specific 128-bit UUIDs,
+randomly generated, no relation to any BLE SIG-adopted service).
+PAIRING_STATUS is still not implemented - see docs/ARCHITECTURE.md "BLE
+GATT (sketch)".
 
 | Name    | UUID                                   | Properties       |
 |---------|-----------------------------------------|-------------------|
 | Service | `e794a7d8-6905-4552-b7a2-d0cdc9dae0f6`  | -                 |
 | STATS   | `1b1465c2-296e-4acd-b544-ba1a30ed7f13`  | read, notify      |
-| CONFIG  | `c5468eed-52a8-434b-bc6f-0d60c323f07f`  | read-only in Phase 4 |
+| CONFIG  | `c5468eed-52a8-434b-bc6f-0d60c323f07f`  | read, write (bonded only) |
 
 ## BLE STATS payload: JSON (not CBOR)
 
@@ -118,18 +118,21 @@ only notifies new records produced while a connection is already active,
 it does not replay history on (re)connect. Full backfill is Phase 5
 scope, alongside bonding.
 
-## BLE CONFIG payload (read-only in Phase 4)
+## BLE CONFIG payload (read + write)
 
 ```json
 {"rssi_floor":-85,"returning_window_days":30}
 ```
 
-`rssi_floor`: `CONFIG_PRINTBACK_RSSI_FLOOR` (dBm). `returning_window_days`:
-`RETURNING_WINDOW_DAYS` (firmware/main/aggregate.h). Both are compile-time
-Kconfig/constant values today, just echoed back over BLE for visibility;
-write support (and the "reset trigger" from docs/TASKS.md) is Phase 5
-scope, gated behind bonding so an unauthenticated nearby BLE device can't
-reconfigure or reset the device.
+`rssi_floor` (dBm) and `returning_window_days` are runtime-configurable
+(`firmware/main/runtime_config.c`/`.h`), persisted to NVS, defaulting to
+`CONFIG_PRINTBACK_RSSI_FLOOR`/`RETURNING_WINDOW_DAYS`
+(firmware/main/aggregate.h) until first written. A write requires both
+fields and a bonded/encrypted link (`BLE_GATT_CHR_F_WRITE_ENC`); an
+unbonded connection can't even reach this point at all thanks to the
+connection whitelist (docs/DECISIONS.md D5). The "reset trigger" from
+docs/TASKS.md isn't implemented - no clear definition of what it should
+reset yet, not guessed at here.
 
 **File format header (recommendation, beyond the letter of TASKS.md):**
 none of the structs above have a version/magic byte. If the layout ever

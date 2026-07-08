@@ -83,7 +83,7 @@ separate, named phase, not something that's "already" happening.
 │ [NEW] BLE GATT server (ESP_COEX_SW_COEXIST_ENABLE, one HP core,            │
 │        priorities alongside WiFi sniff, see "Task scheduling")            │
 │    STATS (read+notify): one aggregate JSON per notification                │
-│    CONFIG (read-only): thresholds (RSSI, returning window)                 │
+│    CONFIG (read/write, bonded): thresholds (RSSI, returning window)        │
 └──────────────────────────────────┬─────────────────────────────────────────┘
                                      │ BLE GATT, bonded (D5: button + bonding)
                                      ▼
@@ -136,17 +136,17 @@ Phase 2 implementation detail. Decision and rationale: docs/DECISIONS.md D6.
 
 ## BLE GATT (sketch)
 
-One service, two characteristics ship in Phase 4 (UUIDs: docs/DATA_MODEL.md):
+One service, two characteristics (UUIDs: docs/DATA_MODEL.md):
 
 - **STATS** (read + notify): one aggregate JSON row per notification,
   format: docs/DATA_MODEL.md.
-- **CONFIG** (read-only in Phase 4): RSSI threshold, "returning" window.
+- **CONFIG** (read + write): RSSI threshold, "returning" window. Write
+  requires a bonded/encrypted link (docs/DATA_MODEL.md "BLE CONFIG
+  payload").
 
-**PAIRING_STATUS** (read + notify, pairing mode state) and CONFIG's write
-side (RSSI threshold, returning window, reset trigger) are Phase 5 scope:
-both need the button + bonding state machine (docs/DECISIONS.md D5) to
-exist first, so implementing them in Phase 4 would be either a meaningless
-stub or an unauthenticated write any nearby BLE device could hit.
+**PAIRING_STATUS** (read + notify, pairing mode state) still isn't
+implemented - no clear need for it yet beyond the LED, which already
+signals pairing mode locally.
 
 ## Coexistence
 
@@ -157,7 +157,15 @@ project directly (no Thread here), but the rule holds forever.
 
 ## Pairing/bonding
 
-Physical button + BLE bonding in NVS (docs/DECISIONS.md D5). Today the
-button only knows one gesture (`UI_EVENT_LONG_PRESS`, 3000ms, arms
-whitelist capture); adding a second gesture for entering pairing mode is
-a Phase 5 implementation detail, not designed here.
+Physical button + BLE bonding in NVS (docs/DECISIONS.md D5). A short
+click (`UI_EVENT_SHORT_CLICK`) opens a 60-second pairing window
+(`ui.c`'s existing 3000ms long-press for whitelist-arm is unchanged, a
+second, independent gesture). Physical-access gating is enforced at the
+link layer, not the SM/pairing layer: the controller's connection
+whitelist only accepts already-bonded peers outside the window
+(`ble_gap_wl_set()`, `BLE_HCI_ADV_FILT_CONN`), switching to accept-anyone
+(`BLE_HCI_ADV_FILT_NONE`) only while the window is open. Just Works
+(`BLE_SM_IO_CAP_NO_IO`, no display on this device) has no app-level hook
+to refuse an incoming pairing request on its own, so the whitelist is
+what actually enforces "physical access required to pair", not the
+pairing procedure itself.
