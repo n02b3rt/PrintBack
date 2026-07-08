@@ -1,7 +1,7 @@
 @echo off
 REM Convenience launcher for unattended PrintBack deployment.
 REM Double-click this (or set as Startup task) to run the app under the
-REM supervisor — it restarts on crash and logs uptime to
+REM supervisor, which restarts on crash and logs uptime to
 REM %APPDATA%\PrintBack\supervisor.log.
 REM
 REM Forwards all args to printback (e.g. run.bat --port COM5).

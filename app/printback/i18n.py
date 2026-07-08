@@ -15,7 +15,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "tab.stats": "Statystyki",
         "tab.debug": "Debug",
 
-        # KPI cards — stats tab
+        # KPI cards, stats tab
         "kpi.active_now": "aktywni teraz (5 min)",
         "kpi.today_unique": "dziś unikalnych",
         "kpi.new_today": "nowi dziś",
@@ -24,14 +24,14 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
             "{arrow} {delta:+d} ({pct:+.0f}%) vs wczoraj ({y})",
         "kpi.today.no_yesterday": "brak danych wczoraj",
 
-        # KPI cards — debug tab
+        # KPI cards, debug tab
         "kpi.events_per_min": "events / min",
         "kpi.obs_24h": "obs / 24h",
         "kpi.ch": "ch {ch}",
         "kpi.auto_wl_candidates": "auto-WL kandydaci",
 
         # charts
-        "chart.today_hourly": "ruch godzinowo — dzisiaj",
+        "chart.today_hourly": "ruch godzinowo, dzisiaj",
         "chart.today_hourly_x": "godzina",
         "chart.today_hourly_y": "unikalnych",
         "chart.last_7_days": "ostatnie 7 dni",
@@ -54,7 +54,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "freq.8_plus": "8+",
 
         # devices table (debug tab)
-        "devices.header": "aktywne urządzenia (ostatnie 5 min) — sortuj klikając w nagłówek",
+        "devices.header": "aktywne urządzenia (ostatnie 5 min), sortuj klikając w nagłówek",
         "devices.col.fp": "fingerprint",
         "devices.col.mac": "mac",
         "devices.col.rssi": "RSSI",
@@ -84,7 +84,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         # status bar
         "status.connecting": "łączenie…",
         "status.db": "db: {path}",
-        "status.stale": "{base} — brak danych od {age}s, sprawdź urządzenie",
+        "status.stale": "{base}, brak danych od {age}s, sprawdź urządzenie",
 
         # menu
         "menu.settings": "Ustawienia",
@@ -134,7 +134,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "freq.4_7": "4-7",
         "freq.8_plus": "8+",
 
-        "devices.header": "active devices (last 5 min) — click header to sort",
+        "devices.header": "active devices (last 5 min), click header to sort",
         "devices.col.fp": "fingerprint",
         "devices.col.mac": "mac",
         "devices.col.rssi": "RSSI",
@@ -161,7 +161,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
 
         "status.connecting": "connecting…",
         "status.db": "db: {path}",
-        "status.stale": "{base} — no data for {age}s, check device",
+        "status.stale": "{base}, no data for {age}s, check device",
 
         "menu.settings": "Settings",
         "menu.language": "Language",

@@ -94,7 +94,7 @@ class Store:
         self._migrate()
 
     def integrity_check(self) -> bool:
-        """PRAGMA integrity_check — returns True if DB is consistent."""
+        """PRAGMA integrity_check, returns True if DB is consistent."""
         try:
             row = self.conn.execute("PRAGMA integrity_check").fetchone()
             return bool(row and row[0] == "ok")
@@ -102,7 +102,7 @@ class Store:
             return False
 
     def reopen(self) -> None:
-        """Close and reopen — used after restore from backup."""
+        """Close and reopen, used after restore from backup."""
         try:
             self.conn.close()
         except sqlite3.Error:
@@ -310,7 +310,7 @@ class Store:
         return [(d, int(t), int(n), int(r)) for d, t, n, r in rows]
 
     def today_hourly(self, exclude_wl: bool = True) -> list[int]:
-        """24 ints — unique non-WL fp count per hour of today (local time)."""
+        """24 ints, unique non-WL fp count per hour of today (local time)."""
         today_start, _ = _day_bounds(_today())
         hours = [0] * 24
         wl_clause = (

@@ -2,7 +2,7 @@
 
 Calls ``pnputil /restart-device`` on the PnP device backing a given COM port.
 This is the official Microsoft mechanism for cycling a USB device's driver
-state without unplugging the cable — used as last-resort recovery when the
+state without unplugging the cable, used as last-resort recovery when the
 Windows USB stack reports "device not functioning" (typically after rapid
 flash + reconnect cycles, or the kernel-side CDC bookkeeping just gives up).
 
@@ -42,8 +42,8 @@ def _find_instance_id(com_port: str) -> str | None:
     in the device's FriendlyName so we never accidentally reset the wrong
     device when the user has multiple ESPs plugged in.
 
-      1. With ``-PresentOnly`` — fast path when device is functioning.
-      2. Without ``-PresentOnly`` — catches devices stuck in error state
+      1. With ``-PresentOnly``: fast path when device is functioning.
+      2. Without ``-PresentOnly``: catches devices stuck in error state
          where Windows kept the registry entry but the driver detached.
 
     If the COM number has fully disappeared from the registry, returns None

@@ -47,7 +47,7 @@ class MainWindow(QMainWindow):
         self._verify_store_integrity()
         self.maintenance = Maintenance(self.store, self.config, app_dir)
 
-        # connection state — used to render status bar with stale-detection
+        # connection state, used to render status bar with stale-detection
         self._conn_ok = False
         self._conn_msg = tr("status.connecting")
 
@@ -157,7 +157,7 @@ class MainWindow(QMainWindow):
                 tr("status.stale", base=self._conn_msg, age=int(age))
             )
             self.status_conn.setStyleSheet(f"color: {theme.WARN};")
-            self.setWindowTitle("PrintBack — NO DATA")
+            self.setWindowTitle("PrintBack: NO DATA")
         else:
             self.status_conn.setText(self._conn_msg)
             self.status_conn.setStyleSheet(f"color: {theme.OK};")
@@ -183,7 +183,7 @@ class MainWindow(QMainWindow):
         backups_dir = self.app_dir / "backups"
         candidates = sorted(backups_dir.glob("printback-*.db")) if backups_dir.exists() else []
         if not candidates:
-            print("no backups available — leaving DB as-is (writes may fail)",
+            print("no backups available, leaving DB as-is (writes may fail)",
                   file=sys.stderr)
             return
         latest = candidates[-1]

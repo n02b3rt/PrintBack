@@ -103,7 +103,7 @@ def main(argv: list[str]) -> int:
             return 0
 
         # Reset backoff if the child ran for a meaningful duration before
-        # crashing — distinguishes "transient crash" from "broken on launch".
+        # crashing, distinguishes "transient crash" from "broken on launch".
         if uptime > 300:
             backoff = _MIN_BACKOFF
             consecutive_crashes = 0
@@ -111,7 +111,7 @@ def main(argv: list[str]) -> int:
             consecutive_crashes += 1
 
         if consecutive_crashes >= 5:
-            _log("5 consecutive fast crashes — likely broken environment; bailing out")
+            _log("5 consecutive fast crashes, likely broken environment; bailing out")
             return 2
 
         _log(f"restarting in {backoff}s (crash #{consecutive_crashes})")

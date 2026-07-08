@@ -10,11 +10,11 @@ REM prompt subsequently.
 setlocal
 net session >nul 2>&1
 if %errorLevel% == 0 (
-    REM Already elevated — just run.
+    REM Already elevated, just run.
     call "%~dp0run.bat" %*
     exit /b %errorLevel%
 )
 
-REM Not elevated — relaunch via PowerShell with Start-Process -Verb RunAs.
+REM Not elevated, relaunch via PowerShell with Start-Process -Verb RunAs.
 powershell -NoProfile -Command "Start-Process -FilePath '%~dp0run.bat' -ArgumentList '%*' -Verb RunAs -WorkingDirectory '%~dp0'"
 endlocal

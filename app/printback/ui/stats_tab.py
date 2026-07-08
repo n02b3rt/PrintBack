@@ -20,7 +20,7 @@ from . import theme
 
 
 class HeroCard(QWidget):
-    """Headline KPI — single large number, secondary line below."""
+    """Headline KPI: single large number, secondary line below."""
 
     def __init__(self, title: str, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -58,7 +58,7 @@ class HeroCard(QWidget):
 
 
 class KpiCard(QWidget):
-    """Secondary KPI — medium number + optional sub-line."""
+    """Secondary KPI: medium number + optional sub-line."""
 
     def __init__(self, label: str, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -118,7 +118,7 @@ class StatsTab(QWidget):
             kpi_row.addWidget(c)
         root.addLayout(kpi_row)
 
-        # Today by hour — full width, fixed X
+        # Today by hour, full width, fixed X
         self.hourly_plot = self._make_bar_plot(
             title=tr("chart.today_hourly"),
             y_label=tr("chart.today_hourly_y"),
