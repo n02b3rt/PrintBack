@@ -52,6 +52,13 @@ bool sd_storage_is_ready(void)
     return s_ready;
 }
 
+uint32_t sd_storage_raw_bytes_written(void)
+{
+    if (!s_raw_fp) return 0;
+    long pos = ftell(s_raw_fp);
+    return pos > 0 ? (uint32_t)pos : 0;
+}
+
 void sd_storage_purge_old(uint32_t retention_days)
 {
     if (!s_ready) return;
@@ -67,7 +74,7 @@ void sd_storage_purge_old(uint32_t retention_days)
     struct dirent *ent;
     while ((ent = readdir(dir)) != NULL) {
         int y; unsigned m, d;
-        if (sscanf(ent->d_name, "%d-%u-%u.bin", &y, &m, &d) != 3) continue;
+        if (sscanf(ent->d_name, "%4d%2u%2u.bin", &y, &m, &d) != 3) continue;
 
         uint32_t file_day = sd_unix_day_from_ymd(y, m, d);
         if (!sd_is_purge_candidate(file_day, today, retention_days)) continue;

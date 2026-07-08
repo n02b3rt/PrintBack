@@ -34,8 +34,13 @@ void sd_record_from_observation(const probe_observation_t *obs,
                                  uint32_t unix_s, bool fresh, bool whitelisted,
                                  sd_raw_record_t *out);
 
-/* strlen("/sdcard/logs/raw/YYYY-MM-DD.bin") + 1 */
-#define SD_RAW_PATH_MAX_LEN 33
+/* strlen("/sdcard/logs/raw/YYYYMMDD.bin") + 1. Deliberately no dashes in
+ * the date: ESP-IDF's FATFS defaults to short 8.3 filenames (LFN is off
+ * by default to save RAM), and "YYYY-MM-DD" is a 10-character base name,
+ * too long for 8.3. "YYYYMMDD" is exactly 8, fits without needing LFN.
+ * Confirmed the hard way: fopen() silently failed on real hardware with
+ * the dashed format, see docs/LEARNINGS.md. */
+#define SD_RAW_PATH_MAX_LEN 30
 
 /* Formats the raw log path for a given day. `unix_day` = days since
  * 1970-01-01 UTC, same unit as aggregate_record_t.date_unix_day in

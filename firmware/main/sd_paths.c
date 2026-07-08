@@ -65,7 +65,7 @@ int sd_format_raw_path(uint32_t unix_day, char *out, size_t out_len)
     int y; unsigned m, d;
     civil_from_days((int64_t)unix_day, &y, &m, &d);
 
-    int n = snprintf(out, out_len, "/sdcard/logs/raw/%04d-%02u-%02u.bin", y, m, d);
+    int n = snprintf(out, out_len, "/sdcard/logs/raw/%04d%02u%02u.bin", y, m, d);
     return (n > 0 && (size_t)n < out_len) ? 0 : -1;
 }
 

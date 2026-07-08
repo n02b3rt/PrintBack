@@ -29,13 +29,15 @@ int main(void)
     CHECK(sd_unix_day_from_unix_s(20636u * 86400u + 43200u) == 20636u, "unix_day at noon same day");
     CHECK(sd_unix_day_from_unix_s(0) == 0u, "unix_day at epoch");
 
-    /* sd_format_raw_path: known calendar dates, including month/year boundaries. */
-    check_path(20636u, "/sdcard/logs/raw/2026-07-02.bin");
-    check_path(20484u, "/sdcard/logs/raw/2026-01-31.bin");
-    check_path(20485u, "/sdcard/logs/raw/2026-02-01.bin");
-    check_path(21183u, "/sdcard/logs/raw/2027-12-31.bin");
-    check_path(21184u, "/sdcard/logs/raw/2028-01-01.bin");
-    check_path(0u,     "/sdcard/logs/raw/1970-01-01.bin");
+    /* sd_format_raw_path: known calendar dates, including month/year
+     * boundaries. No dashes: FAT short (8.3) filenames only fit an
+     * 8-char base name unless LFN is enabled, see sd_paths.h. */
+    check_path(20636u, "/sdcard/logs/raw/20260702.bin");
+    check_path(20484u, "/sdcard/logs/raw/20260131.bin");
+    check_path(20485u, "/sdcard/logs/raw/20260201.bin");
+    check_path(21183u, "/sdcard/logs/raw/20271231.bin");
+    check_path(21184u, "/sdcard/logs/raw/20280101.bin");
+    check_path(0u,     "/sdcard/logs/raw/19700101.bin");
 
     /* sd_unix_day_from_ymd: inverse of sd_format_raw_path's date math,
      * exercised on the same set of dates (including the leap-year
