@@ -370,6 +370,37 @@ Phase 6 TIME_SYNC/STATS/CONFIG chain confirmed working end-to-end from
 the actual Flutter app for the first time.
 Status: RESOLVED (2026-07-09)
 
+## [MOBILE] dashboard showed 0/0 after connecting, no aggregate ever arrived
+Date: 2026-07-09
+Problem: with the previous two bugs fixed, connect/pair/TIME_SYNC/CONFIG
+all worked, but the dashboard's KPI cards stayed at 0/0 and the charts
+showed "no data synced yet" right after connecting.
+Root cause: not a bug so much as an unfinished piece of scope.
+Subscribing to STATS (`setNotifyValue`) only delivers *future*
+notifications - the next hourly/daily rollover the device happens to
+produce while the phone is connected. docs/DATA_MODEL.md's "Backfill
+after a longer gap" section already flagged this as needing a stable
+bond identity (Phase 5) to track "what's already synced," but Phase 5's
+actual implementation only added bonding/whitelist/CONFIG-write, never
+the backfill/replay logic itself - the TODO was never converted into
+code.
+Fix (partial, deliberately scoped small): STATS also supports a plain
+read (`gatt_stats_read()` in firmware, already existed since Phase 4,
+returns whatever's in `stats/today.bin` - "today so far"). Added
+`BleService.readCurrentStats()` and call it once from
+`DashboardScreen.initState()` right after connecting, upserting the
+result into the local db like any other row. This is a pull, not a push
+through the `statsUpdates` broadcast stream, deliberately: connect()
+finishes (and could emit) before the dashboard screen even exists to
+subscribe, so anything pushed through the shared stream during connect()
+itself would be silently lost to a listener that subscribes too late.
+This only gets "today so far" (one record), not a real multi-day
+backfill - the full replay-unsynced-history design from
+docs/DATA_MODEL.md remains unbuilt, flagging as a real follow-up rather
+than improvising a bigger fix mid-session.
+Status: RESOLVED (2026-07-09) for the immediate 0/0 symptom. Full
+history backfill on (re)connect is still open, not scoped into Phase 6.
+
 ## Things that DON'T work: don't try again
 
 - WiFi monitor mode + Thread (802.15.4) on one ESP32-C6 radio: confirmed

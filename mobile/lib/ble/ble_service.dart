@@ -127,6 +127,29 @@ class BleService extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Subscribing only gets *future* notifications (next hour/day rollover
+  /// on the device) - there's no history replay on connect
+  /// (docs/DATA_MODEL.md "Backfill after a longer gap" was never built,
+  /// see docs/PROGRESS.md). A plain read of STATS returns "today so far"
+  /// (gatt_stats_read() in firmware/main/ble_gatt.c reads stats/today.bin),
+  /// so callers (the dashboard, right after connecting) can show something
+  /// immediately instead of sitting at 0/0 until the next rollover fires.
+  /// A pull, not a push through statsUpdates, deliberately - a screen
+  /// calling this in initState() would otherwise race the broadcast
+  /// stream (connect() already finished and could've emitted before the
+  /// screen even subscribes).
+  Future<Aggregate?> readCurrentStats() async {
+    if (_statsChr == null) return null;
+    try {
+      final value = await _statsChr!.read();
+      if (value.isEmpty) return null;
+      final map = jsonDecode(utf8.decode(value)) as Map<String, dynamic>;
+      return Aggregate.fromJson(map);
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<void> _writeTimeSync() async {
     final unixSeconds = DateTime.now().toUtc().millisecondsSinceEpoch ~/ 1000;
     final bytes = ByteData(4)

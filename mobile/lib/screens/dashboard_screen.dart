@@ -40,7 +40,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
       await _localDb.upsert(agg);
       await _reload();
     });
+    _loadInitialStats(ble);
     _reload();
+  }
+
+  Future<void> _loadInitialStats(BleService ble) async {
+    final initial = await ble.readCurrentStats();
+    if (initial == null) return;
+    await _localDb.upsert(initial);
+    await _reload();
   }
 
   Future<void> _reload() async {
