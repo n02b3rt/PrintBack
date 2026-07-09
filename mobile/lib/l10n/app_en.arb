@@ -1,0 +1,33 @@
+{
+  "@@locale": "en",
+  "appTitle": "PrintBack",
+  "navDashboard": "Dashboard",
+  "navSettings": "Settings",
+
+  "pairingTitle": "Pair device",
+  "pairingInstruction": "Press the button on the device to start pairing.",
+  "scanButton": "Scan for devices",
+  "scanning": "Scanning...",
+  "noDevicesFound": "No devices found",
+  "connecting": "Connecting...",
+  "connected": "Connected",
+  "connectionFailed": "Connection failed",
+
+  "dashboardTitle": "Dashboard",
+  "todayLabel": "Today",
+  "hourlyChartTitle": "Hourly visits (today)",
+  "dailyChartTitle": "Last days",
+  "uniqueLabel": "New",
+  "returningLabel": "Returning",
+  "noDataYet": "No data synced yet",
+  "kanonBadge": "Low traffic, daily resolution only",
+
+  "settingsTitle": "Settings",
+  "rssiFloorLabel": "Minimum signal strength (RSSI, dBm)",
+  "returningWindowLabel": "Returning window (days)",
+  "saveButton": "Save",
+  "settingsSaved": "Saved",
+  "settingsLoadFailed": "Failed to read device settings",
+  "settingsSaveFailed": "Failed to save device settings",
+  "notConnected": "Not connected to a device"
+}
