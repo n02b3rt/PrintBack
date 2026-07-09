@@ -86,6 +86,16 @@ class BleService extends ChangeNotifier {
 
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
       await device.requestMtu(185);
+      // Android caches a device's GATT table by Bluetooth address across
+      // connections. During firmware development the same physical device
+      // gets new characteristics added between flashes (e.g. TIME_SYNC in
+      // this phase) while keeping the same address, so a stale cache can
+      // hide them from discoverServices() below even though the firmware
+      // genuinely serves them. Best-effort: a failure here just means
+      // discoverServices() falls back to whatever Android already has.
+      try {
+        await device.clearGattCache();
+      } catch (_) {}
     }
 
     final services = await device.discoverServices();
@@ -95,12 +105,18 @@ class BleService extends ChangeNotifier {
           throw StateError('PrintBack GATT service not found on device'),
     );
 
-    _statsChr = service.characteristics
-        .firstWhere((c) => c.characteristicUuid == PrintBackUuids.stats);
-    _configChr = service.characteristics
-        .firstWhere((c) => c.characteristicUuid == PrintBackUuids.config);
-    _timeSyncChr = service.characteristics
-        .firstWhere((c) => c.characteristicUuid == PrintBackUuids.timeSync);
+    _statsChr = service.characteristics.firstWhere(
+      (c) => c.characteristicUuid == PrintBackUuids.stats,
+      orElse: () => throw StateError('STATS characteristic not found'),
+    );
+    _configChr = service.characteristics.firstWhere(
+      (c) => c.characteristicUuid == PrintBackUuids.config,
+      orElse: () => throw StateError('CONFIG characteristic not found'),
+    );
+    _timeSyncChr = service.characteristics.firstWhere(
+      (c) => c.characteristicUuid == PrintBackUuids.timeSync,
+      orElse: () => throw StateError('TIME_SYNC characteristic not found'),
+    );
 
     await _writeTimeSync();
 

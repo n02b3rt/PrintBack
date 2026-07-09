@@ -53,11 +53,12 @@ class _PairingScreenState extends State<PairingScreen> {
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => const DashboardScreen()),
       );
-    } catch (_) {
+    } catch (e, st) {
+      debugPrint('BLE connect failed: $e\n$st');
       if (!mounted) return;
       final l10n = AppLocalizations.of(context)!;
       setState(() {
-        _error = l10n.connectionFailed;
+        _error = '${l10n.connectionFailed} ($e)';
         _connecting = false;
       });
     }

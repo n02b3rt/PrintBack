@@ -332,6 +332,44 @@ iOS prompts on its own from the Info.plist string, no explicit request
 needed there).
 Status: RESOLVED (2026-07-09)
 
+## [MOBILE] TIME_SYNC characteristic invisible to the phone despite existing on the device
+Date: 2026-07-09
+Problem: after fixing the BLE permission crash above, connect() got much
+further (services discovered, STATS/CONFIG matched) but threw `Bad
+state: TIME_SYNC characteristic not found`, even though the firmware's
+own boot log had already confirmed TIME_SYNC registers correctly
+(`registered characteristic 5ebb01c3-... def_handle=20 val_handle=21`).
+Root cause: Android caches a peripheral's GATT service/characteristic
+table keyed by Bluetooth address, independent of the app and independent
+of bonding. This phone had connected to this exact ESP32 (same address)
+during earlier Phase 4/5 testing via nRF Connect, back when the firmware
+only exposed STATS+CONFIG (TIME_SYNC didn't exist yet). Android kept
+serving that stale 2-characteristic table to `discoverServices()`
+instead of re-reading the peripheral, since the firmware never sends a
+Service Changed indication when its GATT table changes between flashes.
+This is expected to recur any time a characteristic is added/changed on
+a device Android has seen before, not a one-off - relevant for
+PAIRING_STATUS or any future characteristic too.
+Fix: `flutter_blue_plus`'s `BluetoothDevice.clearGattCache()` (Android
+only, wraps the hidden `BluetoothGatt.refresh()` API) called right after
+connecting and before `discoverServices()`, unconditionally on every
+connect - cheap, and makes the app resilient to this same class of
+problem for the rest of the project instead of a one-time manual phone
+fix (forgetting the device in Android Bluetooth settings would have
+worked too, but doesn't scale to every tester's phone). Also fixed a
+separate own-goal while debugging this: `pairing_screen.dart`'s
+`catch (_)` on `ble.connect()` silently swallowed the real exception,
+showing only a generic "Connection failed" with no way to see why -
+added `debugPrint` of the real error and inlined it into the shown
+message, plus descriptive `orElse` on the STATS/CONFIG/TIME_SYNC
+`firstWhere` lookups so a real future mismatch says which one failed.
+Confirmed on hardware after the fix: `writeCharacteristic` on TIME_SYNC,
+`setNotifyValue` on STATS, and `readCharacteristic` on CONFIG all
+returned `GATT_SUCCESS` in one connection - the whole Phase 5 bonding +
+Phase 6 TIME_SYNC/STATS/CONFIG chain confirmed working end-to-end from
+the actual Flutter app for the first time.
+Status: RESOLVED (2026-07-09)
+
 ## Things that DON'T work: don't try again
 
 - WiFi monitor mode + Thread (802.15.4) on one ESP32-C6 radio: confirmed
