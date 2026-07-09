@@ -106,11 +106,38 @@
       `CONFIG_BT_NIMBLE_NVS_PERSIST` needing a direct sdkconfig edit same
       as earlier phases, `BLE_GATT_CHR_F_WRITE_ENC` needing the base
       `_WRITE` flag alongside it), see docs/LEARNINGS.md.
-- [ ] Phase 6: mobile Flutter skeleton
+- [ ] Phase 6: mobile Flutter skeleton (in progress, 2026-07-09). Firmware
+      side done and hardware-verified: new write-only, bonded-only
+      TIME_SYNC characteristic (`ble_gatt.c`, UUID in docs/DATA_MODEL.md)
+      sets the device's wall clock (`sd_storage_set_wallclock_unix_s()`)
+      from a raw little-endian uint32, matching docs/DECISIONS.md D6
+      ("phone sends unix time on every connection"); flashed and the boot
+      log confirms the characteristic registers with no errors.
+      docs/DECISIONS.md D9 records `flutter_blue_plus` over
+      `flutter_reactive_ble` as chosen in `.claude/rules/mobile-app.md`.
+      Flutter wasn't installed on this machine; installed the SDK
+      directly (see docs/LEARNINGS.md), then scaffolded `mobile/` via
+      `flutter create` and wrote the full app skeleton: `lib/models/`
+      (`Aggregate`/`DeviceConfig`, mirroring the STATS/CONFIG JSON in
+      docs/DATA_MODEL.md), `lib/ble/ble_service.dart` (scan/connect,
+      writes TIME_SYNC on every connect, subscribes STATS, reads/writes
+      CONFIG), `lib/storage/local_db.dart` (sqflite, one `aggregates`
+      table, exactly the four aggregate fields, upsert keyed on
+      date+hour), `lib/screens/` (pairing, dashboard with hourly/daily
+      `fl_chart` bar charts + new/returning KPIs, settings for RSSI
+      floor/returning window), full PL/EN l10n
+      (`lib/l10n/app_en.arb`/`app_pl.arb`). `flutter analyze` and
+      `flutter test` both pass clean.
+      Not yet done: running the app on an actual Android phone (`flutter
+      run`) and the full pairing → sync → dashboard → CONFIG-write loop
+      against real hardware - needs a physical device, which isn't
+      available on this machine. Phase 6's acceptance criteria (app
+      pairs, syncs aggregates, shows a chart, no raw data in the local
+      DB) stay open until that hardware pass happens.
 - [ ] Phase 7: docs/compliance/README.md + README.md, final documentation
 
 Note: the current code in `firmware/` and `app/` is still the old
 architecture (USB-CDC → Python desktop dashboard, SQLite). Don't remove /
 change it until the new path (BLE+SD) is ready and tested in parallel.
 
-Last updated: 2026-07-09 (Phase 5).
+Last updated: 2026-07-09 (Phase 6, in progress).

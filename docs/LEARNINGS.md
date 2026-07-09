@@ -270,6 +270,33 @@ characteristic never advertises write support at the ATT layer at all.
 Fix: `.flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_ENC`.
 Status: RESOLVED (2026-07-09)
 
+## [MOBILE] Flutter wasn't installed, Chocolatey couldn't install it either
+Date: 2026-07-09
+Problem: `flutter create` failed with "the term 'flutter' is not
+recognized" - no Flutter/Dart SDK on this machine at the start of Phase
+6. `choco install flutter -y` failed twice: first for lack of an
+elevated shell, then (even after answering yes to continue anyway) with
+`Chocolatey installed 0/0 packages`, caused by an unrelated corrupted
+`C:\ProgramData\chocolatey\lib\python312\python312.nupkg` blocking
+Chocolatey's package processing entirely, unrelated to Flutter itself.
+Root cause: Chocolatey on this machine is broken independent of
+anything Flutter-related; fixing it would mean touching an unrelated
+corrupted package outside this project's scope.
+Fix: downloaded the official Flutter SDK zip directly from
+`https://storage.googleapis.com/flutter_infra_release/releases/releases_windows.json`
+(current stable at the time: `flutter_windows_3.44.5-stable.zip`),
+extracted to `D:\flutter`, added `D:\flutter\bin` to the user's PATH via
+`[Environment]::SetEnvironmentVariable(..., "User")`. PATH changes don't
+propagate to an already-running shell, so any Flutter invocation in the
+same session needs the full path (`D:\flutter\bin\flutter.bat`) until a
+fresh shell picks up the new PATH. `flutter --version`/`flutter doctor`/
+`flutter create`/`flutter pub get`/`flutter analyze`/`flutter test` all
+confirmed working this way - meaning, contrary to the original Phase 6
+plan's assumption, these commands (everything except `flutter run`
+against a real device/emulator) can in fact be run directly instead of
+waiting on the user every time.
+Status: RESOLVED (2026-07-09)
+
 ## Things that DON'T work: don't try again
 
 - WiFi monitor mode + Thread (802.15.4) on one ESP32-C6 radio: confirmed
