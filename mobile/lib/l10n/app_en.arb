@@ -12,6 +12,7 @@
   "connecting": "Connecting...",
   "connected": "Connected",
   "connectionFailed": "Connection failed",
+  "bluetoothPermissionDenied": "Bluetooth permission denied - allow it in app settings",
 
   "dashboardTitle": "Dashboard",
   "todayLabel": "Today",

@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../models/aggregate.dart';
 import '../models/device_config.dart';
@@ -36,14 +37,33 @@ class BleService extends ChangeNotifier {
 
   BluetoothDevice? get device => _device;
 
-  Stream<List<ScanResult>> scan({
+  Stream<List<ScanResult>> get scanResults => FlutterBluePlus.scanResults;
+
+  /// Android 12+ (API 31+) treats BLE scan/connect as runtime-requestable
+  /// "dangerous" permissions - declaring them in AndroidManifest.xml alone
+  /// isn't enough, flutter_blue_plus doesn't request them on our behalf,
+  /// and startScan() throws a PlatformException without one. iOS instead
+  /// prompts automatically off the Info.plist usage string on first BLE
+  /// use, no explicit request needed there.
+  Future<bool> requestPermissions() async {
+    if (defaultTargetPlatform != TargetPlatform.android) return true;
+    final statuses = await [
+      Permission.bluetoothScan,
+      Permission.bluetoothConnect,
+    ].request();
+    return statuses.values.every((s) => s.isGranted);
+  }
+
+  Future<void> scan({
     Duration timeout = const Duration(seconds: 10),
-  }) {
-    FlutterBluePlus.startScan(
+  }) async {
+    if (!await requestPermissions()) {
+      throw StateError('Bluetooth permission not granted');
+    }
+    await FlutterBluePlus.startScan(
       withServices: [PrintBackUuids.service],
       timeout: timeout,
     );
-    return FlutterBluePlus.scanResults;
   }
 
   Future<void> stopScan() => FlutterBluePlus.stopScan();
@@ -52,6 +72,9 @@ class BleService extends ChangeNotifier {
   /// clock to TIME_SYNC (docs/DECISIONS.md D6 - "on every connection", not
   /// just first pairing), then subscribes to STATS notifications.
   Future<void> connect(BluetoothDevice device) async {
+    if (!await requestPermissions()) {
+      throw StateError('Bluetooth permission not granted');
+    }
     _device = device;
     await device.connect(mtu: null);
 

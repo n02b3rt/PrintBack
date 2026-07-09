@@ -12,6 +12,7 @@
   "connecting": "Łączenie...",
   "connected": "Połączono",
   "connectionFailed": "Połączenie nieudane",
+  "bluetoothPermissionDenied": "Odmówiono uprawnień Bluetooth - zezwól w ustawieniach aplikacji",
 
   "dashboardTitle": "Panel",
   "todayLabel": "Dziś",

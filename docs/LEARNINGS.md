@@ -297,6 +297,41 @@ against a real device/emulator) can in fact be run directly instead of
 waiting on the user every time.
 Status: RESOLVED (2026-07-09)
 
+## [MOBILE] first real phone run: adb install blocked, then BLE scan permission crash
+Date: 2026-07-09
+Problem: two separate issues surfaced back to back on the first `flutter
+run` against a real Android phone (Xiaomi, MIUI/HyperOS, Android 16).
+(1) `adb install` failed every time with `INSTALL_FAILED_USER_RESTRICTED:
+Install canceled by user`, even though the APK built fine. (2) After
+fixing that, the app launched but tapping "scan for devices" crashed
+with `PlatformException(startScan, Permission
+android.permission.BLUETOOTH_SCAN required to scan devices, null, null)`.
+Root cause: (1) MIUI/HyperOS silently blocks ADB-installed APKs unless
+"Install via USB" is explicitly enabled in Developer options, which
+itself requires being signed into a Mi Account with network access at
+the moment the toggle is flipped - a device/OS setting, not a project
+bug. (2) a real code gap: Android 12+ (API 31+) makes
+`BLUETOOTH_SCAN`/`BLUETOOTH_CONNECT` runtime-requestable "dangerous"
+permissions. `AndroidManifest.xml` never declared them, and even with
+the manifest entries `flutter_blue_plus` does not request the runtime
+permission itself before calling native `startScan()` - it just throws.
+`ios/Runner/Info.plist` was missing `NSBluetoothAlwaysUsageDescription`
+too (iOS prompts automatically off that string but crashes without it).
+Fix: (1) user enabled "Install via USB" on the phone, no firmware/app
+change needed. (2) added the "no location" manifest block from
+flutter_blue_plus's own README (`BLUETOOTH_SCAN` with
+`usesPermissionFlags="neverForLocation"`, `BLUETOOTH_CONNECT`, plus
+legacy `BLUETOOTH`/`BLUETOOTH_ADMIN`/`ACCESS_FINE_LOCATION` capped at
+`maxSdkVersion="30"` for pre-Android-12 devices) to
+`android/app/src/main/AndroidManifest.xml`; added
+`NSBluetoothAlwaysUsageDescription` to `ios/Runner/Info.plist`; added
+`permission_handler` and a `BleService.requestPermissions()` that
+requests `Permission.bluetoothScan`/`Permission.bluetoothConnect` before
+every `scan()`/`connect()` call on Android (skipped on other platforms -
+iOS prompts on its own from the Info.plist string, no explicit request
+needed there).
+Status: RESOLVED (2026-07-09)
+
 ## Things that DON'T work: don't try again
 
 - WiFi monitor mode + Thread (802.15.4) on one ESP32-C6 radio: confirmed

@@ -26,10 +26,17 @@ class _PairingScreenState extends State<PairingScreen> {
       _results = [];
     });
     final ble = context.read<BleService>();
-    final sub = ble.scan().listen((results) {
+    final sub = ble.scanResults.listen((results) {
       setState(() => _results = results);
     });
-    await Future.delayed(const Duration(seconds: 10));
+    try {
+      await ble.scan();
+      await Future.delayed(const Duration(seconds: 10));
+    } catch (_) {
+      if (mounted) {
+        setState(() => _error = AppLocalizations.of(context)!.bluetoothPermissionDenied);
+      }
+    }
     await sub.cancel();
     if (mounted) setState(() => _scanning = false);
   }

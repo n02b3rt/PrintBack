@@ -40,6 +40,7 @@ dependencies:
   # BLE stack (docs/DECISIONS.md D9), local aggregate cache, charts, state
   # management, PL/EN l10n (.claude/rules/mobile-app.md).
   flutter_blue_plus: ^1.35.3
+  permission_handler: ^11.3.1
   sqflite: ^2.4.2
   path: ^1.9.0
   fl_chart: ^1.0.0
