@@ -31,6 +31,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   StreamSubscription<Aggregate>? _statsSub;
   List<Aggregate> _hourlyToday = [];
   List<Aggregate> _recentDaily = [];
+  Aggregate? _todayDaily;
 
   @override
   void initState() {
@@ -54,10 +55,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Future<void> _reload() async {
     final hourly = await _localDb.hourlyForDate(_todayString());
     final daily = await _localDb.recentDaily();
+    final today = await _localDb.dailyForDate(_todayString());
     if (!mounted) return;
     setState(() {
       _hourlyToday = hourly;
       _recentDaily = daily;
+      _todayDaily = today;
     });
   }
 
@@ -70,8 +73,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
-    final todayUnique = _hourlyToday.fold<int>(0, (sum, a) => sum + a.unique);
-    final todayReturning =
+    // Prefer the daily "today so far" running total (from readCurrentStats()
+    // on connect, or a daily rollover notification) over summing hourly
+    // rows: the hourly breakdown only fills in as real hour-boundary
+    // notifications arrive during a live connection, so it's frequently
+    // empty even when the device already has a same-day total to show.
+    final todayUnique = _todayDaily?.unique ??
+        _hourlyToday.fold<int>(0, (sum, a) => sum + a.unique);
+    final todayReturning = _todayDaily?.returning ??
         _hourlyToday.fold<int>(0, (sum, a) => sum + a.returning);
 
     return Scaffold(

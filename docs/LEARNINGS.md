@@ -401,6 +401,35 @@ than improvising a bigger fix mid-session.
 Status: RESOLVED (2026-07-09) for the immediate 0/0 symptom. Full
 history backfill on (re)connect is still open, not scoped into Phase 6.
 
+## [MOBILE] local_db silently duplicated the daily row on every reconnect
+Date: 2026-07-09
+Problem: after the STATS-initial-read fix above, the "last days" chart
+showed two bars for the exact same date (07-08) instead of one, and the
+new/returning KPI cards still read 0/0 despite a daily total clearly
+having synced (visible in the duplicated chart bars).
+Root cause: two separate bugs. (1) `local_db.dart`'s schema was
+`hour INTEGER` (nullable) with `UNIQUE(date, hour)`; daily rows are
+stored with `hour = NULL`. SQLite's UNIQUE constraint treats every NULL
+as distinct from every other NULL (documented SQLite behavior, not a
+bug in SQLite), so the constraint never actually deduplicated repeated
+daily-row upserts - every reconnect's `readCurrentStats()` call inserted
+a fresh "duplicate" row for the same calendar date instead of replacing
+the existing one. (2) `dashboard_screen.dart`'s KPI cards summed
+`_hourlyToday` (rows with `hour` 0-23) instead of reading the daily
+"today so far" record directly - since the hourly breakdown only fills
+in from live hour-boundary notifications (still empty this early), the
+KPIs stayed 0/0 even once a real daily total existed in the database.
+Fix: (1) switched the `hour` column to `NOT NULL` with `-1` as the
+"whole day" sentinel instead of SQL NULL - deliberately matching the
+firmware's own on-device convention (`hour_or_day: -1 = whole day`,
+firmware/main/sd_paths.h / docs/DATA_MODEL.md), so the UNIQUE index's
+normal integer comparison actually catches duplicates. Bumped the
+sqflite schema to version 2 with `onUpgrade` dropping and recreating the
+table (acceptable for a local dev-stage cache with no real user data to
+preserve). (2) KPI cards now prefer `LocalDb.dailyForDate()`'s result,
+falling back to the hourly sum only if no daily row exists yet.
+Status: RESOLVED (2026-07-09)
+
 ## Things that DON'T work: don't try again
 
 - WiFi monitor mode + Thread (802.15.4) on one ESP32-C6 radio: confirmed

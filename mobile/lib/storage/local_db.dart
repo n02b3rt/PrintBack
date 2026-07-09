@@ -14,26 +14,41 @@ class LocalDb {
 
   Database? _db;
 
+  /// Sentinel for a daily (whole-day) row, matching the on-device C
+  /// struct's own convention (`hour_or_day: -1 = whole day`,
+  /// firmware/main/sd_paths.h) - not just picked for consistency: SQLite's
+  /// UNIQUE constraint treats every NULL as distinct from every other
+  /// NULL, so a nullable `hour` column silently fails to deduplicate
+  /// repeated daily-row upserts (each looked like a "new" unique key).
+  /// A real integer sentinel makes the UNIQUE(date, hour) index work.
+  static const _dayHour = -1;
+
   Future<Database> _open() async {
     if (_db != null) return _db!;
     final path = join(await getDatabasesPath(), _dbName);
     _db = await openDatabase(
       path,
-      version: 1,
-      onCreate: (db, version) async {
-        await db.execute('''
-          CREATE TABLE $_table (
-            date TEXT NOT NULL,
-            hour INTEGER,
-            unique_count INTEGER NOT NULL,
-            returning_count INTEGER NOT NULL,
-            kanon_applied INTEGER NOT NULL,
-            UNIQUE(date, hour)
-          )
-        ''');
+      version: 2,
+      onCreate: (db, version) => _createTable(db),
+      onUpgrade: (db, oldVersion, newVersion) async {
+        await db.execute('DROP TABLE IF EXISTS $_table');
+        await _createTable(db);
       },
     );
     return _db!;
+  }
+
+  Future<void> _createTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE $_table (
+        date TEXT NOT NULL,
+        hour INTEGER NOT NULL,
+        unique_count INTEGER NOT NULL,
+        returning_count INTEGER NOT NULL,
+        kanon_applied INTEGER NOT NULL,
+        UNIQUE(date, hour)
+      )
+    ''');
   }
 
   /// Upsert on (date, hour): a re-sent notification for a row already
@@ -45,7 +60,7 @@ class LocalDb {
       _table,
       {
         'date': agg.date,
-        'hour': agg.hour,
+        'hour': agg.hour ?? _dayHour,
         'unique_count': agg.unique,
         'returning_count': agg.returning,
         'kanon_applied': agg.kanon ? 1 : 0,
@@ -59,19 +74,20 @@ class LocalDb {
     final db = await _open();
     final rows = await db.query(
       _table,
-      where: 'date = ? AND hour IS NOT NULL',
+      where: 'date = ? AND hour >= 0',
       whereArgs: [date],
       orderBy: 'hour ASC',
     );
     return rows.map(_fromRow).toList();
   }
 
-  /// Daily rows (`hour IS NULL`), most recent first, capped at [limit].
+  /// Daily rows (`hour = -1`), most recent first, capped at [limit].
   Future<List<Aggregate>> recentDaily({int limit = 30}) async {
     final db = await _open();
     final rows = await db.query(
       _table,
-      where: 'hour IS NULL',
+      where: 'hour = ?',
+      whereArgs: [_dayHour],
       orderBy: 'date DESC',
       limit: limit,
     );
@@ -83,8 +99,8 @@ class LocalDb {
     final db = await _open();
     final rows = await db.query(
       _table,
-      where: 'date = ? AND hour IS NULL',
-      whereArgs: [date],
+      where: 'date = ? AND hour = ?',
+      whereArgs: [date, _dayHour],
       limit: 1,
     );
     if (rows.isEmpty) return null;
@@ -92,9 +108,10 @@ class LocalDb {
   }
 
   Aggregate _fromRow(Map<String, Object?> row) {
+    final hour = row['hour'] as int;
     return Aggregate(
       date: row['date'] as String,
-      hour: row['hour'] as int?,
+      hour: hour == _dayHour ? null : hour,
       unique: row['unique_count'] as int,
       returning: row['returning_count'] as int,
       kanon: (row['kanon_applied'] as int) != 0,
