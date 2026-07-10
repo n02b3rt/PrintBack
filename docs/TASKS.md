@@ -189,3 +189,32 @@ Tasks:
 Acceptance criteria: the documentation describes the repo's actual state
 after the rebuild, a new contributor (or you in six months) understands
 all of it without asking.
+
+---
+
+## PHASE 8: production sync, multi-device, redesign
+
+Not part of the original refactor plan - added after real-phone testing
+of Phase 6 surfaced concrete gaps (see docs/PROGRESS.md for the request
+history). Lives on `feature/sync-multidevice-redesign`, not
+`refactor/ble-sd-flutter` (that branch is done and merged).
+
+Tasks:
+1. Firmware: SYNC characteristic, backlog replay of `stats/daily.bin`
+   (docs/DATA_MODEL.md "BLE SYNC payload", docs/DECISIONS.md D10).
+2. Mobile foundations: light/dark theming, `shared_preferences`,
+   device-scoped local db (`device_id` column).
+3. Auto-reconnect on launch (`FlutterBluePlus.systemDevices`) instead of
+   a mandatory manual scan every time; device switching in Settings.
+4. Bottom-nav shell (Dashboard/Statystyki/Ustawienia), SYNC wiring
+   (automatic on connect + manual "Synchronizuj teraz"), new Statystyki
+   screen (weekly/monthly totals, returning rate, day-of-week pattern,
+   best-effort peak hour) computed entirely from already-synced
+   aggregates - no new per-client data, ever.
+5. Visual redesign (restrained dark theme, flat light theme) across all
+   screens, interactive charts (tap a bar for detail).
+
+Acceptance criteria: app reopens and reconnects without a manual scan,
+multiple bonded devices can be listed and switched between, Statystyki
+shows real multi-day numbers after a sync, no raw/per-client data
+anywhere in the local db or on the wire.

@@ -74,7 +74,7 @@ unlimited retention, per D3, aggregates aren't personal data).
 
 ## BLE GATT service and characteristic UUIDs
 
-One primary service, three characteristics (vendor-specific 128-bit
+One primary service, four characteristics (vendor-specific 128-bit
 UUIDs, randomly generated, no relation to any BLE SIG-adopted service).
 PAIRING_STATUS is still not implemented - see docs/ARCHITECTURE.md "BLE
 GATT (sketch)".
@@ -85,6 +85,7 @@ GATT (sketch)".
 | STATS      | `1b1465c2-296e-4acd-b544-ba1a30ed7f13`  | read, notify      |
 | CONFIG     | `c5468eed-52a8-434b-bc6f-0d60c323f07f`  | read, write (bonded only) |
 | TIME_SYNC  | `5ebb01c3-8110-4ace-b139-436c1fa0b81f`  | write-only (bonded only) |
+| SYNC       | `8f2c1e40-7bb5-4b9f-9e11-3c6b9d5a2f77`  | write-only (bonded only) |
 
 ## BLE STATS payload: JSON (not CBOR)
 
@@ -109,15 +110,14 @@ JSON bytes, the phone reassembles fragments in order. The device should
 proactively request an MTU exchange on connect, so fragmentation stays a
 rare case.
 
-**Backfill after a longer gap:** the device replays every unsynced row
-as consecutive individual STATS notifications (no new batch format),
-even after a full 30-day gap that's ~750 rows, trivial for BLE
-notification throughput. Tracking "what's already synced with this
-bond" (e.g. a per-bond last-synced timestamp in NVS) needs a stable bond
-identity, which doesn't exist before Phase 5 (button + bonding); Phase 4
-only notifies new records produced while a connection is already active,
-it does not replay history on (re)connect. Full backfill is Phase 5
-scope, alongside bonding.
+**Backfill after a longer gap:** implemented in Phase 8 via the SYNC
+characteristic below - the device replays unsynced daily rows as
+consecutive individual STATS notifications (no new batch format on this
+one either), same JSON as a live rollover notify. See "BLE SYNC payload"
+below for the protocol; docs/DECISIONS.md D10 for why the device doesn't
+track per-bond sync state itself. Hourly historical backfill is out of
+scope - only `stats/daily.bin` gets replayed, hourly patterns accumulate
+from live notifications during future connections instead.
 
 ## BLE CONFIG payload (read + write)
 
@@ -150,6 +150,24 @@ RTC (docs/ARCHITECTURE.md "Wall-clock time"); this is the only way its
 clock is ever corrected after the Kconfig fallback at boot
 (`sd_storage_set_wallclock_unix_s()`, firmware/main/sd_storage.h). Write
 requires a bonded/encrypted link, same reasoning as CONFIG.
+
+## BLE SYNC payload (write-only)
+
+Raw 4 bytes, little-endian `uint32` `since_unix_day` (days since
+1970-01-01 UTC, same unit as `aggregate_record_t.date_unix_day`) - not
+JSON, same reasoning as TIME_SYNC. `0` means "send everything".
+
+The phone already knows the newest date it has stored locally, so it
+computes `since_unix_day` itself (typically "latest local date + 1") and
+writes it once per connection, right after TIME_SYNC. The device replays
+every `stats/daily.bin` record with `date_unix_day >= since_unix_day`,
+oldest first, as ordinary STATS notifications
+(`firmware/main/ble_gatt.c`'s `sync_tick_cb()`, paced off a dedicated
+timer so a large backlog doesn't block the NimBLE host task - see
+docs/DECISIONS.md D10). There is no explicit "replay finished" marker on
+the wire; the phone treats a ~1.5s gap with no new STATS notification as
+"caught up". Write requires a bonded/encrypted link, same reasoning as
+CONFIG/TIME_SYNC.
 
 **File format header (recommendation, beyond the letter of TASKS.md):**
 none of the structs above have a version/magic byte. If the layout ever

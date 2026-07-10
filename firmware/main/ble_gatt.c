@@ -68,6 +68,25 @@ static const ble_uuid128_t s_time_sync_chr_uuid =
     BLE_UUID128_INIT(0x1f, 0xb8, 0xa0, 0x1f, 0x6c, 0x43, 0x39, 0xb1,
                       0xce, 0x4a, 0x10, 0x81, 0xc3, 0x01, 0xbb, 0x5e);
 
+/* 8f2c1e40-7bb5-4b9f-9e11-3c6b9d5a2f77 (docs/DATA_MODEL.md), write-only,
+ * bonded: the phone requests a backlog replay of finalized daily
+ * aggregates it doesn't have yet (docs/DECISIONS.md D10). Raw 4-byte
+ * little-endian uint32 `since_unix_day` - 0 means "everything". Every
+ * matching record from stats/daily.bin gets sent as a normal STATS
+ * notification (reuses ble_gatt_notify_stats(), same JSON, no new wire
+ * format), oldest first. */
+static const ble_uuid128_t s_sync_chr_uuid =
+    BLE_UUID128_INIT(0x77, 0x2f, 0x5a, 0x9d, 0x6b, 0x3c, 0x11, 0x9e,
+                      0x9f, 0x4b, 0xb5, 0x7b, 0x40, 0x1e, 0x2c, 0x8f);
+
+/* Sync backlog replay is paced off a dedicated fast timer, not the
+ * write callback itself - draining hundreds of days of history
+ * synchronously inside a GATT access callback would stall the NimBLE
+ * host task. 100ms x 8 records/tick is 80 records/s, fast enough that
+ * even years of daily history replays in well under a minute. */
+#define SYNC_BATCH_SIZE 8
+#define SYNC_TICK_MS 100
+
 static uint16_t s_stats_val_handle;
 static uint16_t s_conn_handle = BLE_HS_CONN_HANDLE_NONE;
 static uint8_t  s_own_addr_type;
@@ -82,6 +101,14 @@ static uint8_t  s_own_addr_type;
 static bool               s_pairing_mode_active = false;
 static esp_timer_handle_t s_pairing_timer;
 static ble_addr_t         s_whitelist[MAX_BONDED_PEERS];
+
+/* SYNC backlog replay state (docs/DECISIONS.md D10). s_sync_cursor_unix_day
+ * is the next date_unix_day still owed to the phone; sync_tick_cb()
+ * advances it as records get sent and stops the timer once it runs off
+ * the end of stats/daily.bin. */
+static bool               s_sync_pending = false;
+static uint32_t           s_sync_cursor_unix_day;
+static esp_timer_handle_t s_sync_timer;
 
 /* gatt_advertise() and gatt_gap_event() call each other (advertise passes
  * gatt_gap_event as the connection callback; the event handler re-arms
@@ -196,9 +223,78 @@ static int gatt_time_sync_write(struct ble_gatt_access_ctxt *ctxt)
     return 0;
 }
 
+/* Streams the next batch of matching stats/daily.bin records via
+ * ble_gatt_notify_stats() - same JSON, same wire format as a live
+ * rollover notify, the phone can't tell the difference. Re-scans the
+ * file from the start every tick rather than tracking a byte offset:
+ * simpler, and daily.bin stays small (12B/record) even after years of
+ * history, so the repeated scan is cheap at this scale. */
+static void sync_tick_cb(void *arg)
+{
+    (void)arg;
+    if (!s_sync_pending) return;
+
+    char path[SD_STATS_PATH_MAX_LEN];
+    FILE *f = NULL;
+    if (sd_storage_is_ready() && sd_format_stats_daily_path(path, sizeof(path)) == 0) {
+        f = fopen(path, "rb");
+    }
+    if (!f) {
+        s_sync_pending = false;
+        esp_timer_stop(s_sync_timer);
+        return;
+    }
+
+    aggregate_record_t rec;
+    int sent = 0;
+    bool more = false;
+    while (fread(&rec, sizeof(rec), 1, f) == 1) {
+        if (rec.date_unix_day < s_sync_cursor_unix_day) continue;
+        if (sent >= SYNC_BATCH_SIZE) {
+            more = true;
+            break;
+        }
+        ble_gatt_notify_stats(&rec);
+        s_sync_cursor_unix_day = rec.date_unix_day + 1;
+        sent++;
+    }
+    fclose(f);
+
+    if (!more) {
+        s_sync_pending = false;
+        esp_timer_stop(s_sync_timer);
+        ESP_LOGI(TAG, "sync: backlog replay complete");
+    }
+}
+
+/* Write-only: the phone requests a replay of every finalized daily
+ * aggregate it doesn't already have (docs/DECISIONS.md D10). The device
+ * doesn't track per-bond sync state - the phone already knows what it
+ * has locally and just asks "send me everything from this day on",
+ * simpler and survives an app reinstall or a phone swap with no
+ * orphaned state left behind on the device. */
+static int gatt_sync_write(struct ble_gatt_access_ctxt *ctxt)
+{
+    uint32_t since_unix_day;
+    uint16_t copied;
+    if (OS_MBUF_PKTLEN(ctxt->om) != sizeof(since_unix_day)) {
+        return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+    }
+    if (ble_hs_mbuf_to_flat(ctxt->om, &since_unix_day, sizeof(since_unix_day), &copied) != 0 ||
+        copied != sizeof(since_unix_day)) {
+        return BLE_ATT_ERR_UNLIKELY;
+    }
+
+    s_sync_cursor_unix_day = since_unix_day;
+    s_sync_pending = true;
+    esp_timer_start_periodic(s_sync_timer, (uint64_t)SYNC_TICK_MS * 1000ULL);
+    ESP_LOGI(TAG, "sync requested: since_unix_day=%" PRIu32, since_unix_day);
+    return 0;
+}
+
 /* Dispatches by characteristic UUID. STATS is read+notify only; CONFIG
  * is read+write (write gated behind encryption, see gatt_config_write);
- * TIME_SYNC is write-only, also gated behind encryption. */
+ * TIME_SYNC and SYNC are write-only, also gated behind encryption. */
 static int gatt_access_cb(uint16_t conn_handle, uint16_t attr_handle,
                            struct ble_gatt_access_ctxt *ctxt, void *arg)
 {
@@ -218,6 +314,9 @@ static int gatt_access_cb(uint16_t conn_handle, uint16_t attr_handle,
     }
     if (ble_uuid_cmp(uuid, &s_time_sync_chr_uuid.u) == 0) {
         return gatt_time_sync_write(ctxt);
+    }
+    if (ble_uuid_cmp(uuid, &s_sync_chr_uuid.u) == 0) {
+        return gatt_sync_write(ctxt);
     }
     return BLE_ATT_ERR_UNLIKELY;
 }
@@ -243,6 +342,10 @@ static const struct ble_gatt_svc_def s_gatt_svcs[] = {
                 .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_ENC,
             }, {
                 .uuid = &s_time_sync_chr_uuid.u,
+                .access_cb = gatt_access_cb,
+                .flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_ENC,
+            }, {
+                .uuid = &s_sync_chr_uuid.u,
                 .access_cb = gatt_access_cb,
                 .flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_ENC,
             }, {
@@ -495,6 +598,12 @@ void ble_gatt_start(void)
         .name = "ble_pairing",
     };
     esp_timer_create(&pairing_timer_args, &s_pairing_timer);
+
+    const esp_timer_create_args_t sync_timer_args = {
+        .callback = sync_tick_cb,
+        .name = "ble_sync",
+    };
+    esp_timer_create(&sync_timer_args, &s_sync_timer);
 
     ble_svc_gap_init();
     ble_svc_gatt_init();

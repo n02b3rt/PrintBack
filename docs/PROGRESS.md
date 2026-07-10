@@ -151,6 +151,29 @@
       next real rollover (docs/DECISIONS.md D6 already frames this as
       expected drift-then-catch-up, not a bug).
 - [ ] Phase 7: docs/compliance/README.md + README.md, final documentation
+- [ ] Phase 8: production sync, multi-device, redesign (in progress,
+      2026-07-10). Not in the original plan - added after real-phone use
+      of Phase 6 surfaced concrete gaps: no way to get more than "today"
+      onto the phone, had to manually re-scan every app launch even
+      though already bonded, and the UI was bare Material widgets.
+      Lives on `feature/sync-multidevice-redesign` (`refactor/ble-sd-flutter`
+      is done, this branches off `main`). See docs/TASKS.md Phase 8 for
+      the task breakdown.
+      8a done: new write-only, bonded-only SYNC characteristic
+      (`ble_gatt.c`, UUID/payload in docs/DATA_MODEL.md) replays
+      unsynced `stats/daily.bin` records through the existing
+      `ble_gatt_notify_stats()` - same STATS JSON, no new wire format.
+      Paced off a dedicated 100ms timer (`sync_tick_cb()`, 8
+      records/tick) instead of the original plan's housekeeper-tick
+      idea, so a large backlog can't stall the NimBLE host task; this
+      is a stricter version of the same "deferred, non-blocking, batched"
+      design, not a scope change. Device holds no per-bond sync state,
+      see docs/DECISIONS.md D10. Built clean, flashed, boot log confirms
+      `registered characteristic 8f2c1e40-... def_handle=22 val_handle=23`
+      with no errors and the rest of the system (SD, WiFi sniffer,
+      whitelist) unaffected. The write path itself (an actual replay,
+      triggered from a real BLE central) still needs a phone/nRF Connect
+      test - not yet done, needs the user.
 
 Note: the current code in `firmware/` and `app/` is still the old
 architecture (USB-CDC → Python desktop dashboard, SQLite). Don't remove /

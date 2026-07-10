@@ -100,3 +100,22 @@ multi-device scanning apps than a single-peripheral-per-user case like
 this one. Already the working assumption since `.claude/rules/mobile-app.md`
 was written; this entry just formalizes it per docs/TASKS.md Phase 6's
 explicit request to record the choice.
+
+## D10: client-driven sync (phone asks "since when"), device holds no per-bond state
+
+Rejected: device tracks "what's already synced" per bonded phone (e.g.
+a last-synced timestamp keyed by bond identity in NVS).
+
+Reason: the phone already has a local database of everything it's
+synced (docs/DATA_MODEL.md "Backfill after a longer gap"), so it already
+knows the answer to "what am I missing" - duplicating that as per-bond
+state on the device adds real failure modes for no benefit: a phone
+factory-reset or the app reinstalled loses its local data but the device
+would still think it's "synced up to day N" and never replay anything;
+multiple phones bonded to one device would each need their own tracked
+cursor; NVS wear from writing this on every sync. Client-driven avoids
+all of it - the phone just asks "send me everything from date X", the
+device is stateless about who's asking. Cost: a full resync always
+means "since_unix_day=0, replay everything" rather than a targeted
+diff, but daily.bin stays small (12B/record) even after years, so this
+is cheap in practice.
