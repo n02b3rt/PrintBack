@@ -32,13 +32,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
   List<Aggregate> _hourlyToday = [];
   List<Aggregate> _recentDaily = [];
   Aggregate? _todayDaily;
+  late final String _deviceId;
 
   @override
   void initState() {
     super.initState();
     final ble = context.read<BleService>();
+    // DashboardScreen is only ever reached after a successful connect(),
+    // so a device is always present here.
+    _deviceId = ble.device!.remoteId.str;
     _statsSub = ble.statsUpdates.listen((agg) async {
-      await _localDb.upsert(agg);
+      await _localDb.upsert(_deviceId, agg);
       await _reload();
     });
     _loadInitialStats(ble);
@@ -48,14 +52,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Future<void> _loadInitialStats(BleService ble) async {
     final initial = await ble.readCurrentStats();
     if (initial == null) return;
-    await _localDb.upsert(initial);
+    await _localDb.upsert(_deviceId, initial);
     await _reload();
   }
 
   Future<void> _reload() async {
-    final hourly = await _localDb.hourlyForDate(_todayString());
-    final daily = await _localDb.recentDaily();
-    final today = await _localDb.dailyForDate(_todayString());
+    final hourly = await _localDb.hourlyForDate(_deviceId, _todayString());
+    final daily = await _localDb.recentDaily(_deviceId, limit: 14);
+    final today = await _localDb.dailyForDate(_deviceId, _todayString());
     if (!mounted) return;
     setState(() {
       _hourlyToday = hourly;
