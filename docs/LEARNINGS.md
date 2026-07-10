@@ -501,6 +501,26 @@ yet tried: `kotlin.incremental=false` in
 storage subsystem, not just the drive-letter path through it), or
 `org.gradle.parallel=false` (if the double-registration is a
 parallel-worker race rather than a pure daemon bug).
+
+Update: user approved trying `kotlin.incremental=false`. Added it to
+`mobile/android/gradle.properties`, re-ran `flutter run`. Result: no
+crash this time, but the build never finished either - `java`/`dart`
+process CPU time stopped climbing (checked twice, ~5 minutes apart,
+CPU time moved by under 1 second total both times) while the command
+itself produced zero output, not even the normal immediate "Launching
+lib\main.dart..." line. Concluded this is a genuine hang, not "just
+slower without incremental caching" - killed the background task and
+the stuck `java`/`dart` processes manually (`Stop-Process -Force`).
+Reverted `kotlin.incremental=false` (made things worse, not better - a
+silent hang is harder to diagnose than a crash with a stack trace).
+Three real attempts now (cross-drive PUB_CACHE fix, confirmed to fix
+its own specific symptom; `kotlin.incremental=false`, causes a hang) -
+stopping here per the "2 tries" rule and asking the user directly
+rather than guessing a fourth fix, since this is now looking like it
+might need something outside what's diagnosable from the Gradle output
+alone (a corrupted global `~/.gradle` cache, a JDK/antivirus
+interaction, or a genuine upstream Kotlin Gradle Plugin bug needing a
+version pin).
 Status: OPEN
 
 - WiFi monitor mode + Thread (802.15.4) on one ESP32-C6 radio: confirmed
