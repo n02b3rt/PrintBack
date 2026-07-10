@@ -521,7 +521,42 @@ might need something outside what's diagnosable from the Gradle output
 alone (a corrupted global `~/.gradle` cache, a JDK/antivirus
 interaction, or a genuine upstream Kotlin Gradle Plugin bug needing a
 version pin).
-Status: OPEN
+
+Update: user approved clearing the global `~/.gradle/caches` and
+`/daemon` (confirmed explicitly, since this affects every Gradle
+project on the machine, not just this one). Cleared them, `flutter
+clean` + `flutter pub get` in the project, retried. Result: build
+succeeded outright - `assembleDebug` in 231s (slow, no incremental
+cache to warm-start from, but a normal number for a full rebuild, not a
+hang), APK installed, app launched, BLE auto-reconnected without a
+manual scan (confirms Phase 8c working too). One genuine corrupted
+piece of state was the actual root cause all along: the global Gradle
+cache, not (only) the cross-drive pub cache path.
+Important correction to the "hang" diagnosis above: re-reading how I
+checked it, the "zero output" observation for both the `PUB_CACHE`-only
+attempt and the `kotlin.incremental=false` attempt is suspect - both
+were run through `... | Select-Object -Last 150` piped into a
+backgrounded task. `Select-Object -Last N` buffers its *entire* input
+before emitting anything, and `flutter run` never closes its own
+stdout (it stays attached for hot reload) - so that pattern will show
+literally zero output for the whole lifetime of the process regardless
+of whether the build is proceeding normally, slowly, or actually stuck.
+The CPU-plateau readings still looked like a real stall in the
+`kotlin.incremental=false` case specifically, but given this successful
+run also had a multi-minute stretch where CPU barely moved (right after
+the heavy compile phase finished, while Gradle was doing lighter
+packaging/install work), it's possible that attempt would also have
+finished if left running longer, and killing it was premature. Not
+re-opening that investigation since the actual fix (global cache clear)
+already resolved the real problem either way - but noting this so a
+future session doesn't trust a `Select-Object -Last N` pipe as proof of
+a hang. For any future long-running `flutter run` via a backgrounded
+command, either drop `Select-Object -Last N` entirely or write straight
+to a file without a buffering filter in between.
+Status: RESOLVED (2026-07-10) - root cause was a corrupted global
+`~/.gradle` cache (cleared) compounding a real cross-drive `PUB_CACHE`
+issue (also fixed); `kotlin.incremental=false` was an unnecessary
+detour, already reverted.
 
 - WiFi monitor mode + Thread (802.15.4) on one ESP32-C6 radio: confirmed
   radio collisions on another project, don't retest from scratch. See docs/DECISIONS.md D4.
