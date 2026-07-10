@@ -42,6 +42,20 @@ class BleService extends ChangeNotifier {
 
   BluetoothDevice? get device => _device;
 
+  /// True from the moment requestSync() is called until ~1.5s pass with
+  /// no new STATS notification arriving - the same "quiet period means
+  /// done" heuristic the wire protocol itself uses (docs/DATA_MODEL.md
+  /// "BLE SYNC payload" - there's no explicit completion marker). Lets
+  /// the UI show a real "syncing..." state instead of firing a write and
+  /// going silent.
+  bool _isSyncing = false;
+  bool get isSyncing => _isSyncing;
+
+  DateTime? _lastSyncCompleted;
+  DateTime? get lastSyncCompleted => _lastSyncCompleted;
+
+  Timer? _syncIdleTimer;
+
   Stream<List<ScanResult>> get scanResults => FlutterBluePlus.scanResults;
 
   /// Android 12+ (API 31+) treats BLE scan/connect as runtime-requestable
@@ -81,13 +95,28 @@ class BleService extends ChangeNotifier {
     return FlutterBluePlus.systemDevices([PrintBackUuids.service]);
   }
 
-  /// Looks for an already-bonded PrintBack device without an active
-  /// scan (much faster than the manual pairing flow) and connects to
-  /// it. Prefers the device the user last successfully connected to, if
-  /// it's among the ones found; otherwise the first available. Returns
-  /// null - never throws - if nothing's found or the connect attempt
-  /// fails, so callers can fall back to the manual pairing screen
-  /// without treating "no device nearby yet" as an error.
+  /// Looks for an already-bonded PrintBack device, preferring a quick
+  /// systemDevices() lookup (much faster than an active scan) and
+  /// connects to it. Prefers the device the user last successfully
+  /// connected to, if it's among the ones found. Returns null - never
+  /// throws - if nothing's found or every attempt fails, so callers can
+  /// fall back to the manual pairing screen without treating "no device
+  /// nearby yet" as an error.
+  ///
+  /// Tries every systemDevices() candidate in order, not just the first:
+  /// on Android, `systemDevices(withServices: ...)` can't actually check
+  /// GATT services on a bonded-but-not-yet-connected device (that needs a
+  /// live connection), so the service filter is best-effort and the list
+  /// can include unrelated bonded devices, or miss the real one entirely
+  /// (confirmed on hardware, twice - one run returned an unrelated bonded
+  /// device first, another run returned ONLY the unrelated device, not
+  /// ours at all). connect() already throws if STATS/CONFIG/TIME_SYNC/SYNC
+  /// aren't all found, which doubles as the real "is this actually our
+  /// device" check - reused here instead of duplicating it. If every
+  /// systemDevices() candidate fails (including the "found nothing"
+  /// case), falls back to a real 5s scan filtered by the service UUID the
+  /// firmware actually broadcasts over the air - authoritative in a way
+  /// the OS's bonded-device cache isn't, see _scanAndConnect().
   Future<BluetoothDevice?> tryAutoConnect() async {
     if (!await requestPermissions()) return null;
 
@@ -95,22 +124,61 @@ class BleService extends ChangeNotifier {
     try {
       candidates = await knownDevices();
     } catch (_) {
-      return null;
+      candidates = [];
     }
-    if (candidates.isEmpty) return null;
 
     final prefs = await SharedPreferences.getInstance();
     final preferredId = prefs.getString(_activeDeviceIdKey);
-    final target = candidates.firstWhere(
-      (d) => d.remoteId.str == preferredId,
-      orElse: () => candidates.first,
-    );
+    final ordered = [
+      ...candidates.where((d) => d.remoteId.str == preferredId),
+      ...candidates.where((d) => d.remoteId.str != preferredId),
+    ];
 
+    for (final candidate in ordered) {
+      try {
+        await connect(candidate);
+        return candidate;
+      } catch (_) {
+        continue;
+      }
+    }
+
+    // systemDevices() is best-effort on Android for bonded-but-not-connected
+    // devices and can come back with only an unrelated bonded device, or
+    // none at all (confirmed on hardware: a phone with two bonded BLE
+    // devices got only the wrong one back, so the loop above never even
+    // saw the real one). A real scan filters by the service UUID actually
+    // broadcast over the air by the firmware (docs/LEARNINGS.md BLE
+    // advertisement split), which is authoritative in a way the OS's
+    // bonded-device cache isn't - falls back to it instead of giving up
+    // and forcing the user to the manual pairing screen every time.
+    return _scanAndConnect();
+  }
+
+  Future<BluetoothDevice?> _scanAndConnect() async {
+    final found = Completer<BluetoothDevice>();
+    final sub = FlutterBluePlus.scanResults.listen((results) {
+      if (results.isNotEmpty && !found.isCompleted) {
+        found.complete(results.first.device);
+      }
+    });
     try {
-      await connect(target);
-      return target;
+      await FlutterBluePlus.startScan(
+        withServices: [PrintBackUuids.service],
+        timeout: const Duration(seconds: 5),
+      );
+      final device = await found.future.timeout(
+        const Duration(seconds: 5),
+        onTimeout: () => throw TimeoutException('no device found'),
+      );
+      await FlutterBluePlus.stopScan();
+      await connect(device);
+      return device;
     } catch (_) {
+      await FlutterBluePlus.stopScan();
       return null;
+    } finally {
+      await sub.cancel();
     }
   }
 
@@ -214,9 +282,21 @@ class BleService extends ChangeNotifier {
   /// days since 1970-01-01 UTC; 0 means "everything".
   Future<void> requestSync(int sinceUnixDay) async {
     if (_syncChr == null) return;
+    _isSyncing = true;
+    notifyListeners();
+    _armSyncIdleTimer();
     final bytes = ByteData(4)
       ..setUint32(0, sinceUnixDay, Endian.little);
     await _syncChr!.write(bytes.buffer.asUint8List());
+  }
+
+  void _armSyncIdleTimer() {
+    _syncIdleTimer?.cancel();
+    _syncIdleTimer = Timer(const Duration(milliseconds: 1500), () {
+      _isSyncing = false;
+      _lastSyncCompleted = DateTime.now();
+      notifyListeners();
+    });
   }
 
   Future<void> _writeTimeSync() async {
@@ -228,6 +308,10 @@ class BleService extends ChangeNotifier {
 
   void _onStatsNotification(List<int> value) {
     if (value.isEmpty) return;
+    // Every row that arrives while a sync is in flight pushes the "done"
+    // deadline back - a big backlog replay is many notifications in a
+    // row, not one.
+    if (_isSyncing) _armSyncIdleTimer();
     try {
       final map = jsonDecode(utf8.decode(value)) as Map<String, dynamic>;
       _statsController.add(Aggregate.fromJson(map));
@@ -252,12 +336,14 @@ class BleService extends ChangeNotifier {
   Future<void> disconnect() async {
     await _statsSub?.cancel();
     await _connSub?.cancel();
+    _syncIdleTimer?.cancel();
     await _device?.disconnect();
     _statsChr = null;
     _configChr = null;
     _timeSyncChr = null;
     _syncChr = null;
     _device = null;
+    _isSyncing = false;
     _connectionState = BluetoothConnectionState.disconnected;
     notifyListeners();
   }
@@ -266,6 +352,7 @@ class BleService extends ChangeNotifier {
   void dispose() {
     _statsSub?.cancel();
     _connSub?.cancel();
+    _syncIdleTimer?.cancel();
     _statsController.close();
     super.dispose();
   }

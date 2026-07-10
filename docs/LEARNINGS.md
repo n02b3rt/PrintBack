@@ -560,3 +560,45 @@ detour, already reverted.
 
 - WiFi monitor mode + Thread (802.15.4) on one ESP32-C6 radio: confirmed
   radio collisions on another project, don't retest from scratch. See docs/DECISIONS.md D4.
+
+## [MOBILE] tryAutoConnect() connected to the wrong bonded BLE device
+Date: 2026-07-10
+Problem: on two separate fresh app launches, `ConnectingScreen` (Phase 8c
+auto-reconnect) connected to an unrelated bonded BLE device on this phone
+(address ending `A4:69`, 6 GATT services) instead of the real PrintBack
+ESP32 (`...40:9E`, 3 services). `connect()` got far enough to subscribe to
+the standard `2a05` Service Changed characteristic (an Android-automatic
+step, not app code) before the app was stuck on a device with none of our
+characteristics, forcing the user to manually switch devices in Settings
+every time.
+Root cause: `FlutterBluePlus.systemDevices(withServices: [...])` is
+best-effort on Android for a bonded-but-not-currently-connected device -
+checking a peripheral's actual GATT services requires a live connection,
+which the OS doesn't have yet for a device it just knows is bonded. So
+the service-UUID filter can't really filter, and the call can return an
+unrelated bonded device, or (confirmed on a later run) return ONLY the
+wrong device and never the real one at all.
+Fix, two parts: (1) `tryAutoConnect()` now loops through every
+`systemDevices()` candidate (preferred/last-used first) and tries
+`connect()` on each in turn, relying on `connect()`'s existing
+STATS/CONFIG/TIME_SYNC/SYNC lookup (already throws `StateError` if any
+are missing) as the "is this actually our device" check - no more giving
+up after the first wrong candidate. (2) Since the first run had only one
+(wrong) candidate in the list, part 1 alone didn't help on that specific
+run - added `_scanAndConnect()` as a further fallback when every
+`systemDevices()` candidate fails: a real 5s `startScan(withServices:
+[PrintBackUuids.service])`, which filters by the UUID the firmware
+actually broadcasts over the air (the same 128-bit UUID from the Phase 4
+28-byte-advertisement fix above) rather than the OS's incomplete bonded-
+device cache.
+Confirmed on hardware: rebuilt and reran twice. First rebuild (loop fix
+only, before the scan fallback) reproduced the exact wrong-device-first
+symptom with no automatic fallback triggering - `systemDevices()` genuinely
+returned only `A4:69` that run, so the loop had nothing else to try;
+fell through to the manual pairing screen exactly as designed, user
+picked the right device manually, confirming the loop's failure path is
+clean at least. Second rebuild (with `_scanAndConnect()` added) connected
+straight to `...40:9E` automatically on the very first attempt, no wrong
+device, no manual pairing screen - full TIME_SYNC/STATS/CONFIG/SYNC
+sequence completed with zero user interaction.
+Status: RESOLVED (2026-07-10)
