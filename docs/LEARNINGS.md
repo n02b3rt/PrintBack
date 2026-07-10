@@ -475,6 +475,32 @@ disable the incremental cache entirely (slower rebuilds, sidesteps the
 crash without touching pub cache location). (a) is the more correct fix
 since it doesn't just paper over the incremental cache being disabled
 project-wide.
+
+Update: user approved (a). Set `PUB_CACHE=D:\pub-cache` (persisted via
+`[Environment]::SetEnvironmentVariable(..., "User")`), created the
+directory, re-ran `flutter pub get` (confirmed
+`shared_preferences_android-2.4.26` etc. actually landed under
+`D:\pub-cache\hosted\pub.dev\`, so the env var did take effect for pub).
+Retry #1 after this: back to the "already registered" variant, not the
+"different roots" one - but `mobile/build/` still had artifacts from the
+earlier broken-cache attempts, so ran `flutter clean` + `flutter pub get`
+again for a fully fresh state. Retry #2 (clean rebuild, correct
+PUB_CACHE, no stale build/ dir): **still fails**, still the "already
+registered" storage-conflict variant, zero mention of "different roots"
+anywhere in this run's output. This means the cross-drive fix likely did
+resolve the original `relativeTo()` crash, but there's a second,
+independent problem in the same compile step: something is trying to
+register the same incremental-cache storage file
+(`...\lookups\id-to-file.tab` etc.) twice within one build, which reads
+like a bug in the newer Kotlin "Build Tools API" in-process compiler
+daemon itself (a known area of instability in current Kotlin Gradle
+Plugin versions), not something fixable by moving files around.
+Stopping again rather than guessing further. Candidate next fixes, not
+yet tried: `kotlin.incremental=false` in
+`mobile/android/gradle.properties` (sidesteps the whole incremental
+storage subsystem, not just the drive-letter path through it), or
+`org.gradle.parallel=false` (if the double-registration is a
+parallel-worker race rather than a pure daemon bug).
 Status: OPEN
 
 - WiFi monitor mode + Thread (802.15.4) on one ESP32-C6 radio: confirmed
