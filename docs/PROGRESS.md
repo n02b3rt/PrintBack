@@ -174,9 +174,37 @@
       whitelist) unaffected. The write path itself (an actual replay,
       triggered from a real BLE central) still needs a phone/nRF Connect
       test - not yet done, needs the user.
+      8b-8e done (mobile, code complete, `flutter analyze`/`flutter test`
+      clean after each): 8b added `shared_preferences`, light/dark
+      `AppTheme`/`ThemeController`, and scoped `local_db.dart` by
+      `device_id` (schema v3) with the artificial 30-row history cap
+      removed. 8c added `BleService.tryAutoConnect()`
+      (`FlutterBluePlus.systemDevices`, no scan) behind a new
+      `ConnectingScreen` shown at launch, plus a device-switching section
+      in Settings. 8d added `HomeShell` (bottom-nav
+      Dashboard/Statystyki/Ustawienia, `IndexedStack`) replacing the old
+      push-based navigation, `BleService.requestSync()` triggered
+      automatically once per connection (cursor from
+      `LocalDb.newestDailyDate()`) plus a manual "Synchronizuj teraz"
+      button, and a new `statistics_screen.dart` (period totals/deltas,
+      returning rate, day-of-week pattern, best-effort peak hour, all
+      computed from aggregates already in the local db - no new
+      per-client data). 8e added tap-for-detail tooltips on every bar
+      chart (`fl_chart`'s built-in `BarTouchTooltipData`, not hand-rolled
+      state), a light/dark/system theme picker in Settings, RSSI-floor/
+      returning-window sliders replacing raw number fields, and a small
+      dot-mark in the Dashboard app bar replacing an icon-in-a-box logo
+      (explicitly rejected during design review as looking generated
+      rather than like a real product mark).
+      Not yet done: none of Phase 8's mobile code has run on an actual
+      phone yet (no physical device available on this machine, same
+      constraint as every other phase) - the auto-reconnect flow, device
+      switching, SYNC backfill actually landing on the phone, and the
+      whole visual redesign all still need a real end-to-end pass with
+      the user before this phase can be marked done.
 
 Note: the current code in `firmware/` and `app/` is still the old
 architecture (USB-CDC → Python desktop dashboard, SQLite). Don't remove /
 change it until the new path (BLE+SD) is ready and tested in parallel.
 
-Last updated: 2026-07-09 (Phase 6 done).
+Last updated: 2026-07-10 (Phase 8 code complete, hardware pass pending).
