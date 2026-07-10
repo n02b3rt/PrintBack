@@ -430,7 +430,52 @@ preserve). (2) KPI cards now prefer `LocalDb.dailyForDate()`'s result,
 falling back to the hourly sum only if no daily row exists yet.
 Status: RESOLVED (2026-07-09)
 
-## Things that DON'T work: don't try again
+## [MOBILE] Kotlin incremental compile crashes after adding shared_preferences (cross-drive pub cache)
+Date: 2026-07-10
+Problem: `flutter run` (first real build after Phase 8's `pubspec.yaml`
+added `shared_preferences`) fails every time at
+`:shared_preferences_android:compileDebugKotlin` with
+`java.lang.Exception: Could not close incremental caches in
+...\shared_preferences_android\kotlin\compileDebugKotlin\...`, root
+cause visible a few frames down:
+`java.lang.IllegalArgumentException: this and base files have different
+roots: C:\Users\norke\AppData\Local\Pub\Cache\hosted\pub.dev\
+shared_preferences_android-2.4.26\android\src\main\kotlin\...\Messages.g.kt
+and D:\projekty\PrintBack\PrintBack\mobile\android.`
+Tried (2 attempts, both reproduced the identical root cause):
+1. `flutter clean` + `flutter pub get` + retry - failed with a secondary
+   "Storage for [...] is already registered" error, which looked like a
+   stale Gradle/Kotlin daemon holding a lock from the first crashed
+   attempt.
+2. `gradlew --stop` (confirmed it actually had a daemon running: "1
+   Daemon stopped") + confirmed no leftover `java.exe` processes + retry
+   - failed again with the exact same "different roots" exception as
+   attempt 1, ruling out "stale daemon" as the real cause.
+Root cause (not yet fixed, diagnosed via the exception text itself, not
+guessed): this machine has the Flutter SDK (`D:\flutter`) and this
+project (`D:\projekty\PrintBack\PrintBack`) on the `D:` drive, but
+`PUB_CACHE` is unset so pub falls back to the default
+`C:\Users\norke\AppData\Local\Pub\Cache` - on `C:`. `shared_preferences`
+is the first dependency in this project whose Android side is Kotlin
+requiring compilation (everything added in Phases 6-7 was Java/pure-Dart
+plugins); newer Kotlin Gradle Plugin versions use a "relocatable"
+incremental-compilation cache (`RelocatableFileToPathConverter`) that
+calls `kotlin.io.File.relativeTo()` between a pub-cache source file and
+the project's build directory - `relativeTo()` throws
+`IllegalArgumentException` by contract when the two paths don't share a
+common root, which two different Windows drive letters never do. This
+reproduces deterministically, unrelated to daemon state - explains why
+retry #2 hit the identical stack trace instead of a new one.
+Next hypothesis (not tried yet, stopping here per the "2 tries" rule to
+confirm with the user first): either (a) point `PUB_CACHE` at a `D:`
+path (e.g. `D:\pub-cache`) so pub cache and project share a drive root,
+requires a fresh `flutter pub get` afterward, or (b) add
+`kotlin.incremental=false` to `mobile/android/gradle.properties` to
+disable the incremental cache entirely (slower rebuilds, sidesteps the
+crash without touching pub cache location). (a) is the more correct fix
+since it doesn't just paper over the incremental cache being disabled
+project-wide.
+Status: OPEN
 
 - WiFi monitor mode + Thread (802.15.4) on one ESP32-C6 radio: confirmed
   radio collisions on another project, don't retest from scratch. See docs/DECISIONS.md D4.
