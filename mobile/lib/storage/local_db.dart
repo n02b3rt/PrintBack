@@ -138,6 +138,46 @@ class LocalDb {
     return rows.first['date'] as String;
   }
 
+  /// Daily rows (`hour = -1`) for one device within `[startDate, endDate]`
+  /// (both `YYYY-MM-DD`, inclusive), oldest first. The building block for
+  /// the statistics screen's period totals, deltas, and day-of-week
+  /// pattern - all computed in Dart from this plain row list rather than
+  /// in SQL, matching how the dashboard already computes its KPIs.
+  Future<List<Aggregate>> dailyInRange(
+    String deviceId,
+    String startDate,
+    String endDate,
+  ) async {
+    final db = await _open();
+    final rows = await db.query(
+      _table,
+      where: 'device_id = ? AND hour = ? AND date >= ? AND date <= ?',
+      whereArgs: [deviceId, _dayHour, startDate, endDate],
+      orderBy: 'date ASC',
+    );
+    return rows.map(_fromRow).toList();
+  }
+
+  /// Hourly rows (`hour` 0-23) for one device within `[startDate, endDate]`
+  /// - only ever as complete as what's arrived through live notifications
+  /// during past connections, since SYNC only replays daily totals (see
+  /// docs/DATA_MODEL.md "Backfill after a longer gap"). Used for a
+  /// best-effort "peak hour" stat that improves as more data accumulates.
+  Future<List<Aggregate>> hourlyInRange(
+    String deviceId,
+    String startDate,
+    String endDate,
+  ) async {
+    final db = await _open();
+    final rows = await db.query(
+      _table,
+      where: 'device_id = ? AND hour >= 0 AND date >= ? AND date <= ?',
+      whereArgs: [deviceId, startDate, endDate],
+      orderBy: 'date ASC, hour ASC',
+    );
+    return rows.map(_fromRow).toList();
+  }
+
   Aggregate _fromRow(Map<String, Object?> row) {
     final hour = row['hour'] as int;
     return Aggregate(

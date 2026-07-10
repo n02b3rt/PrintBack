@@ -17,6 +17,7 @@ class PrintBackUuids {
   static final stats = Guid('1b1465c2-296e-4acd-b544-ba1a30ed7f13');
   static final config = Guid('c5468eed-52a8-434b-bc6f-0d60c323f07f');
   static final timeSync = Guid('5ebb01c3-8110-4ace-b139-436c1fa0b81f');
+  static final sync = Guid('8f2c1e40-7bb5-4b9f-9e11-3c6b9d5a2f77');
 }
 
 /// Talks to exactly one PrintBack device's BLE GATT server. Pairing itself
@@ -28,6 +29,7 @@ class BleService extends ChangeNotifier {
   BluetoothCharacteristic? _statsChr;
   BluetoothCharacteristic? _configChr;
   BluetoothCharacteristic? _timeSyncChr;
+  BluetoothCharacteristic? _syncChr;
   StreamSubscription<List<int>>? _statsSub;
   StreamSubscription<BluetoothConnectionState>? _connSub;
 
@@ -164,6 +166,10 @@ class BleService extends ChangeNotifier {
       (c) => c.characteristicUuid == PrintBackUuids.timeSync,
       orElse: () => throw StateError('TIME_SYNC characteristic not found'),
     );
+    _syncChr = service.characteristics.firstWhere(
+      (c) => c.characteristicUuid == PrintBackUuids.sync,
+      orElse: () => throw StateError('SYNC characteristic not found'),
+    );
 
     await _writeTimeSync();
 
@@ -178,16 +184,15 @@ class BleService extends ChangeNotifier {
   }
 
   /// Subscribing only gets *future* notifications (next hour/day rollover
-  /// on the device) - there's no history replay on connect
-  /// (docs/DATA_MODEL.md "Backfill after a longer gap" was never built,
-  /// see docs/PROGRESS.md). A plain read of STATS returns "today so far"
-  /// (gatt_stats_read() in firmware/main/ble_gatt.c reads stats/today.bin),
-  /// so callers (the dashboard, right after connecting) can show something
-  /// immediately instead of sitting at 0/0 until the next rollover fires.
-  /// A pull, not a push through statsUpdates, deliberately - a screen
-  /// calling this in initState() would otherwise race the broadcast
-  /// stream (connect() already finished and could've emitted before the
-  /// screen even subscribes).
+  /// on the device) - it doesn't by itself replay history. A plain read
+  /// of STATS returns "today so far" (gatt_stats_read() in
+  /// firmware/main/ble_gatt.c reads stats/today.bin), so callers (the
+  /// dashboard, right after connecting) can show something immediately
+  /// instead of sitting at 0/0 until the next rollover fires or a SYNC
+  /// finishes. A pull, not a push through statsUpdates, deliberately - a
+  /// screen calling this in initState() would otherwise race the
+  /// broadcast stream (connect() already finished and could've emitted
+  /// before the screen even subscribes).
   Future<Aggregate?> readCurrentStats() async {
     if (_statsChr == null) return null;
     try {
@@ -198,6 +203,20 @@ class BleService extends ChangeNotifier {
     } catch (_) {
       return null;
     }
+  }
+
+  /// Requests a backlog replay of finalized daily aggregates the device
+  /// has that this phone might not (docs/DATA_MODEL.md "BLE SYNC
+  /// payload"). Results arrive as ordinary STATS notifications on
+  /// [statsUpdates] over the following seconds, not as a return value
+  /// here - callers already listening to that stream (dashboard,
+  /// statistics screen) pick them up automatically. [sinceUnixDay] is
+  /// days since 1970-01-01 UTC; 0 means "everything".
+  Future<void> requestSync(int sinceUnixDay) async {
+    if (_syncChr == null) return;
+    final bytes = ByteData(4)
+      ..setUint32(0, sinceUnixDay, Endian.little);
+    await _syncChr!.write(bytes.buffer.asUint8List());
   }
 
   Future<void> _writeTimeSync() async {
@@ -237,6 +256,7 @@ class BleService extends ChangeNotifier {
     _statsChr = null;
     _configChr = null;
     _timeSyncChr = null;
+    _syncChr = null;
     _device = null;
     _connectionState = BluetoothConnectionState.disconnected;
     notifyListeners();

@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../ble/ble_service.dart';
 import '../l10n/app_localizations.dart';
-import 'dashboard_screen.dart';
+import 'home_shell.dart';
 import 'pairing_screen.dart';
 
 /// Shown briefly at app launch while trying to reconnect to an
@@ -31,7 +31,7 @@ class _ConnectingScreenState extends State<ConnectingScreen> {
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(
         builder: (_) =>
-            device != null ? const DashboardScreen() : const PairingScreen(),
+            device != null ? const HomeShell() : const PairingScreen(),
       ),
     );
   }

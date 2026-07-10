@@ -5,7 +5,7 @@ import 'package:provider/provider.dart';
 import '../ble/ble_service.dart';
 import '../l10n/app_localizations.dart';
 import '../models/device_config.dart';
-import 'dashboard_screen.dart';
+import 'home_shell.dart';
 
 /// Mirrors firmware/main/runtime_config_parse.h - single source of truth
 /// for the valid CONFIG ranges, kept in sync by hand since the phone has
@@ -69,11 +69,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     try {
       await ble.connect(device);
       if (!mounted) return;
-      // A fresh DashboardScreen instance picks up the new device id in
-      // its own initState() - simpler and more robust than trying to
-      // hot-patch the already-showing one's state from here.
+      // A fresh HomeShell (and the screens inside it) picks up the new
+      // device id in its own initState() - simpler and more robust than
+      // trying to hot-patch the already-showing tabs' state from here.
       Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const DashboardScreen()),
+        MaterialPageRoute(builder: (_) => const HomeShell()),
         (route) => false,
       );
     } catch (_) {

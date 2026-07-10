@@ -8,7 +8,6 @@ import '../ble/ble_service.dart';
 import '../l10n/app_localizations.dart';
 import '../models/aggregate.dart';
 import '../storage/local_db.dart';
-import 'settings_screen.dart';
 
 /// Today's date as `YYYY-MM-DD`, matching docs/DATA_MODEL.md's STATS
 /// `date` field format.
@@ -56,6 +55,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
     await _reload();
   }
 
+  /// Garmin-Connect-style explicit "get me everything right now", as
+  /// opposed to HomeShell's automatic sync-since-last-time on connect.
+  /// Results still arrive over statsUpdates, not a return value here.
+  Future<void> _syncNow() async {
+    final ble = context.read<BleService>();
+    await ble.requestSync(0);
+  }
+
   Future<void> _reload() async {
     final hourly = await _localDb.hourlyForDate(_deviceId, _todayString());
     final daily = await _localDb.recentDaily(_deviceId, limit: 14);
@@ -92,10 +99,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
         title: Text(l10n.dashboardTitle),
         actions: [
           IconButton(
-            icon: const Icon(Icons.settings),
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const SettingsScreen()),
-            ),
+            icon: const Icon(Icons.sync),
+            tooltip: l10n.syncNowButton,
+            onPressed: _syncNow,
           ),
         ],
       ),

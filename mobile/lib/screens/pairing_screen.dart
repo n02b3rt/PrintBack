@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../ble/ble_service.dart';
 import '../l10n/app_localizations.dart';
-import 'dashboard_screen.dart';
+import 'home_shell.dart';
 
 class PairingScreen extends StatefulWidget {
   const PairingScreen({super.key});
@@ -51,7 +51,7 @@ class _PairingScreenState extends State<PairingScreen> {
       await ble.connect(device);
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const DashboardScreen()),
+        MaterialPageRoute(builder: (_) => const HomeShell()),
       );
     } catch (e, st) {
       debugPrint('BLE connect failed: $e\n$st');
