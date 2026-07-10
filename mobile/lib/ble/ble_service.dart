@@ -4,9 +4,12 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/aggregate.dart';
 import '../models/device_config.dart';
+
+const _activeDeviceIdKey = 'active_device_id';
 
 /// UUIDs from docs/DATA_MODEL.md "BLE GATT service and characteristic UUIDs".
 class PrintBackUuids {
@@ -68,12 +71,56 @@ class BleService extends ChangeNotifier {
 
   Future<void> stopScan() => FlutterBluePlus.stopScan();
 
+  /// All PrintBack devices the OS currently knows about (bonded, or
+  /// recently connected by any app on this phone) - a live query, not a
+  /// list we maintain ourselves, so it can never drift from what's
+  /// actually bonded. Used by Settings' device switcher.
+  Future<List<BluetoothDevice>> knownDevices() {
+    return FlutterBluePlus.systemDevices([PrintBackUuids.service]);
+  }
+
+  /// Looks for an already-bonded PrintBack device without an active
+  /// scan (much faster than the manual pairing flow) and connects to
+  /// it. Prefers the device the user last successfully connected to, if
+  /// it's among the ones found; otherwise the first available. Returns
+  /// null - never throws - if nothing's found or the connect attempt
+  /// fails, so callers can fall back to the manual pairing screen
+  /// without treating "no device nearby yet" as an error.
+  Future<BluetoothDevice?> tryAutoConnect() async {
+    if (!await requestPermissions()) return null;
+
+    List<BluetoothDevice> candidates;
+    try {
+      candidates = await knownDevices();
+    } catch (_) {
+      return null;
+    }
+    if (candidates.isEmpty) return null;
+
+    final prefs = await SharedPreferences.getInstance();
+    final preferredId = prefs.getString(_activeDeviceIdKey);
+    final target = candidates.firstWhere(
+      (d) => d.remoteId.str == preferredId,
+      orElse: () => candidates.first,
+    );
+
+    try {
+      await connect(target);
+      return target;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Connects, discovers the PrintBack service, writes the current wall
   /// clock to TIME_SYNC (docs/DECISIONS.md D6 - "on every connection", not
   /// just first pairing), then subscribes to STATS notifications.
   Future<void> connect(BluetoothDevice device) async {
     if (!await requestPermissions()) {
       throw StateError('Bluetooth permission not granted');
+    }
+    if (_device != null && _device!.remoteId != device.remoteId) {
+      await disconnect();
     }
     _device = device;
     await device.connect(mtu: null);
@@ -123,6 +170,9 @@ class BleService extends ChangeNotifier {
     await _statsChr!.setNotifyValue(true);
     await _statsSub?.cancel();
     _statsSub = _statsChr!.lastValueStream.listen(_onStatsNotification);
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_activeDeviceIdKey, device.remoteId.str);
 
     notifyListeners();
   }

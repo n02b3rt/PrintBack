@@ -4,6 +4,8 @@
   "navDashboard": "Dashboard",
   "navSettings": "Settings",
 
+  "autoConnecting": "Connecting to device...",
+
   "pairingTitle": "Pair device",
   "pairingInstruction": "Press the button on the device to start pairing.",
   "scanButton": "Scan for devices",
@@ -24,6 +26,10 @@
   "kanonBadge": "Low traffic, daily resolution only",
 
   "settingsTitle": "Settings",
+  "deviceSectionTitle": "Device",
+  "currentDevice": "Currently connected",
+  "noOtherDevices": "No other paired devices",
+  "switchDeviceFailed": "Failed to switch device",
   "rssiFloorLabel": "Minimum signal strength (RSSI, dBm)",
   "returningWindowLabel": "Returning window (days)",
   "saveButton": "Save",

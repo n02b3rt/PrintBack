@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 
 import 'ble/ble_service.dart';
 import 'l10n/app_localizations.dart';
-import 'screens/pairing_screen.dart';
+import 'screens/connecting_screen.dart';
 import 'theme/app_theme.dart';
 import 'theme/theme_controller.dart';
 
@@ -29,7 +29,7 @@ class PrintBackApp extends StatelessWidget {
           themeMode: themeController.mode,
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
-          home: const PairingScreen(),
+          home: const ConnectingScreen(),
         ),
       ),
     );

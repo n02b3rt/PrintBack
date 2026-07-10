@@ -4,6 +4,8 @@
   "navDashboard": "Panel",
   "navSettings": "Ustawienia",
 
+  "autoConnecting": "Łączenie z urządzeniem...",
+
   "pairingTitle": "Parowanie urządzenia",
   "pairingInstruction": "Naciśnij przycisk na urządzeniu, aby rozpocząć parowanie.",
   "scanButton": "Szukaj urządzeń",
@@ -24,6 +26,10 @@
   "kanonBadge": "Mały ruch, tylko rozdzielczość dzienna",
 
   "settingsTitle": "Ustawienia",
+  "deviceSectionTitle": "Urządzenie",
+  "currentDevice": "Aktualnie połączone",
+  "noOtherDevices": "Brak innych sparowanych urządzeń",
+  "switchDeviceFailed": "Nie udało się przełączyć urządzenia",
   "rssiFloorLabel": "Minimalna siła sygnału (RSSI, dBm)",
   "returningWindowLabel": "Okno powracających (dni)",
   "saveButton": "Zapisz",
