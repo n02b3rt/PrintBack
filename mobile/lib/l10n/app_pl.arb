@@ -48,6 +48,11 @@
   "weekdaySun": "Nd",
 
   "settingsTitle": "Ustawienia",
+  "appearanceSectionTitle": "Wygląd",
+  "themeLight": "Jasny",
+  "themeDark": "Ciemny",
+  "themeSystem": "Systemowy",
+  "detectionSectionTitle": "Wykrywanie",
   "deviceSectionTitle": "Urządzenie",
   "currentDevice": "Aktualnie połączone",
   "noOtherDevices": "Brak innych sparowanych urządzeń",

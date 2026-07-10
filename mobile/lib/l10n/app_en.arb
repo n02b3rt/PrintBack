@@ -48,6 +48,11 @@
   "weekdaySun": "Sun",
 
   "settingsTitle": "Settings",
+  "appearanceSectionTitle": "Appearance",
+  "themeLight": "Light",
+  "themeDark": "Dark",
+  "themeSystem": "System",
+  "detectionSectionTitle": "Detection",
   "deviceSectionTitle": "Device",
   "currentDevice": "Currently connected",
   "noOtherDevices": "No other paired devices",

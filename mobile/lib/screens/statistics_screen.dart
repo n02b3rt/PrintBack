@@ -331,6 +331,17 @@ class _WeekdayChart extends StatelessWidget {
     return BarChart(
       BarChartData(
         maxY: maxY * 1.2,
+        barTouchData: BarTouchData(
+          touchTooltipData: BarTouchTooltipData(
+            getTooltipItem: (group, groupIndex, rod, rodIndex) {
+              if (group.x < 0 || group.x >= labels.length) return null;
+              return BarTooltipItem(
+                '${labels[group.x]}\n${avgs[group.x].round()}',
+                const TextStyle(color: Colors.white, fontSize: 12),
+              );
+            },
+          ),
+        ),
         titlesData: FlTitlesData(
           topTitles: const AxisTitles(),
           rightTitles: const AxisTitles(),

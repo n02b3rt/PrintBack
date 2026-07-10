@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../ble/ble_service.dart';
 import '../l10n/app_localizations.dart';
 import '../models/device_config.dart';
+import '../theme/theme_controller.dart';
 import 'home_shell.dart';
 
 /// Mirrors firmware/main/runtime_config_parse.h - single source of truth
@@ -23,12 +24,12 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  final _formKey = GlobalKey<FormState>();
-  final _rssiController = TextEditingController();
-  final _returningWindowController = TextEditingController();
   bool _loading = true;
   bool _saving = false;
   String? _error;
+
+  int _rssiFloor = _rssiFloorMin;
+  int _returningWindowDays = _returningWindowMin;
 
   List<BluetoothDevice> _otherDevices = [];
   bool _switching = false;
@@ -44,8 +45,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final ble = context.read<BleService>();
     try {
       final config = await ble.readConfig();
-      _rssiController.text = config.rssiFloor.toString();
-      _returningWindowController.text = config.returningWindowDays.toString();
+      _rssiFloor = config.rssiFloor.clamp(_rssiFloorMin, _rssiFloorMax);
+      _returningWindowDays =
+          config.returningWindowDays.clamp(_returningWindowMin, _returningWindowMax);
     } catch (_) {
       if (!mounted) return;
       setState(() => _error = AppLocalizations.of(context)!.settingsLoadFailed);
@@ -86,7 +88,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _save() async {
-    if (!_formKey.currentState!.validate()) return;
     final ble = context.read<BleService>();
     setState(() {
       _saving = true;
@@ -94,8 +95,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     });
     try {
       final config = DeviceConfig(
-        rssiFloor: int.parse(_rssiController.text),
-        returningWindowDays: int.parse(_returningWindowController.text),
+        rssiFloor: _rssiFloor,
+        returningWindowDays: _returningWindowDays,
       );
       await ble.writeConfig(config);
       if (!mounted) return;
@@ -110,16 +111,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   @override
-  void dispose() {
-    _rssiController.dispose();
-    _returningWindowController.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
     final ble = context.watch<BleService>();
+    final themeController = context.watch<ThemeController>();
     return Scaffold(
       appBar: AppBar(title: Text(l10n.settingsTitle)),
       body: _loading
@@ -127,6 +122,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
           : ListView(
               padding: const EdgeInsets.all(16),
               children: [
+                Text(l10n.appearanceSectionTitle,
+                    style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 8),
+                SegmentedButton<ThemeMode>(
+                  segments: [
+                    ButtonSegment(
+                        value: ThemeMode.light, label: Text(l10n.themeLight)),
+                    ButtonSegment(
+                        value: ThemeMode.dark, label: Text(l10n.themeDark)),
+                    ButtonSegment(
+                        value: ThemeMode.system, label: Text(l10n.themeSystem)),
+                  ],
+                  selected: {themeController.mode},
+                  onSelectionChanged: (s) => themeController.setMode(s.first),
+                ),
+                const SizedBox(height: 24),
                 Text(l10n.deviceSectionTitle,
                     style: Theme.of(context).textTheme.titleMedium),
                 const SizedBox(height: 8),
@@ -159,55 +170,45 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   ),
                 const SizedBox(height: 24),
-                Form(
-                  key: _formKey,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      if (_error != null) ...[
-                        Text(_error!,
-                            style: TextStyle(
-                                color: Theme.of(context).colorScheme.error)),
-                        const SizedBox(height: 16),
-                      ],
-                      TextFormField(
-                        controller: _rssiController,
-                        keyboardType: TextInputType.number,
-                        decoration:
-                            InputDecoration(labelText: l10n.rssiFloorLabel),
-                        validator: (value) {
-                          final n = int.tryParse(value ?? '');
-                          if (n == null || n < _rssiFloorMin || n > _rssiFloorMax) {
-                            return '$_rssiFloorMin..$_rssiFloorMax';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 16),
-                      TextFormField(
-                        controller: _returningWindowController,
-                        keyboardType: TextInputType.number,
-                        decoration: InputDecoration(
-                            labelText: l10n.returningWindowLabel),
-                        validator: (value) {
-                          final n = int.tryParse(value ?? '');
-                          if (n == null ||
-                              n < _returningWindowMin ||
-                              n > _returningWindowMax) {
-                            return '$_returningWindowMin..$_returningWindowMax';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 24),
-                      FilledButton(
-                        onPressed: _saving ? null : _save,
-                        child: _saving
-                            ? const CircularProgressIndicator()
-                            : Text(l10n.saveButton),
-                      ),
-                    ],
-                  ),
+                Text(l10n.detectionSectionTitle,
+                    style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 8),
+                if (_error != null) ...[
+                  Text(_error!,
+                      style:
+                          TextStyle(color: Theme.of(context).colorScheme.error)),
+                  const SizedBox(height: 16),
+                ],
+                Text('${l10n.rssiFloorLabel}: $_rssiFloor dBm'),
+                Slider(
+                  value: _rssiFloor.toDouble(),
+                  min: _rssiFloorMin.toDouble(),
+                  max: _rssiFloorMax.toDouble(),
+                  divisions: _rssiFloorMax - _rssiFloorMin,
+                  label: '$_rssiFloor dBm',
+                  onChanged: (v) => setState(() => _rssiFloor = v.round()),
+                ),
+                const SizedBox(height: 8),
+                Text('${l10n.returningWindowLabel}: $_returningWindowDays'),
+                Slider(
+                  value: _returningWindowDays.toDouble(),
+                  min: _returningWindowMin.toDouble(),
+                  max: _returningWindowMax.toDouble(),
+                  divisions: _returningWindowMax - _returningWindowMin,
+                  label: '$_returningWindowDays',
+                  onChanged: (v) =>
+                      setState(() => _returningWindowDays = v.round()),
+                ),
+                const SizedBox(height: 24),
+                FilledButton(
+                  onPressed: _saving ? null : _save,
+                  child: _saving
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Text(l10n.saveButton),
                 ),
               ],
             ),

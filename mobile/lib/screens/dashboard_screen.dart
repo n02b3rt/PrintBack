@@ -8,6 +8,7 @@ import '../ble/ble_service.dart';
 import '../l10n/app_localizations.dart';
 import '../models/aggregate.dart';
 import '../storage/local_db.dart';
+import '../widgets/brand_mark.dart';
 
 /// Today's date as `YYYY-MM-DD`, matching docs/DATA_MODEL.md's STATS
 /// `date` field format.
@@ -96,7 +97,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(l10n.dashboardTitle),
+        title: BrandMark(label: l10n.dashboardTitle),
         actions: [
           IconButton(
             icon: const Icon(Icons.sync),
@@ -178,6 +179,7 @@ class _HourlyBarChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final byHour = {for (final a in data) a.hour!: a};
     final maxY = data
         .map((a) => a.unique)
@@ -187,6 +189,23 @@ class _HourlyBarChart extends StatelessWidget {
     return BarChart(
       BarChartData(
         maxY: maxY * 1.2,
+        barTouchData: BarTouchData(
+          touchTooltipData: BarTouchTooltipData(
+            getTooltipItem: (group, groupIndex, rod, rodIndex) {
+              final agg = byHour[group.x];
+              if (agg == null) return null;
+              // Hourly records are never k-anonymity-collapsed (only
+              // daily rollups can be, see aggregate_record_t's doc
+              // comment in docs/DATA_MODEL.md) - no badge needed here.
+              return BarTooltipItem(
+                '${group.x.toString().padLeft(2, '0')}:00\n'
+                '${agg.unique} ${l10n.uniqueLabel.toLowerCase()}\n'
+                '${agg.returning} ${l10n.returningLabel.toLowerCase()}',
+                const TextStyle(color: Colors.white, fontSize: 12),
+              );
+            },
+          ),
+        ),
         titlesData: FlTitlesData(
           topTitles: const AxisTitles(),
           rightTitles: const AxisTitles(),
@@ -225,6 +244,7 @@ class _DailyBarChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final maxY = data
         .map((a) => a.unique)
         .fold<int>(1, (m, v) => v > m ? v : m)
@@ -233,6 +253,24 @@ class _DailyBarChart extends StatelessWidget {
     return BarChart(
       BarChartData(
         maxY: maxY * 1.2,
+        barTouchData: BarTouchData(
+          touchTooltipData: BarTouchTooltipData(
+            getTooltipItem: (group, groupIndex, rod, rodIndex) {
+              if (group.x < 0 || group.x >= data.length) return null;
+              final agg = data[group.x];
+              final lines = [
+                agg.date,
+                '${agg.unique} ${l10n.uniqueLabel.toLowerCase()}',
+                '${agg.returning} ${l10n.returningLabel.toLowerCase()}',
+              ];
+              if (agg.kanon) lines.add(l10n.kanonBadge);
+              return BarTooltipItem(
+                lines.join('\n'),
+                const TextStyle(color: Colors.white, fontSize: 12),
+              );
+            },
+          ),
+        ),
         titlesData: FlTitlesData(
           topTitles: const AxisTitles(),
           rightTitles: const AxisTitles(),
