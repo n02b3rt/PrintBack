@@ -106,11 +106,54 @@
       `CONFIG_BT_NIMBLE_NVS_PERSIST` needing a direct sdkconfig edit same
       as earlier phases, `BLE_GATT_CHR_F_WRITE_ENC` needing the base
       `_WRITE` flag alongside it), see docs/LEARNINGS.md.
-- [ ] Phase 6: mobile Flutter skeleton
+- [x] Phase 6: mobile Flutter skeleton (2026-07-09). New write-only,
+      bonded-only TIME_SYNC characteristic (`ble_gatt.c`, UUID in
+      docs/DATA_MODEL.md) sets the device's wall clock
+      (`sd_storage_set_wallclock_unix_s()`) from a raw little-endian
+      uint32, matching docs/DECISIONS.md D6 ("phone sends unix time on
+      every connection"). docs/DECISIONS.md D9 records `flutter_blue_plus`
+      over `flutter_reactive_ble` as chosen in `.claude/rules/mobile-app.md`.
+      Flutter wasn't installed on this machine; installed the SDK
+      directly (see docs/LEARNINGS.md), then scaffolded `mobile/` via
+      `flutter create` and wrote the full app: `lib/models/`
+      (`Aggregate`/`DeviceConfig`, mirroring the STATS/CONFIG JSON in
+      docs/DATA_MODEL.md), `lib/ble/ble_service.dart` (scan/connect,
+      writes TIME_SYNC on every connect, subscribes + reads STATS,
+      reads/writes CONFIG), `lib/storage/local_db.dart` (sqflite, one
+      `aggregates` table, exactly the four aggregate fields, upsert keyed
+      on date+hour), `lib/screens/` (pairing, dashboard with hourly/daily
+      `fl_chart` bar charts + new/returning KPIs, settings for RSSI
+      floor/returning window), full PL/EN l10n
+      (`lib/l10n/app_en.arb`/`app_pl.arb`). `flutter analyze` and
+      `flutter test` both pass clean.
+      Verified end-to-end on a real Android phone (first-ever real phone
+      run of this app): scans and finds the device, connects during the
+      button-opened pairing window, TIME_SYNC write / STATS subscribe+read
+      / CONFIG read all return `GATT_SUCCESS`, today's aggregate total
+      lands in the local db and shows on the dashboard's KPI cards and
+      daily chart, matching Phase 6's acceptance criteria (app pairs,
+      syncs aggregates, shows data on a chart, no raw data in the local
+      DB - the schema only has date/hour/counts by construction). Hit and
+      fixed four real bugs getting there (Android 12+ BLE runtime
+      permissions never requested, a stale Android GATT service cache
+      hiding TIME_SYNC from a device the phone had met before this
+      firmware added it, STATS subscribe never fetching what's already on
+      the device before the next rollover, and SQLite silently not
+      deduplicating `NULL`-keyed daily rows), see docs/LEARNINGS.md for
+      all four.
+      Known, deliberately out-of-scope gaps, not blocking this phase per
+      docs/TASKS.md ("doesn't need a final design, needs to be
+      functional"): no historical multi-day/hourly backfill on connect
+      (only "today so far" syncs immediately, matching the acceptance
+      criteria's plain "syncs aggregates"), the UI is functional but
+      visually minimal, and a freshly-corrected device clock doesn't
+      retroactively fix already-stale on-device aggregate files until the
+      next real rollover (docs/DECISIONS.md D6 already frames this as
+      expected drift-then-catch-up, not a bug).
 - [ ] Phase 7: docs/compliance/README.md + README.md, final documentation
 
 Note: the current code in `firmware/` and `app/` is still the old
 architecture (USB-CDC → Python desktop dashboard, SQLite). Don't remove /
 change it until the new path (BLE+SD) is ready and tested in parallel.
 
-Last updated: 2026-07-09 (Phase 5).
+Last updated: 2026-07-09 (Phase 6 done).

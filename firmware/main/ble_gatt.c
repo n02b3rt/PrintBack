@@ -1,5 +1,6 @@
 #include "ble_gatt.h"
 
+#include <inttypes.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -57,6 +58,15 @@ static const ble_uuid128_t s_stats_chr_uuid =
 static const ble_uuid128_t s_config_chr_uuid =
     BLE_UUID128_INIT(0x7f, 0xf0, 0x23, 0xc3, 0x60, 0x0d, 0x6f, 0xbc,
                       0x4b, 0x43, 0xa8, 0x52, 0xed, 0x8e, 0x46, 0xc5);
+
+/* 5ebb01c3-8110-4ace-b139-436c1fa0b81f (docs/DATA_MODEL.md), write-only,
+ * bonded: the phone writes the current unix time here on every
+ * connection (docs/DECISIONS.md D6). Raw 4-byte little-endian uint32,
+ * not JSON - a single scalar, matching DATA_MODEL.md's "Little-endian
+ * everywhere" convention rather than adding JSON overhead for one number. */
+static const ble_uuid128_t s_time_sync_chr_uuid =
+    BLE_UUID128_INIT(0x1f, 0xb8, 0xa0, 0x1f, 0x6c, 0x43, 0x39, 0xb1,
+                      0xce, 0x4a, 0x10, 0x81, 0xc3, 0x01, 0xbb, 0x5e);
 
 static uint16_t s_stats_val_handle;
 static uint16_t s_conn_handle = BLE_HS_CONN_HANDLE_NONE;
@@ -166,8 +176,29 @@ static int gatt_config_write(struct ble_gatt_access_ctxt *ctxt)
     return 0;
 }
 
+/* Write-only: the phone sends its current unix time here on every
+ * connection (docs/DECISIONS.md D6). No read/response beyond the
+ * standard ATT write ack - nothing to report back. */
+static int gatt_time_sync_write(struct ble_gatt_access_ctxt *ctxt)
+{
+    uint32_t unix_s;
+    uint16_t copied;
+    if (OS_MBUF_PKTLEN(ctxt->om) != sizeof(unix_s)) {
+        return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+    }
+    if (ble_hs_mbuf_to_flat(ctxt->om, &unix_s, sizeof(unix_s), &copied) != 0 ||
+        copied != sizeof(unix_s)) {
+        return BLE_ATT_ERR_UNLIKELY;
+    }
+
+    sd_storage_set_wallclock_unix_s(unix_s); /* little-endian on the wire matches this RISC-V target's native layout */
+    ESP_LOGI(TAG, "time sync: wallclock set to unix_s=%" PRIu32, unix_s);
+    return 0;
+}
+
 /* Dispatches by characteristic UUID. STATS is read+notify only; CONFIG
- * is read+write (write gated behind encryption, see gatt_config_write). */
+ * is read+write (write gated behind encryption, see gatt_config_write);
+ * TIME_SYNC is write-only, also gated behind encryption. */
 static int gatt_access_cb(uint16_t conn_handle, uint16_t attr_handle,
                            struct ble_gatt_access_ctxt *ctxt, void *arg)
 {
@@ -184,6 +215,9 @@ static int gatt_access_cb(uint16_t conn_handle, uint16_t attr_handle,
             return gatt_config_write(ctxt);
         }
         return gatt_config_read(ctxt);
+    }
+    if (ble_uuid_cmp(uuid, &s_time_sync_chr_uuid.u) == 0) {
+        return gatt_time_sync_write(ctxt);
     }
     return BLE_ATT_ERR_UNLIKELY;
 }
@@ -207,6 +241,10 @@ static const struct ble_gatt_svc_def s_gatt_svcs[] = {
                  * support at all (confirmed on hardware: nRF Connect showed
                  * "Properties: READ" only until this was added). */
                 .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_ENC,
+            }, {
+                .uuid = &s_time_sync_chr_uuid.u,
+                .access_cb = gatt_access_cb,
+                .flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_ENC,
             }, {
                 0, /* No more characteristics in this service. */
             }

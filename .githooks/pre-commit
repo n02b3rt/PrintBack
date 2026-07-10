@@ -15,7 +15,7 @@ offenders=""
 for f in $staged; do
     case "$f" in
         mobile/*|*ble*|*BLE*|*gatt*|*GATT*)
-            if git show ":$f" 2>/dev/null | grep -Ei '"mac"|src_mac|%02x%02x%02x%02x%02x%02x' >/dev/null 2>&1; then
+            if git show ":$f" 2>/dev/null | grep -Ei '"mac"[[:space:]]*:|src_mac|%02x%02x%02x%02x%02x%02x' >/dev/null 2>&1; then
                 offenders="$offenders $f"
             fi
             ;;

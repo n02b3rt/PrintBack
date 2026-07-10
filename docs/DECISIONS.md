@@ -84,3 +84,19 @@ translation upkeep for a UI with a limited remaining lifetime. English
 only for the desktop app going forward. If a bilingual UI is wanted, it
 belongs in the Flutter mobile app's UI (Phase 6), built once, not
 maintained twice across two UIs.
+
+## D9: flutter_blue_plus for the mobile app's BLE stack
+
+Rejected: `flutter_reactive_ble`.
+
+Reason: `flutter_blue_plus` has a larger community/maintenance track
+record for the specific things this app needs (long-lived background
+notifications from a single peripheral, bonding state exposed through
+the platform channel, MTU negotiation control), and its API maps more
+directly onto the imperative connect/discover/subscribe flow this app
+already needs (docs/ARCHITECTURE.md "BLE GATT (sketch)") than
+`flutter_reactive_ble`'s more stream-heavy API, which is aimed more at
+multi-device scanning apps than a single-peripheral-per-user case like
+this one. Already the working assumption since `.claude/rules/mobile-app.md`
+was written; this entry just formalizes it per docs/TASKS.md Phase 6's
+explicit request to record the choice.

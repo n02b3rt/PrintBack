@@ -270,6 +270,166 @@ characteristic never advertises write support at the ATT layer at all.
 Fix: `.flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_ENC`.
 Status: RESOLVED (2026-07-09)
 
+## [MOBILE] Flutter wasn't installed, Chocolatey couldn't install it either
+Date: 2026-07-09
+Problem: `flutter create` failed with "the term 'flutter' is not
+recognized" - no Flutter/Dart SDK on this machine at the start of Phase
+6. `choco install flutter -y` failed twice: first for lack of an
+elevated shell, then (even after answering yes to continue anyway) with
+`Chocolatey installed 0/0 packages`, caused by an unrelated corrupted
+`C:\ProgramData\chocolatey\lib\python312\python312.nupkg` blocking
+Chocolatey's package processing entirely, unrelated to Flutter itself.
+Root cause: Chocolatey on this machine is broken independent of
+anything Flutter-related; fixing it would mean touching an unrelated
+corrupted package outside this project's scope.
+Fix: downloaded the official Flutter SDK zip directly from
+`https://storage.googleapis.com/flutter_infra_release/releases/releases_windows.json`
+(current stable at the time: `flutter_windows_3.44.5-stable.zip`),
+extracted to `D:\flutter`, added `D:\flutter\bin` to the user's PATH via
+`[Environment]::SetEnvironmentVariable(..., "User")`. PATH changes don't
+propagate to an already-running shell, so any Flutter invocation in the
+same session needs the full path (`D:\flutter\bin\flutter.bat`) until a
+fresh shell picks up the new PATH. `flutter --version`/`flutter doctor`/
+`flutter create`/`flutter pub get`/`flutter analyze`/`flutter test` all
+confirmed working this way - meaning, contrary to the original Phase 6
+plan's assumption, these commands (everything except `flutter run`
+against a real device/emulator) can in fact be run directly instead of
+waiting on the user every time.
+Status: RESOLVED (2026-07-09)
+
+## [MOBILE] first real phone run: adb install blocked, then BLE scan permission crash
+Date: 2026-07-09
+Problem: two separate issues surfaced back to back on the first `flutter
+run` against a real Android phone (Xiaomi, MIUI/HyperOS, Android 16).
+(1) `adb install` failed every time with `INSTALL_FAILED_USER_RESTRICTED:
+Install canceled by user`, even though the APK built fine. (2) After
+fixing that, the app launched but tapping "scan for devices" crashed
+with `PlatformException(startScan, Permission
+android.permission.BLUETOOTH_SCAN required to scan devices, null, null)`.
+Root cause: (1) MIUI/HyperOS silently blocks ADB-installed APKs unless
+"Install via USB" is explicitly enabled in Developer options, which
+itself requires being signed into a Mi Account with network access at
+the moment the toggle is flipped - a device/OS setting, not a project
+bug. (2) a real code gap: Android 12+ (API 31+) makes
+`BLUETOOTH_SCAN`/`BLUETOOTH_CONNECT` runtime-requestable "dangerous"
+permissions. `AndroidManifest.xml` never declared them, and even with
+the manifest entries `flutter_blue_plus` does not request the runtime
+permission itself before calling native `startScan()` - it just throws.
+`ios/Runner/Info.plist` was missing `NSBluetoothAlwaysUsageDescription`
+too (iOS prompts automatically off that string but crashes without it).
+Fix: (1) user enabled "Install via USB" on the phone, no firmware/app
+change needed. (2) added the "no location" manifest block from
+flutter_blue_plus's own README (`BLUETOOTH_SCAN` with
+`usesPermissionFlags="neverForLocation"`, `BLUETOOTH_CONNECT`, plus
+legacy `BLUETOOTH`/`BLUETOOTH_ADMIN`/`ACCESS_FINE_LOCATION` capped at
+`maxSdkVersion="30"` for pre-Android-12 devices) to
+`android/app/src/main/AndroidManifest.xml`; added
+`NSBluetoothAlwaysUsageDescription` to `ios/Runner/Info.plist`; added
+`permission_handler` and a `BleService.requestPermissions()` that
+requests `Permission.bluetoothScan`/`Permission.bluetoothConnect` before
+every `scan()`/`connect()` call on Android (skipped on other platforms -
+iOS prompts on its own from the Info.plist string, no explicit request
+needed there).
+Status: RESOLVED (2026-07-09)
+
+## [MOBILE] TIME_SYNC characteristic invisible to the phone despite existing on the device
+Date: 2026-07-09
+Problem: after fixing the BLE permission crash above, connect() got much
+further (services discovered, STATS/CONFIG matched) but threw `Bad
+state: TIME_SYNC characteristic not found`, even though the firmware's
+own boot log had already confirmed TIME_SYNC registers correctly
+(`registered characteristic 5ebb01c3-... def_handle=20 val_handle=21`).
+Root cause: Android caches a peripheral's GATT service/characteristic
+table keyed by Bluetooth address, independent of the app and independent
+of bonding. This phone had connected to this exact ESP32 (same address)
+during earlier Phase 4/5 testing via nRF Connect, back when the firmware
+only exposed STATS+CONFIG (TIME_SYNC didn't exist yet). Android kept
+serving that stale 2-characteristic table to `discoverServices()`
+instead of re-reading the peripheral, since the firmware never sends a
+Service Changed indication when its GATT table changes between flashes.
+This is expected to recur any time a characteristic is added/changed on
+a device Android has seen before, not a one-off - relevant for
+PAIRING_STATUS or any future characteristic too.
+Fix: `flutter_blue_plus`'s `BluetoothDevice.clearGattCache()` (Android
+only, wraps the hidden `BluetoothGatt.refresh()` API) called right after
+connecting and before `discoverServices()`, unconditionally on every
+connect - cheap, and makes the app resilient to this same class of
+problem for the rest of the project instead of a one-time manual phone
+fix (forgetting the device in Android Bluetooth settings would have
+worked too, but doesn't scale to every tester's phone). Also fixed a
+separate own-goal while debugging this: `pairing_screen.dart`'s
+`catch (_)` on `ble.connect()` silently swallowed the real exception,
+showing only a generic "Connection failed" with no way to see why -
+added `debugPrint` of the real error and inlined it into the shown
+message, plus descriptive `orElse` on the STATS/CONFIG/TIME_SYNC
+`firstWhere` lookups so a real future mismatch says which one failed.
+Confirmed on hardware after the fix: `writeCharacteristic` on TIME_SYNC,
+`setNotifyValue` on STATS, and `readCharacteristic` on CONFIG all
+returned `GATT_SUCCESS` in one connection - the whole Phase 5 bonding +
+Phase 6 TIME_SYNC/STATS/CONFIG chain confirmed working end-to-end from
+the actual Flutter app for the first time.
+Status: RESOLVED (2026-07-09)
+
+## [MOBILE] dashboard showed 0/0 after connecting, no aggregate ever arrived
+Date: 2026-07-09
+Problem: with the previous two bugs fixed, connect/pair/TIME_SYNC/CONFIG
+all worked, but the dashboard's KPI cards stayed at 0/0 and the charts
+showed "no data synced yet" right after connecting.
+Root cause: not a bug so much as an unfinished piece of scope.
+Subscribing to STATS (`setNotifyValue`) only delivers *future*
+notifications - the next hourly/daily rollover the device happens to
+produce while the phone is connected. docs/DATA_MODEL.md's "Backfill
+after a longer gap" section already flagged this as needing a stable
+bond identity (Phase 5) to track "what's already synced," but Phase 5's
+actual implementation only added bonding/whitelist/CONFIG-write, never
+the backfill/replay logic itself - the TODO was never converted into
+code.
+Fix (partial, deliberately scoped small): STATS also supports a plain
+read (`gatt_stats_read()` in firmware, already existed since Phase 4,
+returns whatever's in `stats/today.bin` - "today so far"). Added
+`BleService.readCurrentStats()` and call it once from
+`DashboardScreen.initState()` right after connecting, upserting the
+result into the local db like any other row. This is a pull, not a push
+through the `statsUpdates` broadcast stream, deliberately: connect()
+finishes (and could emit) before the dashboard screen even exists to
+subscribe, so anything pushed through the shared stream during connect()
+itself would be silently lost to a listener that subscribes too late.
+This only gets "today so far" (one record), not a real multi-day
+backfill - the full replay-unsynced-history design from
+docs/DATA_MODEL.md remains unbuilt, flagging as a real follow-up rather
+than improvising a bigger fix mid-session.
+Status: RESOLVED (2026-07-09) for the immediate 0/0 symptom. Full
+history backfill on (re)connect is still open, not scoped into Phase 6.
+
+## [MOBILE] local_db silently duplicated the daily row on every reconnect
+Date: 2026-07-09
+Problem: after the STATS-initial-read fix above, the "last days" chart
+showed two bars for the exact same date (07-08) instead of one, and the
+new/returning KPI cards still read 0/0 despite a daily total clearly
+having synced (visible in the duplicated chart bars).
+Root cause: two separate bugs. (1) `local_db.dart`'s schema was
+`hour INTEGER` (nullable) with `UNIQUE(date, hour)`; daily rows are
+stored with `hour = NULL`. SQLite's UNIQUE constraint treats every NULL
+as distinct from every other NULL (documented SQLite behavior, not a
+bug in SQLite), so the constraint never actually deduplicated repeated
+daily-row upserts - every reconnect's `readCurrentStats()` call inserted
+a fresh "duplicate" row for the same calendar date instead of replacing
+the existing one. (2) `dashboard_screen.dart`'s KPI cards summed
+`_hourlyToday` (rows with `hour` 0-23) instead of reading the daily
+"today so far" record directly - since the hourly breakdown only fills
+in from live hour-boundary notifications (still empty this early), the
+KPIs stayed 0/0 even once a real daily total existed in the database.
+Fix: (1) switched the `hour` column to `NOT NULL` with `-1` as the
+"whole day" sentinel instead of SQL NULL - deliberately matching the
+firmware's own on-device convention (`hour_or_day: -1 = whole day`,
+firmware/main/sd_paths.h / docs/DATA_MODEL.md), so the UNIQUE index's
+normal integer comparison actually catches duplicates. Bumped the
+sqflite schema to version 2 with `onUpgrade` dropping and recreating the
+table (acceptable for a local dev-stage cache with no real user data to
+preserve). (2) KPI cards now prefer `LocalDb.dailyForDate()`'s result,
+falling back to the hourly sum only if no daily row exists yet.
+Status: RESOLVED (2026-07-09)
+
 ## Things that DON'T work: don't try again
 
 - WiFi monitor mode + Thread (802.15.4) on one ESP32-C6 radio: confirmed

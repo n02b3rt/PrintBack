@@ -1,0 +1,34 @@
+{
+  "@@locale": "pl",
+  "appTitle": "PrintBack",
+  "navDashboard": "Panel",
+  "navSettings": "Ustawienia",
+
+  "pairingTitle": "Parowanie urządzenia",
+  "pairingInstruction": "Naciśnij przycisk na urządzeniu, aby rozpocząć parowanie.",
+  "scanButton": "Szukaj urządzeń",
+  "scanning": "Skanowanie...",
+  "noDevicesFound": "Nie znaleziono urządzeń",
+  "connecting": "Łączenie...",
+  "connected": "Połączono",
+  "connectionFailed": "Połączenie nieudane",
+  "bluetoothPermissionDenied": "Odmówiono uprawnień Bluetooth - zezwól w ustawieniach aplikacji",
+
+  "dashboardTitle": "Panel",
+  "todayLabel": "Dziś",
+  "hourlyChartTitle": "Odwiedziny godzinowe (dziś)",
+  "dailyChartTitle": "Ostatnie dni",
+  "uniqueLabel": "Nowi",
+  "returningLabel": "Powracający",
+  "noDataYet": "Brak zsynchronizowanych danych",
+  "kanonBadge": "Mały ruch, tylko rozdzielczość dzienna",
+
+  "settingsTitle": "Ustawienia",
+  "rssiFloorLabel": "Minimalna siła sygnału (RSSI, dBm)",
+  "returningWindowLabel": "Okno powracających (dni)",
+  "saveButton": "Zapisz",
+  "settingsSaved": "Zapisano",
+  "settingsLoadFailed": "Nie udało się odczytać ustawień urządzenia",
+  "settingsSaveFailed": "Nie udało się zapisać ustawień urządzenia",
+  "notConnected": "Brak połączenia z urządzeniem"
+}
