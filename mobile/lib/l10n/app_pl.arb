@@ -7,6 +7,26 @@
   "syncNowButton": "Synchronizuj teraz",
 
   "autoConnecting": "Łączenie z urządzeniem...",
+  "pairedAndConnected": "Sparowano i połączono",
+  "syncingNow": "Synchronizowanie...",
+  "neverSynced": "Jeszcze nie zsynchronizowano",
+  "lastSyncedAgo": "Ostatnia synchronizacja {when}",
+  "@lastSyncedAgo": {
+    "placeholders": { "when": { "type": "String" } }
+  },
+  "justNow": "przed chwilą",
+  "minutesAgo": "{count} min temu",
+  "@minutesAgo": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "hoursAgo": "{count} godz. temu",
+  "@hoursAgo": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "daysAgo": "{count} dni temu",
+  "@daysAgo": {
+    "placeholders": { "count": { "type": "int" } }
+  },
 
   "pairingTitle": "Parowanie urządzenia",
   "pairingInstruction": "Naciśnij przycisk na urządzeniu, aby rozpocząć parowanie.",
@@ -26,6 +46,18 @@
   "returningLabel": "Powracający",
   "noDataYet": "Brak zsynchronizowanych danych",
   "kanonBadge": "Mały ruch, tylko rozdzielczość dzienna",
+  "shareOfDayLabel": "Udział w dzisiejszym ruchu",
+  "interpretationPeakHour": "Najruchliwsza godzina dzisiaj do tej pory",
+  "interpretationBestDay": "Najlepszy dzień w tym okresie",
+  "interpretationAroundAverage": "W okolicach średniej dla tego okresu",
+  "interpretationAboveAverage": "{percent}% powyżej średniej dla tego okresu",
+  "@interpretationAboveAverage": {
+    "placeholders": { "percent": { "type": "int" } }
+  },
+  "interpretationBelowAverage": "{percent}% poniżej średniej dla tego okresu",
+  "@interpretationBelowAverage": {
+    "placeholders": { "percent": { "type": "int" } }
+  },
 
   "statisticsTitle": "Statystyki",
   "periodToday": "Dziś",

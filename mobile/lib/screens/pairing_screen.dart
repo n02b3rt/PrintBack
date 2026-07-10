@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../ble/ble_service.dart';
 import '../l10n/app_localizations.dart';
+import '../widgets/gradient_background.dart';
 import 'home_shell.dart';
 
 class PairingScreen extends StatefulWidget {
@@ -69,44 +70,49 @@ class _PairingScreenState extends State<PairingScreen> {
     final l10n = AppLocalizations.of(context)!;
     return Scaffold(
       appBar: AppBar(title: Text(l10n.pairingTitle)),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(l10n.pairingInstruction),
-            const SizedBox(height: 16),
-            FilledButton(
-              onPressed: (_scanning || _connecting) ? null : _startScan,
-              child: Text(_scanning ? l10n.scanning : l10n.scanButton),
-            ),
-            if (_error != null) ...[
-              const SizedBox(height: 8),
-              Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+      body: GradientBackground(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(l10n.pairingInstruction),
+              const SizedBox(height: 16),
+              FilledButton(
+                onPressed: (_scanning || _connecting) ? null : _startScan,
+                child: Text(_scanning ? l10n.scanning : l10n.scanButton),
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: 8),
+                Text(_error!,
+                    style: TextStyle(color: Theme.of(context).colorScheme.error)),
+              ],
+              const SizedBox(height: 16),
+              if (_connecting) const LinearProgressIndicator(),
+              Expanded(
+                child: _results.isEmpty
+                    ? Center(
+                        child:
+                            Text(_scanning ? l10n.scanning : l10n.noDevicesFound),
+                      )
+                    : ListView.builder(
+                        itemCount: _results.length,
+                        itemBuilder: (context, index) {
+                          final result = _results[index];
+                          final name = result.device.platformName.isNotEmpty
+                              ? result.device.platformName
+                              : result.device.remoteId.str;
+                          return ListTile(
+                            title: Text(name),
+                            subtitle: Text('RSSI: ${result.rssi}'),
+                            onTap:
+                                _connecting ? null : () => _connect(result.device),
+                          );
+                        },
+                      ),
+              ),
             ],
-            const SizedBox(height: 16),
-            if (_connecting) const LinearProgressIndicator(),
-            Expanded(
-              child: _results.isEmpty
-                  ? Center(
-                      child: Text(_scanning ? l10n.scanning : l10n.noDevicesFound),
-                    )
-                  : ListView.builder(
-                      itemCount: _results.length,
-                      itemBuilder: (context, index) {
-                        final result = _results[index];
-                        final name = result.device.platformName.isNotEmpty
-                            ? result.device.platformName
-                            : result.device.remoteId.str;
-                        return ListTile(
-                          title: Text(name),
-                          subtitle: Text('RSSI: ${result.rssi}'),
-                          onTap: _connecting ? null : () => _connect(result.device),
-                        );
-                      },
-                    ),
-            ),
-          ],
+          ),
         ),
       ),
     );

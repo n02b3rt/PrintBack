@@ -8,6 +8,10 @@ import '../ble/ble_service.dart';
 import '../l10n/app_localizations.dart';
 import '../models/aggregate.dart';
 import '../storage/local_db.dart';
+import '../widgets/chart_style.dart';
+import '../widgets/detail_sheet.dart';
+import '../widgets/glass_card.dart';
+import '../widgets/gradient_background.dart';
 
 enum _Period { today, week, month, custom }
 
@@ -200,87 +204,107 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
           ),
         ],
       ),
-      body: RefreshIndicator(
-        onRefresh: _reload,
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            SegmentedButton<_Period>(
-              segments: [
-                ButtonSegment(value: _Period.today, label: Text(l10n.periodToday)),
-                ButtonSegment(value: _Period.week, label: Text(l10n.periodWeek)),
-                ButtonSegment(value: _Period.month, label: Text(l10n.periodMonth)),
-              ],
-              selected: {_period == _Period.custom ? _Period.week : _period},
-              onSelectionChanged: (s) {
-                setState(() => _period = s.first);
-                _reload();
-              },
-            ),
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton.icon(
-                onPressed: _pickCustomRange,
-                icon: const Icon(Icons.date_range),
-                label: Text(l10n.periodCustom),
+      body: GradientBackground(
+        child: RefreshIndicator(
+          onRefresh: _reload,
+          child: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              SegmentedButton<_Period>(
+                segments: [
+                  ButtonSegment(
+                      value: _Period.today, label: Text(l10n.periodToday)),
+                  ButtonSegment(
+                      value: _Period.week, label: Text(l10n.periodWeek)),
+                  ButtonSegment(
+                      value: _Period.month, label: Text(l10n.periodMonth)),
+                ],
+                selected: {_period == _Period.custom ? _Period.week : _period},
+                onSelectionChanged: (s) {
+                  setState(() => _period = s.first);
+                  _reload();
+                },
               ),
-            ),
-            const SizedBox(height: 8),
-            Text('$totalUnique', style: Theme.of(context).textTheme.headlineMedium),
-            Text(l10n.totalUniqueLabel),
-            if (delta != null)
-              Text(
-                '${delta >= 0 ? '+' : ''}$delta% ${l10n.vsPreviousPeriod}',
-                style: TextStyle(
-                  color: delta >= 0
-                      ? Theme.of(context).colorScheme.tertiary
-                      : Theme.of(context).colorScheme.error,
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                  onPressed: _pickCustomRange,
+                  icon: const Icon(Icons.date_range),
+                  label: Text(l10n.periodCustom),
                 ),
               ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: _StatCard(
-                      label: l10n.returningRateLabel, value: '$returningRate%'),
+              const SizedBox(height: 8),
+              GlassCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('$totalUnique',
+                        style: Theme.of(context).textTheme.headlineMedium),
+                    Text(l10n.totalUniqueLabel,
+                        style: Theme.of(context).textTheme.bodySmall),
+                    if (delta != null) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        '${delta >= 0 ? '+' : ''}$delta% ${l10n.vsPreviousPeriod}',
+                        style: TextStyle(
+                          color: delta >= 0
+                              ? Theme.of(context).colorScheme.tertiary
+                              : Theme.of(context).colorScheme.error,
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child:
-                      _StatCard(label: l10n.averageDailyLabel, value: '$avgDaily'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: _StatCard(label: l10n.bestDayLabel, value: bestDayLabel),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _StatCard(
-                    label: l10n.peakHourLabel,
-                    value: peakHour != null ? '$peakHour:00' : '-',
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: _StatCard(
+                        label: l10n.returningRateLabel,
+                        value: '$returningRate%'),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 24),
-            Text(l10n.weekdayPatternTitle,
-                style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 8),
-            SizedBox(
-              height: 160,
-              child: _daily.isEmpty
-                  ? Center(child: Text(l10n.noDataYet))
-                  : _WeekdayChart(
-                      sums: weekdaySums,
-                      counts: weekdayCounts,
-                      labels: weekdayLabels,
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _StatCard(
+                        label: l10n.averageDailyLabel, value: '$avgDaily'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child:
+                        _StatCard(label: l10n.bestDayLabel, value: bestDayLabel),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _StatCard(
+                      label: l10n.peakHourLabel,
+                      value: peakHour != null ? '$peakHour:00' : '-',
                     ),
-            ),
-          ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+              Text(l10n.weekdayPatternTitle,
+                  style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 8),
+              GlassCard(
+                child: SizedBox(
+                  height: 160,
+                  child: _daily.isEmpty
+                      ? Center(child: Text(l10n.noDataYet))
+                      : _WeekdayChart(
+                          sums: weekdaySums,
+                          counts: weekdayCounts,
+                          labels: weekdayLabels,
+                        ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -295,17 +319,14 @@ class _StatCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(label, style: Theme.of(context).textTheme.bodySmall),
-            const SizedBox(height: 4),
-            Text(value, style: Theme.of(context).textTheme.titleLarge),
-          ],
-        ),
+    return GlassCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: Theme.of(context).textTheme.bodySmall),
+          const SizedBox(height: 4),
+          Text(value, style: Theme.of(context).textTheme.titleLarge),
+        ],
       ),
     );
   }
@@ -322,52 +343,80 @@ class _WeekdayChart extends StatelessWidget {
     required this.labels,
   });
 
+  void _showDetail(
+      BuildContext context, AppLocalizations l10n, List<double> avgs, int i) {
+    if (counts[i] == 0) return;
+    final activeAvgs = [
+      for (var d = 0; d < 7; d++)
+        if (counts[d] > 0) avgs[d]
+    ];
+    final overallAvg =
+        activeAvgs.isEmpty ? 0.0 : activeAvgs.reduce((a, b) => a + b) / activeAvgs.length;
+    final maxAvg = activeAvgs.fold<double>(0, (m, v) => v > m ? v : m);
+    final isBest = avgs[i] == maxAvg && maxAvg > 0;
+
+    String interpretation;
+    if (isBest) {
+      interpretation = l10n.interpretationBestDay;
+    } else if (overallAvg > 0 && avgs[i] > overallAvg * 1.2) {
+      interpretation = l10n.interpretationAboveAverage(
+          ((avgs[i] / overallAvg - 1) * 100).round());
+    } else if (overallAvg > 0 && avgs[i] < overallAvg * 0.8) {
+      interpretation = l10n.interpretationBelowAverage(
+          ((1 - avgs[i] / overallAvg) * 100).round());
+    } else {
+      interpretation = l10n.interpretationAroundAverage;
+    }
+
+    showDetailSheet(
+      context,
+      title: labels[i],
+      primaryValue: '~${avgs[i].round()}',
+      primaryLabel: l10n.totalUniqueLabel,
+      interpretation: interpretation,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final avgs =
         List.generate(7, (i) => counts[i] == 0 ? 0.0 : sums[i] / counts[i]);
     final maxY = avgs.fold<double>(1, (m, v) => v > m ? v : m);
 
+    final l10n = AppLocalizations.of(context)!;
+    final peak = avgs.fold<double>(0, (m, v) => v > m ? v : m);
+
     return BarChart(
       BarChartData(
         maxY: maxY * 1.2,
+        gridData: revolutGrid,
+        borderData: revolutBorder,
         barTouchData: BarTouchData(
-          touchTooltipData: BarTouchTooltipData(
-            getTooltipItem: (group, groupIndex, rod, rodIndex) {
-              if (group.x < 0 || group.x >= labels.length) return null;
-              return BarTooltipItem(
-                '${labels[group.x]}\n${avgs[group.x].round()}',
-                const TextStyle(color: Colors.white, fontSize: 12),
-              );
-            },
-          ),
+          touchCallback: (event, response) {
+            if (!event.isInterestedForInteractions) return;
+            final index = response?.spot?.touchedBarGroupIndex;
+            if (index == null) return;
+            _showDetail(context, l10n, avgs, index);
+          },
         ),
-        titlesData: FlTitlesData(
-          topTitles: const AxisTitles(),
-          rightTitles: const AxisTitles(),
-          bottomTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              getTitlesWidget: (value, meta) {
-                final i = value.toInt();
-                if (i < 0 || i >= labels.length) return const SizedBox.shrink();
-                return Text(labels[i]);
-              },
-            ),
-          ),
-          leftTitles: const AxisTitles(
-            sideTitles: SideTitles(showTitles: true, reservedSize: 32),
-          ),
+        titlesData: revolutTitles(
+          context,
+          bottomBuilder: (value, meta) {
+            final i = value.toInt();
+            if (i < 0 || i >= labels.length) return const SizedBox.shrink();
+            return Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child:
+                  Text(labels[i], style: Theme.of(context).textTheme.bodySmall),
+            );
+          },
         ),
         barGroups: List.generate(
           7,
           (i) => BarChartGroupData(
             x: i,
             barRods: [
-              BarChartRodData(
-                toY: avgs[i],
-                color: Theme.of(context).colorScheme.primary,
-              ),
+              revolutRod(context, avgs[i], highlight: avgs[i] == peak && peak > 0),
             ],
           ),
         ),

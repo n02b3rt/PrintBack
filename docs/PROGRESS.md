@@ -196,15 +196,39 @@
       dot-mark in the Dashboard app bar replacing an icon-in-a-box logo
       (explicitly rejected during design review as looking generated
       rather than like a real product mark).
-      Not yet done: none of Phase 8's mobile code has run on an actual
-      phone yet (no physical device available on this machine, same
-      constraint as every other phase) - the auto-reconnect flow, device
-      switching, SYNC backfill actually landing on the phone, and the
-      whole visual redesign all still need a real end-to-end pass with
-      the user before this phase can be marked done.
+      8f (unplanned, added after 8e per direct user feedback on real
+      hardware): real glass-morphism (`BackdropFilter`/`GlassCard`,
+      `GradientBackground`), tap-to-detail `showModalBottomSheet` on every
+      bar chart replacing the old tooltip-only interaction (with a
+      computed interpretation line - peak hour/best day/vs-period-average),
+      a `SyncStatusBanner` on the dashboard showing live paired/connected
+      + syncing/last-synced state (`BleService.isSyncing`/
+      `lastSyncCompleted`, a 1500ms idle timer matching the wire
+      protocol's own "quiet period = done" design), and a shared
+      "Revolut style" bar chart look (`chart_style.dart`: rounded
+      gradient bars, no grid/axis chrome, exact values moved into the
+      tap-detail sheet). Also fixed a real bug found on hardware during
+      this pass: `tryAutoConnect()` picking the wrong bonded BLE device
+      (see docs/LEARNINGS.md 2026-07-10) - now tries every
+      `systemDevices()` candidate before falling back to a real
+      service-UUID-filtered scan.
+      Hardware pass (2026-07-10): confirmed end-to-end on a real phone -
+      auto-reconnect now connects straight to the correct device with
+      zero manual intervention, TIME_SYNC/STATS/CONFIG/SYNC all succeed,
+      sync status banner and Revolut-style charts render correctly on
+      both Dashboard and Statystyki, tap-to-detail sheets open with
+      correct data and interpretation text.
+      Still open: the hourly chart ("Odwiedziny godzinowe") shows "no
+      synced data" on a fresh connect - SYNC only replays
+      `stats/daily.bin`, never today's hourly breakdown, so hourly bars
+      only fill in from live hour-boundary notifications during the
+      current connection. Needs a firmware-side decision (extend SYNC, or
+      a separate mechanism, to also backfill today's hourly file) before
+      this phase can be marked fully done - not yet asked/actioned.
 
 Note: the current code in `firmware/` and `app/` is still the old
 architecture (USB-CDC → Python desktop dashboard, SQLite). Don't remove /
 change it until the new path (BLE+SD) is ready and tested in parallel.
 
-Last updated: 2026-07-10 (Phase 8 code complete, hardware pass pending).
+Last updated: 2026-07-10 (Phase 8a-8f verified on real hardware; hourly
+backfill on connect still open, see Phase 8 notes above).

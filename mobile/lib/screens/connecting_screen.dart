@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../ble/ble_service.dart';
 import '../l10n/app_localizations.dart';
+import '../widgets/gradient_background.dart';
 import 'home_shell.dart';
 import 'pairing_screen.dart';
 
@@ -40,14 +41,16 @@ class _ConnectingScreenState extends State<ConnectingScreen> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
     return Scaffold(
-      body: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const CircularProgressIndicator(),
-            const SizedBox(height: 16),
-            Text(l10n.autoConnecting),
-          ],
+      body: GradientBackground(
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CircularProgressIndicator(),
+              const SizedBox(height: 16),
+              Text(l10n.autoConnecting),
+            ],
+          ),
         ),
       ),
     );

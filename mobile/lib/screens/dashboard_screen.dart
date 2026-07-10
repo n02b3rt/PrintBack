@@ -9,6 +9,11 @@ import '../l10n/app_localizations.dart';
 import '../models/aggregate.dart';
 import '../storage/local_db.dart';
 import '../widgets/brand_mark.dart';
+import '../widgets/chart_style.dart';
+import '../widgets/detail_sheet.dart';
+import '../widgets/glass_card.dart';
+import '../widgets/gradient_background.dart';
+import '../widgets/sync_status_banner.dart';
 
 /// Today's date as `YYYY-MM-DD`, matching docs/DATA_MODEL.md's STATS
 /// `date` field format.
@@ -106,44 +111,52 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ],
       ),
-      body: RefreshIndicator(
-        onRefresh: _reload,
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: _KpiCard(label: l10n.uniqueLabel, value: todayUnique),
+      body: GradientBackground(
+        child: RefreshIndicator(
+          onRefresh: _reload,
+          child: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              const SyncStatusBanner(),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: _KpiCard(label: l10n.uniqueLabel, value: todayUnique),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _KpiCard(
+                        label: l10n.returningLabel, value: todayReturning),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+              Text(l10n.hourlyChartTitle,
+                  style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 8),
+              GlassCard(
+                child: SizedBox(
+                  height: 200,
+                  child: _hourlyToday.isEmpty
+                      ? Center(child: Text(l10n.noDataYet))
+                      : _HourlyBarChart(data: _hourlyToday),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _KpiCard(
-                      label: l10n.returningLabel, value: todayReturning),
+              ),
+              const SizedBox(height: 24),
+              Text(l10n.dailyChartTitle,
+                  style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 8),
+              GlassCard(
+                child: SizedBox(
+                  height: 200,
+                  child: _recentDaily.isEmpty
+                      ? Center(child: Text(l10n.noDataYet))
+                      : _DailyBarChart(data: _recentDaily.reversed.toList()),
                 ),
-              ],
-            ),
-            const SizedBox(height: 24),
-            Text(l10n.hourlyChartTitle,
-                style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 8),
-            SizedBox(
-              height: 200,
-              child: _hourlyToday.isEmpty
-                  ? Center(child: Text(l10n.noDataYet))
-                  : _HourlyBarChart(data: _hourlyToday),
-            ),
-            const SizedBox(height: 24),
-            Text(l10n.dailyChartTitle,
-                style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 8),
-            SizedBox(
-              height: 200,
-              child: _recentDaily.isEmpty
-                  ? Center(child: Text(l10n.noDataYet))
-                  : _DailyBarChart(data: _recentDaily.reversed.toList()),
-            ),
-          ],
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -158,15 +171,13 @@ class _KpiCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            Text('$value', style: Theme.of(context).textTheme.headlineMedium),
-            Text(label),
-          ],
-        ),
+    return GlassCard(
+      child: Column(
+        children: [
+          Text('$value', style: Theme.of(context).textTheme.headlineMedium),
+          const SizedBox(height: 4),
+          Text(label, style: Theme.of(context).textTheme.bodySmall),
+        ],
       ),
     );
   }
@@ -177,6 +188,41 @@ class _HourlyBarChart extends StatelessWidget {
 
   const _HourlyBarChart({required this.data});
 
+  void _showDetail(BuildContext context, AppLocalizations l10n, Aggregate agg) {
+    final hour = agg.hour!;
+    final dayTotal = data.fold<int>(0, (s, a) => s + a.unique);
+    final dayAvg = data.isEmpty ? 0.0 : dayTotal / data.length;
+    final share = dayTotal == 0 ? 0 : (agg.unique * 100 / dayTotal).round();
+    final isPeak =
+        agg.unique == data.map((a) => a.unique).reduce((a, b) => a > b ? a : b) &&
+            agg.unique > 0;
+
+    String interpretation;
+    if (isPeak) {
+      interpretation = l10n.interpretationPeakHour;
+    } else if (dayAvg > 0 && agg.unique > dayAvg * 1.2) {
+      interpretation = l10n.interpretationAboveAverage(
+          ((agg.unique / dayAvg - 1) * 100).round());
+    } else if (dayAvg > 0 && agg.unique < dayAvg * 0.8) {
+      interpretation = l10n.interpretationBelowAverage(
+          ((1 - agg.unique / dayAvg) * 100).round());
+    } else {
+      interpretation = l10n.interpretationAroundAverage;
+    }
+
+    showDetailSheet(
+      context,
+      title: '${hour.toString().padLeft(2, '0')}:00',
+      primaryValue: '${agg.unique}',
+      primaryLabel: l10n.uniqueLabel,
+      rows: [
+        (l10n.returningLabel, '${agg.returning}'),
+        (l10n.shareOfDayLabel, '$share%'),
+      ],
+      interpretation: interpretation,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
@@ -186,49 +232,38 @@ class _HourlyBarChart extends StatelessWidget {
         .fold<int>(1, (m, v) => v > m ? v : m)
         .toDouble();
 
+    final peak = data.map((a) => a.unique).fold<int>(0, (m, v) => v > m ? v : m);
+
     return BarChart(
       BarChartData(
         maxY: maxY * 1.2,
+        gridData: revolutGrid,
+        borderData: revolutBorder,
         barTouchData: BarTouchData(
-          touchTooltipData: BarTouchTooltipData(
-            getTooltipItem: (group, groupIndex, rod, rodIndex) {
-              final agg = byHour[group.x];
-              if (agg == null) return null;
-              // Hourly records are never k-anonymity-collapsed (only
-              // daily rollups can be, see aggregate_record_t's doc
-              // comment in docs/DATA_MODEL.md) - no badge needed here.
-              return BarTooltipItem(
-                '${group.x.toString().padLeft(2, '0')}:00\n'
-                '${agg.unique} ${l10n.uniqueLabel.toLowerCase()}\n'
-                '${agg.returning} ${l10n.returningLabel.toLowerCase()}',
-                const TextStyle(color: Colors.white, fontSize: 12),
-              );
-            },
-          ),
+          touchCallback: (event, response) {
+            if (!event.isInterestedForInteractions) return;
+            final hour = response?.spot?.touchedBarGroupIndex;
+            final agg = hour == null ? null : byHour[hour];
+            if (agg == null) return;
+            _showDetail(context, l10n, agg);
+          },
         ),
-        titlesData: FlTitlesData(
-          topTitles: const AxisTitles(),
-          rightTitles: const AxisTitles(),
-          bottomTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              getTitlesWidget: (value, meta) => Text('${value.toInt()}'),
-              interval: 4,
-            ),
-          ),
-          leftTitles: const AxisTitles(
-            sideTitles: SideTitles(showTitles: true, reservedSize: 32),
+        titlesData: revolutTitles(
+          context,
+          bottomInterval: 4,
+          bottomBuilder: (value, meta) => Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text('${value.toInt()}',
+                style: Theme.of(context).textTheme.bodySmall),
           ),
         ),
         barGroups: List.generate(24, (hour) {
           final agg = byHour[hour];
+          final value = (agg?.unique ?? 0).toDouble();
           return BarChartGroupData(
             x: hour,
             barRods: [
-              BarChartRodData(
-                toY: (agg?.unique ?? 0).toDouble(),
-                color: Theme.of(context).colorScheme.primary,
-              ),
+              revolutRod(context, value, highlight: agg != null && agg.unique == peak && peak > 0),
             ],
           );
         }),
@@ -242,6 +277,40 @@ class _DailyBarChart extends StatelessWidget {
 
   const _DailyBarChart({required this.data});
 
+  void _showDetail(BuildContext context, AppLocalizations l10n, int index) {
+    if (index < 0 || index >= data.length) return;
+    final agg = data[index];
+    final total = data.fold<int>(0, (s, a) => s + a.unique);
+    final avg = data.isEmpty ? 0.0 : total / data.length;
+    final maxUnique = data.map((a) => a.unique).reduce((a, b) => a > b ? a : b);
+    final isBest = agg.unique == maxUnique && agg.unique > 0;
+
+    String interpretation;
+    if (isBest) {
+      interpretation = l10n.interpretationBestDay;
+    } else if (avg > 0 && agg.unique > avg * 1.2) {
+      interpretation =
+          l10n.interpretationAboveAverage(((agg.unique / avg - 1) * 100).round());
+    } else if (avg > 0 && agg.unique < avg * 0.8) {
+      interpretation = l10n.interpretationBelowAverage(
+          ((1 - agg.unique / avg) * 100).round());
+    } else {
+      interpretation = l10n.interpretationAroundAverage;
+    }
+
+    showDetailSheet(
+      context,
+      title: agg.date,
+      primaryValue: '${agg.unique}',
+      primaryLabel: l10n.uniqueLabel,
+      rows: [
+        (l10n.returningLabel, '${agg.returning}'),
+        if (agg.kanon) (l10n.kanonBadge, ''),
+      ],
+      interpretation: interpretation,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
@@ -249,56 +318,47 @@ class _DailyBarChart extends StatelessWidget {
         .map((a) => a.unique)
         .fold<int>(1, (m, v) => v > m ? v : m)
         .toDouble();
+    // Cap visible x-axis labels regardless of how many days are shown -
+    // one label per bar overlaps into an unreadable smear once there are
+    // more than ~6-7 bars in a card-width chart.
+    final labelInterval = (data.length / 6).ceil().clamp(1, data.length);
+
+    final peak = data.map((a) => a.unique).fold<int>(0, (m, v) => v > m ? v : m);
 
     return BarChart(
       BarChartData(
         maxY: maxY * 1.2,
+        gridData: revolutGrid,
+        borderData: revolutBorder,
         barTouchData: BarTouchData(
-          touchTooltipData: BarTouchTooltipData(
-            getTooltipItem: (group, groupIndex, rod, rodIndex) {
-              if (group.x < 0 || group.x >= data.length) return null;
-              final agg = data[group.x];
-              final lines = [
-                agg.date,
-                '${agg.unique} ${l10n.uniqueLabel.toLowerCase()}',
-                '${agg.returning} ${l10n.returningLabel.toLowerCase()}',
-              ];
-              if (agg.kanon) lines.add(l10n.kanonBadge);
-              return BarTooltipItem(
-                lines.join('\n'),
-                const TextStyle(color: Colors.white, fontSize: 12),
-              );
-            },
-          ),
+          touchCallback: (event, response) {
+            if (!event.isInterestedForInteractions) return;
+            final index = response?.spot?.touchedBarGroupIndex;
+            if (index == null) return;
+            _showDetail(context, l10n, index);
+          },
         ),
-        titlesData: FlTitlesData(
-          topTitles: const AxisTitles(),
-          rightTitles: const AxisTitles(),
-          bottomTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              getTitlesWidget: (value, meta) {
-                final index = value.toInt();
-                if (index < 0 || index >= data.length) {
-                  return const SizedBox.shrink();
-                }
-                final date = data[index].date;
-                return Text(date.substring(5));
-              },
-            ),
-          ),
-          leftTitles: const AxisTitles(
-            sideTitles: SideTitles(showTitles: true, reservedSize: 32),
-          ),
+        titlesData: revolutTitles(
+          context,
+          bottomInterval: labelInterval.toDouble(),
+          bottomBuilder: (value, meta) {
+            final index = value.toInt();
+            if (index < 0 || index >= data.length) return const SizedBox.shrink();
+            if (index % labelInterval != 0) return const SizedBox.shrink();
+            final date = data[index].date;
+            return Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(date.substring(5),
+                  style: Theme.of(context).textTheme.bodySmall),
+            );
+          },
         ),
         barGroups: List.generate(data.length, (i) {
           return BarChartGroupData(
             x: i,
             barRods: [
-              BarChartRodData(
-                toY: data[i].unique.toDouble(),
-                color: Theme.of(context).colorScheme.primary,
-              ),
+              revolutRod(context, data[i].unique.toDouble(),
+                  highlight: data[i].unique == peak && peak > 0),
             ],
           );
         }),

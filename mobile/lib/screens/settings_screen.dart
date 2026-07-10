@@ -6,6 +6,8 @@ import '../ble/ble_service.dart';
 import '../l10n/app_localizations.dart';
 import '../models/device_config.dart';
 import '../theme/theme_controller.dart';
+import '../widgets/glass_card.dart';
+import '../widgets/gradient_background.dart';
 import 'home_shell.dart';
 
 /// Mirrors firmware/main/runtime_config_parse.h - single source of truth
@@ -117,101 +119,125 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final themeController = context.watch<ThemeController>();
     return Scaffold(
       appBar: AppBar(title: Text(l10n.settingsTitle)),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
-                Text(l10n.appearanceSectionTitle,
-                    style: Theme.of(context).textTheme.titleMedium),
-                const SizedBox(height: 8),
-                SegmentedButton<ThemeMode>(
-                  segments: [
-                    ButtonSegment(
-                        value: ThemeMode.light, label: Text(l10n.themeLight)),
-                    ButtonSegment(
-                        value: ThemeMode.dark, label: Text(l10n.themeDark)),
-                    ButtonSegment(
-                        value: ThemeMode.system, label: Text(l10n.themeSystem)),
-                  ],
-                  selected: {themeController.mode},
-                  onSelectionChanged: (s) => themeController.setMode(s.first),
-                ),
-                const SizedBox(height: 24),
-                Text(l10n.deviceSectionTitle,
-                    style: Theme.of(context).textTheme.titleMedium),
-                const SizedBox(height: 8),
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.bluetooth_connected),
-                  title: Text(
-                    ble.device?.platformName.isNotEmpty == true
-                        ? ble.device!.platformName
-                        : (ble.device?.remoteId.str ?? l10n.notConnected),
+      body: GradientBackground(
+        child: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  Text(l10n.appearanceSectionTitle,
+                      style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(height: 8),
+                  SegmentedButton<ThemeMode>(
+                    segments: [
+                      ButtonSegment(
+                          value: ThemeMode.light, label: Text(l10n.themeLight)),
+                      ButtonSegment(
+                          value: ThemeMode.dark, label: Text(l10n.themeDark)),
+                      ButtonSegment(
+                          value: ThemeMode.system,
+                          label: Text(l10n.themeSystem)),
+                    ],
+                    selected: {themeController.mode},
+                    onSelectionChanged: (s) => themeController.setMode(s.first),
                   ),
-                  subtitle: Text(l10n.currentDevice),
-                ),
-                if (_switching) const LinearProgressIndicator(),
-                if (_otherDevices.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    child: Text(l10n.noOtherDevices,
-                        style: Theme.of(context).textTheme.bodySmall),
-                  )
-                else
-                  ..._otherDevices.map(
-                    (d) => ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: const Icon(Icons.bluetooth),
-                      title: Text(
-                        d.platformName.isNotEmpty ? d.platformName : d.remoteId.str,
-                      ),
-                      onTap: _switching ? null : () => _switchTo(d),
+                  const SizedBox(height: 24),
+                  Text(l10n.deviceSectionTitle,
+                      style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(height: 8),
+                  GlassCard(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: Column(
+                      children: [
+                        ListTile(
+                          leading: const Icon(Icons.bluetooth_connected),
+                          title: Text(
+                            ble.device?.platformName.isNotEmpty == true
+                                ? ble.device!.platformName
+                                : (ble.device?.remoteId.str ?? l10n.notConnected),
+                          ),
+                          subtitle: Text(l10n.currentDevice),
+                        ),
+                        if (_switching) const LinearProgressIndicator(),
+                        if (_otherDevices.isEmpty)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                                vertical: 8, horizontal: 16),
+                            child: Align(
+                              alignment: Alignment.centerLeft,
+                              child: Text(l10n.noOtherDevices,
+                                  style: Theme.of(context).textTheme.bodySmall),
+                            ),
+                          )
+                        else
+                          ..._otherDevices.map(
+                            (d) => ListTile(
+                              leading: const Icon(Icons.bluetooth),
+                              title: Text(
+                                d.platformName.isNotEmpty
+                                    ? d.platformName
+                                    : d.remoteId.str,
+                              ),
+                              onTap: _switching ? null : () => _switchTo(d),
+                            ),
+                          ),
+                      ],
                     ),
                   ),
-                const SizedBox(height: 24),
-                Text(l10n.detectionSectionTitle,
-                    style: Theme.of(context).textTheme.titleMedium),
-                const SizedBox(height: 8),
-                if (_error != null) ...[
-                  Text(_error!,
-                      style:
-                          TextStyle(color: Theme.of(context).colorScheme.error)),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 24),
+                  Text(l10n.detectionSectionTitle,
+                      style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(height: 8),
+                  if (_error != null) ...[
+                    Text(_error!,
+                        style: TextStyle(
+                            color: Theme.of(context).colorScheme.error)),
+                    const SizedBox(height: 16),
+                  ],
+                  GlassCard(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('${l10n.rssiFloorLabel}: $_rssiFloor dBm'),
+                        Slider(
+                          value: _rssiFloor.toDouble(),
+                          min: _rssiFloorMin.toDouble(),
+                          max: _rssiFloorMax.toDouble(),
+                          divisions: _rssiFloorMax - _rssiFloorMin,
+                          label: '$_rssiFloor dBm',
+                          onChanged: (v) =>
+                              setState(() => _rssiFloor = v.round()),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                            '${l10n.returningWindowLabel}: $_returningWindowDays'),
+                        Slider(
+                          value: _returningWindowDays.toDouble(),
+                          min: _returningWindowMin.toDouble(),
+                          max: _returningWindowMax.toDouble(),
+                          divisions:
+                              _returningWindowMax - _returningWindowMin,
+                          label: '$_returningWindowDays',
+                          onChanged: (v) => setState(
+                              () => _returningWindowDays = v.round()),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  FilledButton(
+                    onPressed: _saving ? null : _save,
+                    child: _saving
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : Text(l10n.saveButton),
+                  ),
                 ],
-                Text('${l10n.rssiFloorLabel}: $_rssiFloor dBm'),
-                Slider(
-                  value: _rssiFloor.toDouble(),
-                  min: _rssiFloorMin.toDouble(),
-                  max: _rssiFloorMax.toDouble(),
-                  divisions: _rssiFloorMax - _rssiFloorMin,
-                  label: '$_rssiFloor dBm',
-                  onChanged: (v) => setState(() => _rssiFloor = v.round()),
-                ),
-                const SizedBox(height: 8),
-                Text('${l10n.returningWindowLabel}: $_returningWindowDays'),
-                Slider(
-                  value: _returningWindowDays.toDouble(),
-                  min: _returningWindowMin.toDouble(),
-                  max: _returningWindowMax.toDouble(),
-                  divisions: _returningWindowMax - _returningWindowMin,
-                  label: '$_returningWindowDays',
-                  onChanged: (v) =>
-                      setState(() => _returningWindowDays = v.round()),
-                ),
-                const SizedBox(height: 24),
-                FilledButton(
-                  onPressed: _saving ? null : _save,
-                  child: _saving
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : Text(l10n.saveButton),
-                ),
-              ],
-            ),
+              ),
+      ),
     );
   }
 }

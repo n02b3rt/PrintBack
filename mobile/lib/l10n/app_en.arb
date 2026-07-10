@@ -7,6 +7,26 @@
   "syncNowButton": "Sync now",
 
   "autoConnecting": "Connecting to device...",
+  "pairedAndConnected": "Paired and connected",
+  "syncingNow": "Syncing...",
+  "neverSynced": "Not synced yet",
+  "lastSyncedAgo": "Last synced {when}",
+  "@lastSyncedAgo": {
+    "placeholders": { "when": { "type": "String" } }
+  },
+  "justNow": "just now",
+  "minutesAgo": "{count} min ago",
+  "@minutesAgo": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "hoursAgo": "{count}h ago",
+  "@hoursAgo": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "daysAgo": "{count}d ago",
+  "@daysAgo": {
+    "placeholders": { "count": { "type": "int" } }
+  },
 
   "pairingTitle": "Pair device",
   "pairingInstruction": "Press the button on the device to start pairing.",
@@ -26,6 +46,18 @@
   "returningLabel": "Returning",
   "noDataYet": "No data synced yet",
   "kanonBadge": "Low traffic, daily resolution only",
+  "shareOfDayLabel": "Share of today's traffic",
+  "interpretationPeakHour": "Busiest hour so far today",
+  "interpretationBestDay": "Best day in this period",
+  "interpretationAroundAverage": "Around the average for this period",
+  "interpretationAboveAverage": "{percent}% above the average for this period",
+  "@interpretationAboveAverage": {
+    "placeholders": { "percent": { "type": "int" } }
+  },
+  "interpretationBelowAverage": "{percent}% below the average for this period",
+  "@interpretationBelowAverage": {
+    "placeholders": { "percent": { "type": "int" } }
+  },
 
   "statisticsTitle": "Statistics",
   "periodToday": "Today",
