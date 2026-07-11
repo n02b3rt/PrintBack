@@ -23,6 +23,7 @@
 #include "aggregate.h"
 #include "runtime_config.h"
 #include "sd_storage.h"
+#include "ui.h"
 
 static const char *TAG = "ble_gatt";
 
@@ -241,6 +242,12 @@ static void sync_finish(void)
 {
     s_sync_pending = false;
     esp_timer_stop(s_sync_timer);
+    /* Same simplification as housekeeper()'s pairing-window-closed ->
+     * IDLE transition in main.c: unconditional, doesn't check whether
+     * ARMED/PAIRING started in the meantime. A sync replay is at most a
+     * couple seconds (SYNC_BATCH_SIZE per SYNC_TICK_MS), so the overlap
+     * window is narrow; not worth a priority-stack for this. */
+    ui_set_state(UI_STATE_IDLE);
     ESP_LOGI(TAG, "sync: backlog replay complete");
 }
 
@@ -359,6 +366,7 @@ static int gatt_sync_write(struct ble_gatt_access_ctxt *ctxt)
     s_sync_cursor_unix_day = since_unix_day;
     s_sync_phase = SYNC_PHASE_DAILY;
     s_sync_pending = true;
+    ui_set_state(UI_STATE_SYNCING);
     esp_timer_start_periodic(s_sync_timer, (uint64_t)SYNC_TICK_MS * 1000ULL);
     ESP_LOGI(TAG, "sync requested: since_unix_day=%" PRIu32, since_unix_day);
     return 0;

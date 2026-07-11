@@ -126,6 +126,23 @@ static void render(ui_state_t st, int64_t in_state_ms)
             if ((in_state_ms / 250) % 2) led_write(0, 200, 200);
             else                          led_write(0, 0, 0);
             break;
+
+        case UI_STATE_SYNCING: {
+            /* Breathing blue ~0.83Hz: a smooth triangular fade between a
+             * dim glow and a bright peak (never fully off - "lekko gasła
+             * i wracała", not a hard blink) while a phone is actively
+             * pulling a SYNC backlog replay. Same triangular-ramp
+             * technique as IDLE's host-connected pulse above, but pure
+             * blue and a much brighter/faster ramp so it reads as "doing
+             * something" rather than "idle" - can't be confused with
+             * IDLE's dim white breathe or the "no host" state's hard
+             * on/off blue blink. */
+            int t  = (int)(in_state_ms % 1200);
+            int up = t < 600 ? t : 1200 - t;
+            uint8_t v = (uint8_t)(20 + up * 200 / 600);
+            led_write(0, 0, v);
+            break;
+        }
     }
 }
 

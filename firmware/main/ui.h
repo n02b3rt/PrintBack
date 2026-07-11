@@ -9,6 +9,11 @@ typedef enum {
     UI_STATE_CAPTURED,
     UI_STATE_ERROR,
     UI_STATE_PAIRING,
+    /* A phone is pulling a BLE SYNC backlog replay (ble_gatt.c's
+     * sync_tick_cb()) - a smooth breathing blue pulse, distinct from
+     * PAIRING's hard cyan blink, so "actively sending data" reads
+     * differently at a glance from "waiting for a button/bond". */
+    UI_STATE_SYNCING,
 } ui_state_t;
 
 typedef enum {
