@@ -978,3 +978,56 @@ prevents a genuine, separate race), but does not by itself explain the
 symptom the user is seeing. Root cause of the encryption-timeout loop is
 unconfirmed; asked the user how to proceed rather than attempting a
 third change blind.
+
+Update (same date, root cause found): the user ran `flutter run` directly
+against the phone themselves, giving visibility this session never had
+before - the full native Android `BluetoothGatt`/`[FBP-Android]` log, not
+just the ESP32 serial side. That log settled it:
+- `tryAutoConnect()` still tries the wrong bonded device
+  (`...A4:69`, 6 services - the same watch/band from the 2026-07-10
+  entry) before the real one (`...40:9E`, 3 services) on every attempt -
+  that recurrence is real but not the crash cause, just wasted time.
+- The connection to the real device (`...40:9E`) reached
+  `discoverServices` -> `setNotifyValue` -> `onMethodCall:
+  writeCharacteristic` (our own `_writeTimeSync()`) cleanly every time -
+  never a radio-level problem. A `BleService.disconnect()` stack-trace
+  probe (temporary, added then reverted) proved the mid-write disconnect
+  was *not* coming from our own `disconnect()` method at all - the error
+  surfaced instead as `FlutterBluePlusException | connect | android-code:
+  22 | CONNECTION_TERMINATED_BY_LOCAL_HOST` thrown from a *second*,
+  independent `BluetoothDevice.connect()` call (from
+  `_PairingScreenState._connect()`, i.e. the user tapping a device tile)
+  landing on the *same* device address while the first connection
+  attempt's native `BluetoothGatt` client was still open with a pending
+  write.
+Root cause: `connect()` never cleaned up on failure. If anything inside
+it threw (permission denied, a characteristic not found, `_writeTimeSync()`
+not resolving in time), the `try`/`finally` only reset the `_connecting`
+guard - it never called `disconnect()` or cleared `_device`, so the
+native GATT client and the open connection were left dangling. Any later
+`connect()` call to the *same* device (a manual retry, a fresh
+`tryAutoConnect()` cycle) then raced against that orphaned native
+connection instead of starting clean, and Android tore down whichever
+one lost with `CONNECTION_TERMINATED_BY_LOCAL_HOST` - explaining every
+symptom from this whole investigation (the original `PlatformException
+... ERROR_GATT_WRITE_REQUEST_BUSY`, the `Timed out after 15s` errors, and
+the `encryption change; status=13` / `BLE_HS_ETIMEOUT` seen from the
+ESP32 side, which was a downstream symptom of the phone colliding with
+its own zombie connection, not a genuine radio-level pairing failure).
+The reentrancy guard from earlier today (`30f8e56`) was necessary but not
+sufficient - it stops two *simultaneous* Dart-level calls from racing
+live writes, but a connection that already failed and left a dangling
+native client isn't "in progress" by that flag, so a *later* call sailed
+straight past the guard into the zombie.
+Fix: `connect()`'s body is now wrapped in `catch (e) { try { await
+disconnect(); } catch (_) {} rethrow; }` before the existing `finally`
+that clears `_connecting` - every failure path now leaves the same clean
+slate a successful `disconnect()` would, instead of an orphaned native
+connection for the next attempt to trip over.
+Status: RESOLVED (2026-07-11) - `flutter analyze`/`flutter test` clean.
+Not yet re-verified end-to-end on hardware (next step: hot-restart and
+retry). The wrong-bonded-device-first recurrence
+(`tryAutoConnect()`/`systemDevices()` still returning the watch before
+the real device, same underlying cause as the 2026-07-10 entry above)
+is real but unrelated to this fix - flagged here, not re-opened as its
+own investigation in this session.

@@ -281,6 +281,22 @@ class BleService extends ChangeNotifier {
       await prefs.setString(_activeDeviceIdKey, device.remoteId.str);
 
       notifyListeners();
+    } catch (e) {
+      // A failure partway through (permission denied, service/characteristic
+      // not found, a write that never completes) used to leave the native
+      // GATT connection open and _device pointing at it - a later connect()
+      // call (a manual retry, or tryAutoConnect()'s next candidate) could
+      // then collide with that orphaned connection instead of starting
+      // clean, surfacing as CONNECTION_TERMINATED_BY_LOCAL_HOST on the
+      // *new* attempt (docs/LEARNINGS.md 2026-07-11, root cause traced via
+      // a native Android BLE log, not the ESP32 side - the disconnect
+      // wasn't coming from this class's own disconnect() at all). Tear the
+      // partial connection down before rethrowing so every failure leaves
+      // the same clean slate a full disconnect() would.
+      try {
+        await disconnect();
+      } catch (_) {}
+      rethrow;
     } finally {
       _connecting = false;
     }
