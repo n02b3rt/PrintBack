@@ -271,7 +271,24 @@ class BleService extends ChangeNotifier {
         orElse: () => throw StateError('SYNC characteristic not found'),
       );
 
-      await _writeTimeSync();
+      // TIME_SYNC requires an encrypted link (BLE_GATT_CHR_F_WRITE_ENC,
+      // firmware/main/ble_gatt.c) and is the first write issued right after
+      // reconnecting to an already-bonded device. Android reports the link
+      // "connected" as soon as the basic connection forms, but re-encrypting
+      // with an already-bonded peer is a separate, slightly later step -
+      // writing before that settles has reproducibly torn down the whole
+      // connection (CONNECTION_TERMINATED_BY_LOCAL_HOST) instead of
+      // returning a clean GATT error (docs/LEARNINGS.md 2026-07-11). A short
+      // settle delay plus one retry follows flutter_blue_plus's own
+      // documented guidance for this class of Android flakiness ("catch the
+      // error and retry" - no 100% fix exists on their side either).
+      await Future.delayed(const Duration(milliseconds: 500));
+      try {
+        await _writeTimeSync();
+      } catch (_) {
+        await Future.delayed(const Duration(milliseconds: 500));
+        await _writeTimeSync();
+      }
 
       await _statsChr!.setNotifyValue(true);
       await _statsSub?.cancel();
