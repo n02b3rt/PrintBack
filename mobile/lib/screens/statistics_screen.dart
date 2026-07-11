@@ -287,24 +287,33 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                   ),
                 ],
               ),
-              // Same reasoning as the weekday chart below: a single day
-              // has no trend to draw. A line, not bars, since it reads
-              // fine regardless of how many points are in range (7 for
-              // week, 30 for month) - no bar-width cramping to manage.
-              if (_period != _Period.today) ...[
-                const SizedBox(height: 24),
-                Text(l10n.dailyTrendTitle,
-                    style: Theme.of(context).textTheme.titleMedium),
-                const SizedBox(height: 8),
-                GlassCard(
-                  child: SizedBox(
-                    height: 160,
-                    child: _daily.isEmpty
-                        ? Center(child: Text(l10n.noDataYet))
-                        : _DailyTrendChart(data: _daily),
-                  ),
+              // A day-over-day trend needs more than one day, but "Dziś"
+              // still has a real trend to show - just hourly instead of
+              // daily. Either way: two lines (Nowi/Powracający), a line
+              // chart rather than bars so it reads fine regardless of
+              // point count (24 hours, 7 days, or 30) with no bar-width
+              // cramping to manage.
+              const SizedBox(height: 24),
+              Text(l10n.dailyTrendTitle,
+                  style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 8),
+              revolutLegend(context, [
+                (Theme.of(context).colorScheme.primary, l10n.uniqueLabel),
+                (Theme.of(context).colorScheme.tertiary, l10n.returningLabel),
+              ]),
+              const SizedBox(height: 8),
+              GlassCard(
+                child: SizedBox(
+                  height: 160,
+                  child: _period == _Period.today
+                      ? (_hourly.isEmpty
+                          ? Center(child: Text(l10n.noDataYet))
+                          : _HourlyTrendChart(data: _hourly))
+                      : (_daily.isEmpty
+                          ? Center(child: Text(l10n.noDataYet))
+                          : _DailyTrendChart(data: _daily)),
                 ),
-              ],
+              ),
               // A single "Dziś" day can only ever populate one weekday
               // bucket, so the 7-bar pattern chart is meaningless (six
               // empty bars, one real one) - hide it instead of showing
@@ -533,15 +542,90 @@ class _DailyTrendChart extends StatelessWidget {
             );
           },
         ),
-        lineBarsData: [
-          revolutLine(
-            context,
-            List.generate(
-              data.length,
-              (i) => FlSpot(i.toDouble(), data[i].unique.toDouble()),
-            ),
-          ),
-        ],
+        lineBarsData: revolutTwoLines(
+          context,
+          uniqueSpots: List.generate(
+              data.length, (i) => FlSpot(i.toDouble(), data[i].unique.toDouble())),
+          returningSpots: List.generate(data.length,
+              (i) => FlSpot(i.toDouble(), data[i].returning.toDouble())),
+        ),
+      ),
+    );
+  }
+}
+
+class _HourlyTrendChart extends StatelessWidget {
+  final List<Aggregate> data;
+
+  const _HourlyTrendChart({required this.data});
+
+  void _showDetail(BuildContext context, AppLocalizations l10n, Aggregate agg) {
+    final hour = agg.hour!;
+    final dayTotal = data.fold<int>(0, (s, a) => s + a.unique);
+    final dayAvg = data.isEmpty ? 0.0 : dayTotal / data.length;
+    final isPeak =
+        agg.unique == data.map((a) => a.unique).reduce((a, b) => a > b ? a : b) &&
+            agg.unique > 0;
+
+    String interpretation;
+    if (isPeak) {
+      interpretation = l10n.interpretationPeakHour;
+    } else if (dayAvg > 0 && agg.unique > dayAvg * 1.2) {
+      interpretation = l10n.interpretationAboveAverage(
+          ((agg.unique / dayAvg - 1) * 100).round());
+    } else if (dayAvg > 0 && agg.unique < dayAvg * 0.8) {
+      interpretation = l10n.interpretationBelowAverage(
+          ((1 - agg.unique / dayAvg) * 100).round());
+    } else {
+      interpretation = l10n.interpretationAroundAverage;
+    }
+
+    showDetailSheet(
+      context,
+      title: '${hour.toString().padLeft(2, '0')}:00',
+      primaryValue: '${agg.unique}',
+      primaryLabel: l10n.uniqueLabel,
+      rows: [(l10n.returningLabel, '${agg.returning}')],
+      interpretation: interpretation,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    final byHour = {for (final a in data) a.hour!: a};
+    final maxY = data
+        .map((a) => a.unique)
+        .fold<int>(1, (m, v) => v > m ? v : m)
+        .toDouble();
+
+    return LineChart(
+      LineChartData(
+        minY: 0,
+        maxY: maxY * 1.2,
+        gridData: revolutGrid,
+        borderData: revolutBorder,
+        lineTouchData: LineTouchData(
+          touchCallback: (event, response) {
+            if (event is! FlTapUpEvent) return;
+            final spot = response?.lineBarSpots?.firstOrNull;
+            if (spot == null) return;
+            final agg = byHour[spot.spotIndex];
+            if (agg == null) return;
+            _showDetail(context, l10n, agg);
+          },
+        ),
+        // Same declutter as the dashboard's hourly bar chart - 24 hour
+        // numbers under the chart read as overlapping clutter, exact
+        // hour lives in the tap-to-detail sheet's title instead.
+        titlesData: revolutTitlesNone,
+        lineBarsData: revolutTwoLines(
+          context,
+          uniqueSpots: List.generate(
+              24, (h) => FlSpot(h.toDouble(), (byHour[h]?.unique ?? 0).toDouble())),
+          returningSpots: List.generate(24,
+              (h) => FlSpot(h.toDouble(), (byHour[h]?.returning ?? 0).toDouble())),
+        ),
       ),
     );
   }

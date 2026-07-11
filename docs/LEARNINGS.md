@@ -705,3 +705,30 @@ y-axis already used.
 Status: RESOLVED (2026-07-11), not yet re-verified on hardware by the
 user for this specific change (previous fixes in this same session
 were).
+
+## [MOBILE] Statystyki trend charts extended to two series (Nowi/Powracający)
+Date: 2026-07-11
+User request: show both "Nowi" (unique) and "Powracający" (returning)
+as two lines on the Statystyki trend charts, not just unique - asked
+whether this is still RODO-compliant. It is: `unique`/`returning` are
+already-aggregated counts (never per-client), already shown side by
+side everywhere else in the app (KPI cards, every chart's tap-to-detail
+sheet) - this only changes how two already-surfaced numbers are drawn,
+adds no new data collection or exposure.
+Also folded in a product fix for the "Dziś" period, which previously
+had every chart hidden (a single day has no day-over-day trend, and no
+weekday pattern): added `_HourlyTrendChart`, the same two-line treatment
+but by hour instead of by day, reusing `_hourly` (already loaded for the
+peak-hour stat). So every period now has a real trend chart - hourly for
+Dziś, daily for Tydzień/Miesiąc - instead of Dziś showing nothing.
+`chart_style.dart`'s new `revolutTwoLines()` uses `colorScheme.tertiary`
+for the second line, not `secondary`: Material 3's seed algorithm makes
+`secondary` a desaturated variant of the *same* hue as `primary` (reads
+as "duller teal", easy to confuse at a glance with the primary line),
+while `tertiary` is hue-shifted to a genuinely different color - checked
+this via the seed algorithm's documented HCT hue-shift behavior, not
+verified with a live screenshot (couldn't unlock the user's phone to
+check). Added `revolutLegend()` (small "● label" row) since color alone
+isn't enough to tell two lines apart reliably.
+Status: OPEN - builds/analyzes/tests clean, NOT YET visually verified on
+hardware (phone was locked when this landed).

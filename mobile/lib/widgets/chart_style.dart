@@ -64,25 +64,74 @@ const revolutTitlesNone = FlTitlesData(show: false);
 /// bars: a smooth curved gradient stroke with a soft gradient fill below
 /// it, no dots (the touch line + detail sheet carry the "exact point"
 /// job instead, same as bars never showing a numeric label).
-LineChartBarData revolutLine(BuildContext context, List<FlSpot> spots) {
+LineChartBarData revolutLine(
+  BuildContext context,
+  List<FlSpot> spots, {
+  Color? color,
+  bool fill = true,
+}) {
   final scheme = Theme.of(context).colorScheme;
+  final lineColor = color ?? scheme.primary;
   return LineChartBarData(
     spots: spots,
     isCurved: true,
     curveSmoothness: 0.25,
     barWidth: 3,
-    color: scheme.primary,
+    color: lineColor,
     dotData: const FlDotData(show: false),
     belowBarData: BarAreaData(
-      show: true,
+      show: fill,
       gradient: LinearGradient(
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
         colors: [
-          scheme.primary.withValues(alpha: 0.35),
-          scheme.primary.withValues(alpha: 0.0),
+          lineColor.withValues(alpha: 0.35),
+          lineColor.withValues(alpha: 0.0),
         ],
       ),
     ),
+  );
+}
+
+/// Two-series version of revolutLine - "Nowi" (primary, filled) and
+/// "Powracający" (tertiary, unfilled so its area doesn't muddy the
+/// primary series' fill underneath it). Tertiary rather than secondary:
+/// Material 3's seed algorithm makes secondary a desaturated variant of
+/// the SAME hue as primary (reads as "duller teal", easy to confuse at a
+/// glance), while tertiary is hue-shifted to a genuinely different color
+/// - the two lines need to be tellable apart without reading the legend
+/// every time. Both fields already exist on every aggregate row and are
+/// already shown side by side everywhere else in the app (KPI cards,
+/// detail sheet rows) - this is a different view of the same
+/// already-aggregated counts, not new data.
+List<LineChartBarData> revolutTwoLines(
+  BuildContext context, {
+  required List<FlSpot> uniqueSpots,
+  required List<FlSpot> returningSpots,
+}) {
+  final scheme = Theme.of(context).colorScheme;
+  return [
+    revolutLine(context, uniqueSpots, color: scheme.primary),
+    revolutLine(context, returningSpots, color: scheme.tertiary, fill: false),
+  ];
+}
+
+/// Small "● label" legend row, e.g. for a two-line chart where color
+/// alone wouldn't otherwise say which line is which.
+Widget revolutLegend(BuildContext context, List<(Color, String)> entries) {
+  return Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      for (final (color, label) in entries) ...[
+        Container(
+          width: 8,
+          height: 8,
+          margin: const EdgeInsets.only(right: 6),
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        Text(label, style: Theme.of(context).textTheme.bodySmall),
+        const SizedBox(width: 16),
+      ],
+    ],
   );
 }
