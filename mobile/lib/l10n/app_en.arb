@@ -70,6 +70,7 @@
   "averageDailyLabel": "Daily average",
   "bestDayLabel": "Best day",
   "peakHourLabel": "Peak hour",
+  "dailyTrendTitle": "Daily trend",
   "weekdayPatternTitle": "Traffic by day of week",
   "weekdayMon": "Mon",
   "weekdayTue": "Tue",

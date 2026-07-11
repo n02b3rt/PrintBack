@@ -673,3 +673,35 @@ section entirely (title + chart) when `_period == _Period.today`,
 instead of showing a chart that can't say anything useful for that
 selection.
 Status: RESOLVED (2026-07-11)
+
+## [MOBILE] Month period folded everything into the 7-bar weekday chart, hourly x-axis unreadable
+Date: 2026-07-11
+Problem: two related "this chart doesn't work well" reports from the
+user. (1) Selecting "Miesiąc" in Statystyki only ever showed the 7-bar
+weekday pattern chart (same as week), losing all day-by-day granularity
+across up to 30 days of real data. (2) The dashboard's hourly bar chart
+showed all 24 hour numbers ("0 1 2 3 4 ... 23") crammed under the bars,
+overlapping and unreadable, confirmed on hardware in a screenshot -
+`bottomInterval: 4` on `revolutTitles` didn't actually thin the labels
+for this bar chart's discrete integer x-axis the way it does for the
+daily bar chart's date labels.
+Root cause: (1) not a bug, a real UX gap - the weekday chart was the
+*only* chart in Statystyki, so "Miesiąc" had nothing better to show than
+the same 7 buckets "Tydzień" uses, just averaged over more days. (2) not
+fully diagnosed why `interval` doesn't thin a discrete bar axis the way
+it thins a line chart's continuous one, not worth chasing further - the
+user's own ask ("nie wyświetlajmy godzin") called for removing the
+labels entirely anyway, not a better thinning heuristic.
+Fix: (1) added `_DailyTrendChart`, a new Revolut-style gradient line
+chart (`chart_style.dart`'s new `revolutLine()`) showing daily unique
+visits across the selected period, tap-to-detail same as the bar charts
+- scales to any number of points (7 for week, 30 for month) without
+bar-width cramping, shown above the weekday pattern chart for
+week/month (hidden for Today, same reasoning as the weekday chart).
+(2) hourly chart now uses a new `revolutTitlesNone` (`FlTitlesData(show:
+false)`) instead of numbered labels - exact hour lives in the
+tap-to-detail sheet's title, same "no axis clutter" convention the
+y-axis already used.
+Status: RESOLVED (2026-07-11), not yet re-verified on hardware by the
+user for this specific change (previous fixes in this same session
+were).

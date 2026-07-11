@@ -70,6 +70,7 @@
   "averageDailyLabel": "Średnia dzienna",
   "bestDayLabel": "Najlepszy dzień",
   "peakHourLabel": "Godzina szczytu",
+  "dailyTrendTitle": "Trend dzienny",
   "weekdayPatternTitle": "Ruch wg dnia tygodnia",
   "weekdayMon": "Pn",
   "weekdayTue": "Wt",

@@ -252,15 +252,11 @@ class _HourlyBarChart extends StatelessWidget {
             _showDetail(context, l10n, agg);
           },
         ),
-        titlesData: revolutTitles(
-          context,
-          bottomInterval: 4,
-          bottomBuilder: (value, meta) => Padding(
-            padding: const EdgeInsets.only(top: 4),
-            child: Text('${value.toInt()}',
-                style: Theme.of(context).textTheme.bodySmall),
-          ),
-        ),
+        // 24 hour numbers crammed under the bars read as clutter/overlap
+        // (confirmed on hardware) regardless of thinning - dropped
+        // entirely, matching the already-hidden y-axis: exact hour lives
+        // in the tap-to-detail sheet's title instead.
+        titlesData: revolutTitlesNone,
         barGroups: List.generate(24, (hour) {
           final agg = byHour[hour];
           final value = (agg?.unique ?? 0).toDouble();

@@ -287,6 +287,24 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                   ),
                 ],
               ),
+              // Same reasoning as the weekday chart below: a single day
+              // has no trend to draw. A line, not bars, since it reads
+              // fine regardless of how many points are in range (7 for
+              // week, 30 for month) - no bar-width cramping to manage.
+              if (_period != _Period.today) ...[
+                const SizedBox(height: 24),
+                Text(l10n.dailyTrendTitle,
+                    style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 8),
+                GlassCard(
+                  child: SizedBox(
+                    height: 160,
+                    child: _daily.isEmpty
+                        ? Center(child: Text(l10n.noDataYet))
+                        : _DailyTrendChart(data: _daily),
+                  ),
+                ),
+              ],
               // A single "Dziś" day can only ever populate one weekday
               // bucket, so the 7-bar pattern chart is meaningless (six
               // empty bars, one real one) - hide it instead of showing
@@ -430,6 +448,100 @@ class _WeekdayChart extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _DailyTrendChart extends StatelessWidget {
+  final List<Aggregate> data;
+
+  const _DailyTrendChart({required this.data});
+
+  void _showDetail(BuildContext context, AppLocalizations l10n, int index) {
+    if (index < 0 || index >= data.length) return;
+    final agg = data[index];
+    final total = data.fold<int>(0, (s, a) => s + a.unique);
+    final avg = data.isEmpty ? 0.0 : total / data.length;
+    final maxUnique = data.map((a) => a.unique).reduce((a, b) => a > b ? a : b);
+    final isBest = agg.unique == maxUnique && agg.unique > 0;
+
+    String interpretation;
+    if (isBest) {
+      interpretation = l10n.interpretationBestDay;
+    } else if (avg > 0 && agg.unique > avg * 1.2) {
+      interpretation =
+          l10n.interpretationAboveAverage(((agg.unique / avg - 1) * 100).round());
+    } else if (avg > 0 && agg.unique < avg * 0.8) {
+      interpretation = l10n.interpretationBelowAverage(
+          ((1 - agg.unique / avg) * 100).round());
+    } else {
+      interpretation = l10n.interpretationAroundAverage;
+    }
+
+    showDetailSheet(
+      context,
+      title: agg.date,
+      primaryValue: '${agg.unique}',
+      primaryLabel: l10n.uniqueLabel,
+      rows: [
+        (l10n.returningLabel, '${agg.returning}'),
+        if (agg.kanon) (l10n.kanonBadge, ''),
+      ],
+      interpretation: interpretation,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    final maxY = data
+        .map((a) => a.unique)
+        .fold<int>(1, (m, v) => v > m ? v : m)
+        .toDouble();
+    // Same label-thinning approach as the dashboard's daily bar chart -
+    // one label per point overlaps into an unreadable smear once there
+    // are more than ~6-7 points in a card-width chart (e.g. a month).
+    final labelInterval = (data.length / 6).ceil().clamp(1, data.length);
+
+    return LineChart(
+      LineChartData(
+        minY: 0,
+        maxY: maxY * 1.2,
+        gridData: revolutGrid,
+        borderData: revolutBorder,
+        lineTouchData: LineTouchData(
+          touchCallback: (event, response) {
+            if (event is! FlTapUpEvent) return;
+            final spot = response?.lineBarSpots?.firstOrNull;
+            if (spot == null) return;
+            _showDetail(context, l10n, spot.spotIndex);
+          },
+        ),
+        titlesData: revolutTitles(
+          context,
+          bottomInterval: labelInterval.toDouble(),
+          bottomBuilder: (value, meta) {
+            final index = value.toInt();
+            if (index < 0 || index >= data.length) return const SizedBox.shrink();
+            if (index % labelInterval != 0) return const SizedBox.shrink();
+            final date = data[index].date;
+            return Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(date.substring(5),
+                  style: Theme.of(context).textTheme.bodySmall),
+            );
+          },
+        ),
+        lineBarsData: [
+          revolutLine(
+            context,
+            List.generate(
+              data.length,
+              (i) => FlSpot(i.toDouble(), data[i].unique.toDouble()),
+            ),
+          ),
+        ],
       ),
     );
   }
