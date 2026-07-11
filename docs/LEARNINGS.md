@@ -782,3 +782,39 @@ rework of the daily/weekday query paths too.
 Status: RESOLVED (2026-07-11) for hourly labels/peak-hour/hourly chart
 grouping - builds/analyzes/tests clean, not yet visually re-verified on
 hardware.
+
+## [FIRMWARE] a reflash silently drops the phone's clock correction, new data gets misdated
+Date: 2026-07-11
+Problem: after reflashing the hourly-backfill/LED changes and confirming
+real WiFi capture was working (`active=3 obs=29`, real fingerprints
+observed), the live serial log showed `sd_storage: raw log:
+/sdcard/logs/raw/20260708.bin` - the device thought it was July 8th,
+three days behind the actual date, while it was actively capturing real
+traffic. A 90s capture window with no BLE activity at all confirmed the
+phone never reconnected during that window.
+Root cause: the device has no RTC (docs/ARCHITECTURE.md "Wall-clock
+time") - its wall clock is whatever the Kconfig fallback says at boot,
+corrected only by a BLE TIME_SYNC write, which the phone sends once per
+connection (docs/DECISIONS.md D6). Flashing new firmware hard-resets the
+board, which drops any existing BLE connection. `ConnectingScreen`
+(`mobile/lib/screens/connecting_screen.dart`) only calls
+`tryAutoConnect()` once, at app launch - there's no reconnect-on-drop
+logic mid-session. So after any reflash (or brownout, or the phone
+walking out of range and back), the device's clock silently reverts to
+the stale Kconfig fallback and stays there - misdating every new raw
+record and hourly aggregate - until the user manually relaunches the
+app or reconnects via Settings. This almost certainly explains the
+original "last reading stuck at ~9am" report that started this
+investigation: some earlier reflash/reset this morning dropped the
+connection, the clock reverted, and nothing corrected it until now.
+Fix: none applied yet - this is a real resilience gap, not something
+fixed by relaunching once. Candidate fix flagged for a follow-up,
+not implemented in this session: have `BleService` listen for an
+unexpected disconnect (not a user-initiated one) and automatically
+retry `tryAutoConnect()`/`_scanAndConnect()` in the background instead
+of leaving the app connectionless until the next full app launch -
+mirrors what `ConnectingScreen` already does at startup, just triggered
+by a dropped connection instead of only a cold launch.
+Status: OPEN - immediate symptom (stale clock right now) is resolved by
+the user manually relaunching/reconnecting the app, which is what was
+suggested; the underlying "no reconnect-on-drop" gap is not fixed.
