@@ -1031,3 +1031,42 @@ retry). The wrong-bonded-device-first recurrence
 the real device, same underlying cause as the 2026-07-10 entry above)
 is real but unrelated to this fix - flagged here, not re-opened as its
 own investigation in this session.
+
+Update (same date, hardware re-verification): the fix works as designed
+- every attempt against the wrong device (A4:69) and every attempt
+against the real device (40:9E) now ends in a clean, deliberate
+`disconnect()` (`status: SUCCESS`) instead of colliding with an orphaned
+connection. But this exposed the real, still-open problem underneath:
+**every single connection attempt to the real device, even a completely
+solo one with nothing else racing it, fails at exactly the same step -
+right after `onMethodCall: writeCharacteristic` (our `_writeTimeSync()`)
+- with `CONNECTION_TERMINATED_BY_LOCAL_HOST` or `fbp-code: 6 | Device is
+disconnected`.** MTU negotiates fine (247), `discoverServices` and
+`setNotifyValue` (the automatic 0x2a05 Service Changed subscribe) both
+succeed every time - only the TIME_SYNC write itself never completes.
+Next hypothesis (not attempted - this would be a third code change in
+one session, past the "2 tries" line, and edges further into "real BLE
+pairing" territory CLAUDE.md says to ask about rather than keep
+guessing): TIME_SYNC requires an encrypted link
+(`BLE_GATT_CHR_F_WRITE_ENC`, `firmware/main/ble_gatt.c`). Android
+reports a bonded device as "connected" as soon as the basic link forms,
+but re-establishing *encryption* with an already-bonded peer is a
+separate, slightly-later SMP exchange - there's evidence this exact gap
+is real: the ESP32 serial log earlier in this same session recorded
+`encryption change; conn_handle=0 status=13` (`BLE_HS_ETIMEOUT`) on one
+of these attempts. If `_writeTimeSync()` fires immediately after
+`discoverServices()`/`setNotifyValue()`, before Android has actually
+finished re-encrypting the link, the peripheral would reject the write
+(insufficient encryption) and the resulting ATT error could plausibly
+surface exactly as an immediate local disconnect rather than a clean
+Dart-level error - matching what's observed. A confidence-building next
+step that needs no more code: watch the *next* hardware attempt's ESP32
+serial log specifically for whether `encryption change; status=0`
+(success) appears at all before the write, and if so, how long after
+`connection established` it lands relative to when the phone issues the
+write.
+Status: OPEN - two real, justified fixes landed this session
+(reentrancy guard `30f8e56`, cleanup-on-failure `2d2cfea`), but the
+user-visible "can't pair" symptom persists. Stopping here per the "2
+tries" rule instead of attempting a third blind change; asked the user
+how to proceed.
