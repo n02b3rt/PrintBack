@@ -632,10 +632,44 @@ was no reason to add a second stateful cursor for this on the device
 (would contradict docs/DECISIONS.md D10's whole rationale anyway).
 Updated docs/DATA_MODEL.md's two SYNC sections to describe the new
 second phase instead of the old "out of scope" note.
-Status: OPEN - builds clean (`idf.py build`, zero warnings in the
-changed files) but NOT YET VERIFIED on hardware: the board wasn't
-plugged into this machine when this fix landed. Needs a real connect +
-SYNC request + hardware log check (`hour 0: unique=... published=...`
-style lines already exist in `aggregate.c`'s logging, plus a
-`sync: backlog replay complete` log line to confirm both phases ran)
-before this can be marked resolved.
+Status: RESOLVED (2026-07-11) - user flashed the built firmware and
+confirmed on their own phone: the dashboard's hourly chart now shows a
+real per-hour bar pattern immediately after connecting, no longer
+"Brak zsynchronizowanych danych".
+
+## [MOBILE] tapping a chart bar opened two stacked detail sheets
+Date: 2026-07-11
+Problem: after the Phase 8f tap-to-detail redesign, tapping any bar (
+hourly/daily on Dashboard, weekday pattern on Statystyki) opened two
+`showModalBottomSheet` instances stacked on top of each other instead
+of one, confirmed by the user on real hardware.
+Root cause: all three `BarTouchData.touchCallback`s gated on
+`event.isInterestedForInteractions`, but that flag is true for more
+than one `FlTouchEvent` subtype per physical tap - checked fl_chart
+1.2.0's own source (`fl_touch_event.dart`): it's `true` for
+`FlTapDownEvent` (among others) and explicitly excludes `FlTapUpEvent`
+on mobile. fl_chart's internal gesture handling can fire both a
+pan-down and a tap-down callback for the same single tap on Android, so
+`isInterestedForInteractions` alone doesn't guarantee "exactly once per
+tap" - it's meant for driving hover/highlight visuals across many event
+types, not as a single-fire trigger.
+Fix: changed all three touchCallbacks to `if (event is! FlTapUpEvent)
+return;` instead - `FlTapUpEvent` fires exactly once when the finger
+lifts, matching natural tap semantics, and still carries a valid
+`localPosition` so the touch response/spot lookup works the same way.
+Status: RESOLVED (2026-07-11)
+
+## [MOBILE] weekday pattern chart meaningless for the "Dziś" period
+Date: 2026-07-11
+Problem: user feedback - selecting "Dziś" (today) in Statystyki still
+showed the "Ruch wg dnia tygodnia" (weekday pattern) chart with six
+empty bars and one real one, which reads as broken rather than correct.
+Root cause: not a bug, a genuine UX gap - `_rangeFor(_Period.today)`
+returns a single-day range, so `_daily` can only ever populate one of
+the seven weekday buckets. A "pattern across the week" chart is
+inherently meaningless with one day of data.
+Fix: `statistics_screen.dart` now skips rendering the weekday pattern
+section entirely (title + chart) when `_period == _Period.today`,
+instead of showing a chart that can't say anything useful for that
+selection.
+Status: RESOLVED (2026-07-11)

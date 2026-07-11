@@ -241,7 +241,11 @@ class _HourlyBarChart extends StatelessWidget {
         borderData: revolutBorder,
         barTouchData: BarTouchData(
           touchCallback: (event, response) {
-            if (!event.isInterestedForInteractions) return;
+            // fl_chart fires both FlPanDownEvent and FlTapDownEvent for a
+            // single tap on Android (isInterestedForInteractions is true
+            // for both), so gating on that alone opened two stacked
+            // detail sheets per tap - FlTapUpEvent fires exactly once.
+            if (event is! FlTapUpEvent) return;
             final hour = response?.spot?.touchedBarGroupIndex;
             final agg = hour == null ? null : byHour[hour];
             if (agg == null) return;
@@ -332,7 +336,10 @@ class _DailyBarChart extends StatelessWidget {
         borderData: revolutBorder,
         barTouchData: BarTouchData(
           touchCallback: (event, response) {
-            if (!event.isInterestedForInteractions) return;
+            // See the hourly chart's touchCallback above for why this
+            // checks FlTapUpEvent specifically instead of
+            // isInterestedForInteractions.
+            if (event is! FlTapUpEvent) return;
             final index = response?.spot?.touchedBarGroupIndex;
             if (index == null) return;
             _showDetail(context, l10n, index);

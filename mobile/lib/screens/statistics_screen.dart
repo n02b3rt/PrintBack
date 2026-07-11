@@ -287,22 +287,28 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                   ),
                 ],
               ),
-              const SizedBox(height: 24),
-              Text(l10n.weekdayPatternTitle,
-                  style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(height: 8),
-              GlassCard(
-                child: SizedBox(
-                  height: 160,
-                  child: _daily.isEmpty
-                      ? Center(child: Text(l10n.noDataYet))
-                      : _WeekdayChart(
-                          sums: weekdaySums,
-                          counts: weekdayCounts,
-                          labels: weekdayLabels,
-                        ),
+              // A single "Dziś" day can only ever populate one weekday
+              // bucket, so the 7-bar pattern chart is meaningless (six
+              // empty bars, one real one) - hide it instead of showing
+              // something that looks broken.
+              if (_period != _Period.today) ...[
+                const SizedBox(height: 24),
+                Text(l10n.weekdayPatternTitle,
+                    style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 8),
+                GlassCard(
+                  child: SizedBox(
+                    height: 160,
+                    child: _daily.isEmpty
+                        ? Center(child: Text(l10n.noDataYet))
+                        : _WeekdayChart(
+                            sums: weekdaySums,
+                            counts: weekdayCounts,
+                            labels: weekdayLabels,
+                          ),
+                  ),
                 ),
-              ),
+              ],
             ],
           ),
         ),
@@ -393,7 +399,11 @@ class _WeekdayChart extends StatelessWidget {
         borderData: revolutBorder,
         barTouchData: BarTouchData(
           touchCallback: (event, response) {
-            if (!event.isInterestedForInteractions) return;
+            // fl_chart fires both FlPanDownEvent and FlTapDownEvent for a
+            // single tap on Android (isInterestedForInteractions is true
+            // for both), so gating on that alone opened two stacked
+            // detail sheets per tap - FlTapUpEvent fires exactly once.
+            if (event is! FlTapUpEvent) return;
             final index = response?.spot?.touchedBarGroupIndex;
             if (index == null) return;
             _showDetail(context, l10n, avgs, index);
