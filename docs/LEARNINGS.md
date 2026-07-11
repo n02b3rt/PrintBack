@@ -1101,3 +1101,43 @@ fresh re-pair still fails.
 Status: OPEN - fresh re-pair test prepared and running (board reset,
 phone's Bluetooth settings opened via adb, serial capture live);
 outcome to be recorded here.
+
+Update (same date, RESOLVED): the plain board reset alone did not help
+(same stall), and a full phone restart did not help either (connection
+passed the whitelist, then ~35s of silence with no SMP at all, then the
+phone dropped the link) - which ruled out a wedged phone stack and left
+exactly one stale-state holder: the device's own bond store. With the
+user's explicit approval, erased the device's NVS partition
+(`parttool.py erase_partition --partition-name=nvs` - kills the bond
+store and the two runtime-config values, touches nothing on the SD
+card), hard-reset, opened a fresh pairing window, and the very next
+pairing attempt from the same phone completed the entire chain in
+seconds: `encryption change; status=0` -> `new bond established` ->
+`time sync: wallclock set` -> `sync: backlog replay complete`, followed
+by a live hour-23 finalization and the deferred daily rollover (the
+clock jumped 3 days forward from the stale Kconfig fallback, D6's
+drift-then-catch-up behaving exactly as designed) streaming to the
+phone as STATS notifies. Connection then stayed up with zero drops.
+Final picture: the phone had silently lost its bond record (PrintBack
+gone from system Bluetooth settings; plausibly during the phone-side
+Bluetooth flakiness observed mid-session) while the device still held
+its half of the bond - an asymmetry neither side could recover from on
+its own, and which no app-level code could fix. The three app fixes
+landed along the way (`30f8e56` reentrancy guard, `2d2cfea`
+cleanup-on-failure, `8bea399` settle-delay+retry on the first encrypted
+write) are each independently justified and stay; a fourth speculative
+change (explicit createBond()/removeBond() ladder) was written but
+reverted uncommitted once the wipe fixed the real problem - per repo
+rules, no untested speculative code on top of a working state.
+Two follow-ups worth remembering: (1) the device-side bond store can
+hold the whole product hostage when the phone loses its bond - a
+"factory reset" gesture (long-press variant or similar) that clears
+bonds without a PC and esptool is worth considering for a future phase,
+a shop owner can't run parttool; (2) the board's original spontaneous
+reset that evening remains unexplained - nothing in any capture showed
+a panic or brownout marker, watch for recurrence during the 30-day
+soak.
+Status: RESOLVED (2026-07-11) - root cause: one-sided (device-side)
+stale BLE bond after the phone silently lost its own; fix: NVS erase +
+fresh pairing. Confirmed on hardware end-to-end, connection stable,
+full sync replay verified.
