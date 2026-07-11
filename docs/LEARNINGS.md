@@ -827,7 +827,49 @@ pairing screen is the right fallback). `tryAutoConnect()` already
 prefers the last-connected device via the same SharedPreferences key
 `connect()` writes on every success, so this naturally retries the
 device that just dropped without duplicating that preference logic.
-Status: RESOLVED (2026-07-11) for the reconnect-on-drop gap -
-analyzes/tests clean, not yet hardware-verified (would need to reflash
-mid-session and confirm the phone reconnects on its own within a few
-seconds without the app being relaunched).
+Status: RESOLVED (2026-07-11) for the reconnect-on-drop gap - confirmed
+on hardware: reflashed the board while the phone app was already running
+(not relaunched), serial log showed `ble_gatt: connection established`
+and `time sync: wallclock set` on their own shortly after the reset,
+with no manual action on the phone.
+
+## [FIRMWARE] blocking SD/USB I/O inside the WiFi promiscuous callback risked stalling capture over hours
+Date: 2026-07-11
+User report: separately from the clock/reconnect issue above, WiFi probe
+capture has previously stopped entirely after the device ran for a few
+hours, recovering only after a power cycle - not something that showed
+up in this session's short test windows, reported from the user's prior
+experience running the device unattended.
+Root cause (code-grounded, not yet confirmed via a multi-hour soak test):
+`wifi_sniffer.c`'s `on_packet()` (the `esp_wifi_set_promiscuous_rx_cb()`
+callback, which ESP-IDF documents as running in the WiFi driver's own
+time-critical context - lengthy work there is a known anti-pattern) was
+calling `main.c`'s `on_probe()` synchronously, which does two blocking
+I/O operations per matching probe: `sd_storage_write_raw()` (explicit
+`fflush()`+`fsync()` per the 2026-07-08 SD fix - not free, and SD
+latency isn't constant as a FAT volume fills/fragments over a day) and
+`output_emit()`'s `printf()` over USB-CDC (`CONFIG_PRINTBACK_JSON_OUTPUT`
+confirmed `y` in the live `sdkconfig` - can back up with nothing draining
+it if the device runs standalone/unattended, the real deployment
+scenario). Either one growing slower over hours could plausibly stall
+the WiFi driver's callback path badly enough that capture appears to
+stop, with a power cycle resetting both I/O paths back to a fast state -
+matching the reported symptom.
+Fix: decoupled capture from processing. `on_packet()` now does only the
+fast, CPU-only work (field extraction, IE hashing - unchanged) and pushes
+the observation into a new bounded FreeRTOS queue (`xQueueSend`, zero
+timeout - drops and counts rather than blocking the driver callback if
+the queue is ever full). A new dedicated task (`probe_proc_task`) is the
+only thing that calls `cb` (`on_probe()`), entirely off the WiFi driver's
+callback path - however slow SD/USB I/O gets, it can now only ever back
+up the queue, never stall capture itself. Added
+`wifi_sniffer_dropped_count()`, logged in `housekeeper()`'s existing
+stats line (`dropped=`) for visibility if the consumer task ever falls
+behind for real.
+Status: OPEN (mitigated) - builds clean, flashed, confirmed no
+regression on a short real-traffic test (`active=1 obs=8 dropped=0`,
+real fingerprints captured, SD writes succeeding). The actual multi-hour
+degradation this targets can't be reproduced or disproven in one dev
+session - needs a real unattended multi-hour run to confirm `dropped`
+stays near 0 and capture keeps working past the point where it
+previously stopped.
