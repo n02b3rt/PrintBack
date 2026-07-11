@@ -56,6 +56,16 @@ class BleService extends ChangeNotifier {
 
   Timer? _syncIdleTimer;
 
+  /// Retries once, after a short settle delay, when the BLE link drops
+  /// unexpectedly (device reflashed/rebooted, walked out of range) -
+  /// without this, the app just sits disconnected until the user
+  /// manually relaunches it or reconnects via Settings, which also means
+  /// the device's clock (no RTC, corrected only by TIME_SYNC on connect,
+  /// docs/DECISIONS.md D6) stays stuck on a stale fallback and misdates
+  /// everything it captures in the meantime (docs/LEARNINGS.md
+  /// 2026-07-11).
+  Timer? _reconnectTimer;
+
   Stream<List<ScanResult>> get scanResults => FlutterBluePlus.scanResults;
 
   /// Android 12+ (API 31+) treats BLE scan/connect as runtime-requestable
@@ -189,6 +199,7 @@ class BleService extends ChangeNotifier {
     if (!await requestPermissions()) {
       throw StateError('Bluetooth permission not granted');
     }
+    _reconnectTimer?.cancel();
     if (_device != null && _device!.remoteId != device.remoteId) {
       await disconnect();
     }
@@ -199,6 +210,14 @@ class BleService extends ChangeNotifier {
     _connSub = device.connectionState.listen((state) {
       _connectionState = state;
       notifyListeners();
+      // disconnect() below cancels _connSub before calling
+      // device.disconnect(), so a disconnected event that actually
+      // reaches this listener is never self-initiated - it's the link
+      // dropping out from under us (device reflashed/rebooted, walked
+      // out of range).
+      if (state == BluetoothConnectionState.disconnected) {
+        _scheduleReconnect();
+      }
     });
 
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
@@ -290,6 +309,23 @@ class BleService extends ChangeNotifier {
     await _syncChr!.write(bytes.buffer.asUint8List());
   }
 
+  /// One retry, after a short delay to let the device's BLE stack come
+  /// back up (e.g. mid-reboot after a reflash) rather than hammering it
+  /// immediately. Reuses tryAutoConnect() rather than reconnecting to
+  /// [device] directly: it already prefers the last-connected device (the
+  /// one that just dropped) via the same SharedPreferences key connect()
+  /// writes on every success, so this naturally retries the right device
+  /// first without duplicating that logic. Deliberately just one retry,
+  /// not a backoff loop - if it fails, the device is genuinely
+  /// unreachable and the manual pairing screen is the right fallback,
+  /// same as any other tryAutoConnect() failure.
+  void _scheduleReconnect() {
+    _reconnectTimer?.cancel();
+    _reconnectTimer = Timer(const Duration(seconds: 3), () {
+      tryAutoConnect();
+    });
+  }
+
   void _armSyncIdleTimer() {
     _syncIdleTimer?.cancel();
     _syncIdleTimer = Timer(const Duration(milliseconds: 1500), () {
@@ -334,6 +370,7 @@ class BleService extends ChangeNotifier {
   }
 
   Future<void> disconnect() async {
+    _reconnectTimer?.cancel();
     await _statsSub?.cancel();
     await _connSub?.cancel();
     _syncIdleTimer?.cancel();
@@ -353,6 +390,7 @@ class BleService extends ChangeNotifier {
     _statsSub?.cancel();
     _connSub?.cancel();
     _syncIdleTimer?.cancel();
+    _reconnectTimer?.cancel();
     _statsController.close();
     super.dispose();
   }

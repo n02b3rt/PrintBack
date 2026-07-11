@@ -815,6 +815,19 @@ retry `tryAutoConnect()`/`_scanAndConnect()` in the background instead
 of leaving the app connectionless until the next full app launch -
 mirrors what `ConnectingScreen` already does at startup, just triggered
 by a dropped connection instead of only a cold launch.
-Status: OPEN - immediate symptom (stale clock right now) is resolved by
-the user manually relaunching/reconnecting the app, which is what was
-suggested; the underlying "no reconnect-on-drop" gap is not fixed.
+Fix (user-approved follow-up): `BleService`'s existing `_connSub`
+listener already distinguishes a self-initiated disconnect from a real
+one for free - `disconnect()` cancels `_connSub` *before* calling
+`device.disconnect()`, so a `disconnected` event that actually reaches
+the listener can only be an unexpected drop. Added `_scheduleReconnect()`
+there: a single retry via `tryAutoConnect()` after a 3s settle delay
+(not a backoff loop - if the retry fails the device is genuinely
+unreachable, same as any other `tryAutoConnect()` failure, manual
+pairing screen is the right fallback). `tryAutoConnect()` already
+prefers the last-connected device via the same SharedPreferences key
+`connect()` writes on every success, so this naturally retries the
+device that just dropped without duplicating that preference logic.
+Status: RESOLVED (2026-07-11) for the reconnect-on-drop gap -
+analyzes/tests clean, not yet hardware-verified (would need to reflash
+mid-session and confirm the phone reconnects on its own within a few
+seconds without the app being relaunched).
