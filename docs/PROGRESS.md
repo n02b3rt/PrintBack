@@ -218,13 +218,15 @@
       sync status banner and Revolut-style charts render correctly on
       both Dashboard and Statystyki, tap-to-detail sheets open with
       correct data and interpretation text.
-      Still open: the hourly chart ("Odwiedziny godzinowe") shows "no
-      synced data" on a fresh connect - SYNC only replays
-      `stats/daily.bin`, never today's hourly breakdown, so hourly bars
-      only fill in from live hour-boundary notifications during the
-      current connection. Needs a firmware-side decision (extend SYNC, or
-      a separate mechanism, to also backfill today's hourly file) before
-      this phase can be marked fully done - not yet asked/actioned.
+      Hourly backfill (2026-07-11, user-approved): `ble_gatt.c`'s SYNC
+      replay extended to a two-phase state machine - after the daily
+      backlog, it also replays today's already-finalized hours from
+      `stats/hourly/<today>.bin` (docs/LEARNINGS.md 2026-07-11,
+      docs/DATA_MODEL.md updated). Builds clean
+      (`idf.py build`, zero warnings), but the board wasn't plugged into
+      this machine when this landed - NOT YET flashed/verified on real
+      hardware. This is the one remaining hardware-verification gap
+      before Phase 8 can be marked fully done.
 
 Note: the current code in `firmware/` and `app/` is still the old
 architecture (USB-CDC → Python desktop dashboard, SQLite). Don't remove /

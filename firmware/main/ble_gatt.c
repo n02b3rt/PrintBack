@@ -74,7 +74,12 @@ static const ble_uuid128_t s_time_sync_chr_uuid =
  * little-endian uint32 `since_unix_day` - 0 means "everything". Every
  * matching record from stats/daily.bin gets sent as a normal STATS
  * notification (reuses ble_gatt_notify_stats(), same JSON, no new wire
- * format), oldest first. */
+ * format), oldest first. Once the daily backlog is exhausted, also
+ * replays every already-finalized hour from today's
+ * stats/hourly/<today>.bin (docs/DATA_MODEL.md "Backfill after a longer
+ * gap") - unconditionally, not gated by since_unix_day, since it's at
+ * most 24 small records and the phone's local dedup already makes a
+ * repeat replay a harmless no-op. */
 static const ble_uuid128_t s_sync_chr_uuid =
     BLE_UUID128_INIT(0x77, 0x2f, 0x5a, 0x9d, 0x6b, 0x3c, 0x11, 0x9e,
                       0x9f, 0x4b, 0xb5, 0x7b, 0x40, 0x1e, 0x2c, 0x8f);
@@ -102,12 +107,21 @@ static bool               s_pairing_mode_active = false;
 static esp_timer_handle_t s_pairing_timer;
 static ble_addr_t         s_whitelist[MAX_BONDED_PEERS];
 
-/* SYNC backlog replay state (docs/DECISIONS.md D10). s_sync_cursor_unix_day
- * is the next date_unix_day still owed to the phone; sync_tick_cb()
- * advances it as records get sent and stops the timer once it runs off
- * the end of stats/daily.bin. */
+/* SYNC backlog replay state (docs/DECISIONS.md D10). Two phases:
+ * SYNC_PHASE_DAILY replays stats/daily.bin from s_sync_cursor_unix_day
+ * onward, then SYNC_PHASE_HOURLY_TODAY replays today's
+ * stats/hourly/<today>.bin from s_sync_hour_cursor (0-23) onward.
+ * sync_tick_cb() advances whichever cursor is active and stops the timer
+ * once both phases run off the end of their file. */
+typedef enum {
+    SYNC_PHASE_DAILY,
+    SYNC_PHASE_HOURLY_TODAY,
+} sync_phase_t;
+
 static bool               s_sync_pending = false;
+static sync_phase_t       s_sync_phase;
 static uint32_t           s_sync_cursor_unix_day;
+static int                s_sync_hour_cursor;
 static esp_timer_handle_t s_sync_timer;
 
 /* gatt_advertise() and gatt_gap_event() call each other (advertise passes
@@ -223,25 +237,35 @@ static int gatt_time_sync_write(struct ble_gatt_access_ctxt *ctxt)
     return 0;
 }
 
-/* Streams the next batch of matching stats/daily.bin records via
- * ble_gatt_notify_stats() - same JSON, same wire format as a live
- * rollover notify, the phone can't tell the difference. Re-scans the
- * file from the start every tick rather than tracking a byte offset:
- * simpler, and daily.bin stays small (12B/record) even after years of
- * history, so the repeated scan is cheap at this scale. */
-static void sync_tick_cb(void *arg)
+static void sync_finish(void)
 {
-    (void)arg;
-    if (!s_sync_pending) return;
+    s_sync_pending = false;
+    esp_timer_stop(s_sync_timer);
+    ESP_LOGI(TAG, "sync: backlog replay complete");
+}
 
+static void sync_start_hourly_phase(void)
+{
+    s_sync_phase = SYNC_PHASE_HOURLY_TODAY;
+    s_sync_hour_cursor = 0;
+}
+
+/* SYNC_PHASE_DAILY: streams the next batch of matching stats/daily.bin
+ * records via ble_gatt_notify_stats() - same JSON, same wire format as a
+ * live rollover notify, the phone can't tell the difference. Re-scans
+ * the file from the start every tick rather than tracking a byte offset:
+ * simpler, and daily.bin stays small (12B/record) even after years of
+ * history, so the repeated scan is cheap at this scale. Falls through to
+ * SYNC_PHASE_HOURLY_TODAY once exhausted, instead of finishing here. */
+static void sync_tick_daily(void)
+{
     char path[SD_STATS_PATH_MAX_LEN];
     FILE *f = NULL;
     if (sd_storage_is_ready() && sd_format_stats_daily_path(path, sizeof(path)) == 0) {
         f = fopen(path, "rb");
     }
     if (!f) {
-        s_sync_pending = false;
-        esp_timer_stop(s_sync_timer);
+        sync_start_hourly_phase();
         return;
     }
 
@@ -261,9 +285,56 @@ static void sync_tick_cb(void *arg)
     fclose(f);
 
     if (!more) {
-        s_sync_pending = false;
-        esp_timer_stop(s_sync_timer);
-        ESP_LOGI(TAG, "sync: backlog replay complete");
+        sync_start_hourly_phase();
+    }
+}
+
+/* SYNC_PHASE_HOURLY_TODAY: same batching/re-scan approach as the daily
+ * phase above, over today's stats/hourly/<today>.bin instead - the
+ * dashboard's hourly chart otherwise stays empty until a live
+ * hour-boundary notification arrives during some future connection. */
+static void sync_tick_hourly_today(void)
+{
+    char path[SD_STATS_PATH_MAX_LEN];
+    uint32_t today = sd_unix_day_from_unix_s(sd_storage_current_unix_s());
+    FILE *f = NULL;
+    if (sd_storage_is_ready() && sd_format_stats_hourly_path(today, path, sizeof(path)) == 0) {
+        f = fopen(path, "rb");
+    }
+    if (!f) {
+        sync_finish();
+        return;
+    }
+
+    aggregate_record_t rec;
+    int sent = 0;
+    bool more = false;
+    while (fread(&rec, sizeof(rec), 1, f) == 1) {
+        if (rec.hour_or_day < s_sync_hour_cursor) continue;
+        if (sent >= SYNC_BATCH_SIZE) {
+            more = true;
+            break;
+        }
+        ble_gatt_notify_stats(&rec);
+        s_sync_hour_cursor = rec.hour_or_day + 1;
+        sent++;
+    }
+    fclose(f);
+
+    if (!more) {
+        sync_finish();
+    }
+}
+
+static void sync_tick_cb(void *arg)
+{
+    (void)arg;
+    if (!s_sync_pending) return;
+
+    if (s_sync_phase == SYNC_PHASE_DAILY) {
+        sync_tick_daily();
+    } else {
+        sync_tick_hourly_today();
     }
 }
 
@@ -286,6 +357,7 @@ static int gatt_sync_write(struct ble_gatt_access_ctxt *ctxt)
     }
 
     s_sync_cursor_unix_day = since_unix_day;
+    s_sync_phase = SYNC_PHASE_DAILY;
     s_sync_pending = true;
     esp_timer_start_periodic(s_sync_timer, (uint64_t)SYNC_TICK_MS * 1000ULL);
     ESP_LOGI(TAG, "sync requested: since_unix_day=%" PRIu32, since_unix_day);

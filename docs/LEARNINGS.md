@@ -602,3 +602,40 @@ straight to `...40:9E` automatically on the very first attempt, no wrong
 device, no manual pairing screen - full TIME_SYNC/STATS/CONFIG/SYNC
 sequence completed with zero user interaction.
 Status: RESOLVED (2026-07-10)
+
+## [FIRMWARE] SYNC never backfilled today's hourly chart, only daily.bin
+Date: 2026-07-11
+Problem: user feedback after the Phase 8f visual redesign confirmed on
+hardware - the dashboard's "Odwiedziny godzinowe (dziś)" (hourly) chart
+kept showing "no synced data" on every fresh connect, even once the
+daily chart and KPIs were populated correctly from a real SYNC.
+Root cause: not a bug, a deliberate earlier scope cut
+(docs/DATA_MODEL.md "Backfill after a longer gap" used to say "hourly
+historical backfill is out of scope"). `sync_tick_cb()` only ever
+replayed `stats/daily.bin`; `aggregate.c`'s `write_stats_hourly()`
+already appends every finalized hour to `stats/hourly/<today>.bin` on
+the device, that data was just never sent over BLE. Subscribing to STATS
+only gets *future* hour-boundary notifications, so on a fresh connect
+the hourly chart had nothing until the device happened to cross an hour
+boundary while the phone stayed connected.
+Fix: user explicitly asked to bring this back in scope. `ble_gatt.c`'s
+sync replay is now a two-phase state machine (`sync_phase_t`
+SYNC_PHASE_DAILY -> SYNC_PHASE_HOURLY_TODAY): after `stats/daily.bin`
+runs out, it starts replaying `stats/hourly/<today>.bin` from hour 0,
+same batching/pacing (`SYNC_BATCH_SIZE` per `SYNC_TICK_MS` tick) as the
+daily phase, same `ble_gatt_notify_stats()` wire format, so the phone
+can't tell an hourly-replay row from a live hour-boundary notification.
+Unconditional on every SYNC request (not gated by `since_unix_day`) -
+at most 24 small records, and the phone's `local_db` UNIQUE(device_id,
+date, hour) already makes a repeat replay a harmless upsert, so there
+was no reason to add a second stateful cursor for this on the device
+(would contradict docs/DECISIONS.md D10's whole rationale anyway).
+Updated docs/DATA_MODEL.md's two SYNC sections to describe the new
+second phase instead of the old "out of scope" note.
+Status: OPEN - builds clean (`idf.py build`, zero warnings in the
+changed files) but NOT YET VERIFIED on hardware: the board wasn't
+plugged into this machine when this fix landed. Needs a real connect +
+SYNC request + hardware log check (`hour 0: unique=... published=...`
+style lines already exist in `aggregate.c`'s logging, plus a
+`sync: backlog replay complete` log line to confirm both phases ran)
+before this can be marked resolved.

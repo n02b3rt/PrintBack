@@ -115,9 +115,14 @@ characteristic below - the device replays unsynced daily rows as
 consecutive individual STATS notifications (no new batch format on this
 one either), same JSON as a live rollover notify. See "BLE SYNC payload"
 below for the protocol; docs/DECISIONS.md D10 for why the device doesn't
-track per-bond sync state itself. Hourly historical backfill is out of
-scope - only `stats/daily.bin` gets replayed, hourly patterns accumulate
-from live notifications during future connections instead.
+track per-bond sync state itself. Multi-day hourly historical backfill is
+still out of scope, but today's hourly breakdown is not (Phase 8f,
+revising the earlier scope cut below): after the daily backlog, SYNC also
+replays today's already-finalized hours from
+`stats/hourly/<today>.bin` - the dashboard's hourly chart otherwise
+stayed empty until a live hour-boundary notification happened to arrive
+during some future connection, confirmed as a real (not cosmetic)
+problem on hardware.
 
 ## BLE CONFIG payload (read + write)
 
@@ -164,10 +169,14 @@ every `stats/daily.bin` record with `date_unix_day >= since_unix_day`,
 oldest first, as ordinary STATS notifications
 (`firmware/main/ble_gatt.c`'s `sync_tick_cb()`, paced off a dedicated
 timer so a large backlog doesn't block the NimBLE host task - see
-docs/DECISIONS.md D10). There is no explicit "replay finished" marker on
-the wire; the phone treats a ~1.5s gap with no new STATS notification as
-"caught up". Write requires a bonded/encrypted link, same reasoning as
-CONFIG/TIME_SYNC.
+docs/DECISIONS.md D10). Once that backlog is exhausted, the same replay
+continues with a second phase: every already-finalized hour from today's
+`stats/hourly/<today>.bin`, unconditionally (not gated by
+`since_unix_day` - at most 24 small records, and the phone's local dedup
+already makes a repeat replay a harmless no-op). There is no explicit
+"replay finished" marker on the wire for either phase; the phone treats
+a ~1.5s gap with no new STATS notification as "caught up". Write requires
+a bonded/encrypted link, same reasoning as CONFIG/TIME_SYNC.
 
 **File format header (recommendation, beyond the letter of TASKS.md):**
 none of the structs above have a version/magic byte. If the layout ever
