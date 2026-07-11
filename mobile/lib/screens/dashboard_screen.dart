@@ -17,12 +17,12 @@ import '../widgets/sync_status_banner.dart';
 
 /// Today's date as `YYYY-MM-DD`, matching docs/DATA_MODEL.md's STATS
 /// `date` field format.
-String _todayString() {
-  final now = DateTime.now();
-  return '${now.year.toString().padLeft(4, '0')}-'
-      '${now.month.toString().padLeft(2, '0')}-'
-      '${now.day.toString().padLeft(2, '0')}';
-}
+String _todayString() => _dateString(DateTime.now());
+
+String _dateString(DateTime d) =>
+    '${d.year.toString().padLeft(4, '0')}-'
+    '${d.month.toString().padLeft(2, '0')}-'
+    '${d.day.toString().padLeft(2, '0')}';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -70,14 +70,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _reload() async {
-    final hourly = await _localDb.hourlyForDate(_deviceId, _todayString());
+    // Firmware records are dated/houred in UTC (no RTC on the device,
+    // docs/DATA_MODEL.md); "today" for the hourly chart means the
+    // phone's *local* calendar day, which can span two adjacent UTC
+    // dates near local midnight (e.g. 00:30 CEST is still 22:30 UTC the
+    // previous day). Query a 1-day pad on each side and filter/group by
+    // Aggregate.localDate/localHour below rather than the raw UTC
+    // fields, so an hour near the boundary lands on the right side.
+    final now = DateTime.now();
+    final hourlyPadded = await _localDb.hourlyInRange(
+      _deviceId,
+      _dateString(now.subtract(const Duration(days: 1))),
+      _dateString(now.add(const Duration(days: 1))),
+    );
+    final today = _todayString();
+    final hourly = hourlyPadded.where((a) => a.localDate == today).toList();
     final daily = await _localDb.recentDaily(_deviceId, limit: 14);
-    final today = await _localDb.dailyForDate(_deviceId, _todayString());
+    final todayDaily = await _localDb.dailyForDate(_deviceId, today);
     if (!mounted) return;
     setState(() {
       _hourlyToday = hourly;
       _recentDaily = daily;
-      _todayDaily = today;
+      _todayDaily = todayDaily;
     });
   }
 
@@ -189,7 +203,7 @@ class _HourlyBarChart extends StatelessWidget {
   const _HourlyBarChart({required this.data});
 
   void _showDetail(BuildContext context, AppLocalizations l10n, Aggregate agg) {
-    final hour = agg.hour!;
+    final hour = agg.localHour;
     final dayTotal = data.fold<int>(0, (s, a) => s + a.unique);
     final dayAvg = data.isEmpty ? 0.0 : dayTotal / data.length;
     final share = dayTotal == 0 ? 0 : (agg.unique * 100 / dayTotal).round();
@@ -226,7 +240,9 @@ class _HourlyBarChart extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
-    final byHour = {for (final a in data) a.hour!: a};
+    // Keyed by local hour, not the raw UTC hour on the wire - see
+    // Aggregate.localHour.
+    final byHour = {for (final a in data) a.localHour: a};
     final maxY = data
         .map((a) => a.unique)
         .fold<int>(1, (m, v) => v > m ? v : m)

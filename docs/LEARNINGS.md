@@ -732,3 +732,53 @@ check). Added `revolutLegend()` (small "● label" row) since color alone
 isn't enough to tell two lines apart reliably.
 Status: OPEN - builds/analyzes/tests clean, NOT YET visually verified on
 hardware (phone was locked when this landed).
+
+## [MOBILE] hourly labels/peak-hour showed raw UTC hour, not the phone's local wall clock
+Date: 2026-07-11
+Problem: user noticed the hourly chart's "last reading" was labeled
+8:00 despite it being mid-afternoon local time - correctly read as
+suspicious, not just quiet traffic. Confirmed via a codebase-wide check
+(no `toLocal()`/timezone conversion anywhere in `mobile/lib` except
+`ble_service.dart`'s `_writeTimeSync()`, which is for sending the
+phone's clock TO the device, unrelated to reading it back): every
+hourly label, the "Godzina szczytu" (peak hour) stat, and the hourly
+chart's bar/line x-position all used the raw `hour` field straight off
+the wire, unconverted.
+Root cause: the firmware has no RTC and stores/transmits everything in
+UTC (`sd_hour_from_unix_s()`, docs/DATA_MODEL.md) - a deliberate,
+correct architectural choice for the device/wire format. But the phone
+never converted back to local time before showing it to a human. In
+Poland (CEST, UTC+2) a wire `hour: 8` is 10:00 local, not 8:00 - every
+hourly label was off by a fixed 2h offset (more in winter CET, UTC+1).
+A second, related but narrower bug: `_todayString()`
+(`dashboard_screen.dart`) and `_rangeFor()` (`statistics_screen.dart`)
+compute "today"/period boundaries from *local* `DateTime.now()`, then
+use that string to query rows keyed by *UTC* calendar date - correct
+except within about 2h of local midnight, where an hour's true UTC date
+differs from its local date.
+Fix: added `Aggregate.utcInstant`/`localHour`/`localDate` getters
+(`models/aggregate.dart`) - the one conversion point where the phone's
+actual timezone enters the picture, computed via `DateTime.utc(...).
+toLocal()` rather than a hardcoded offset (correct across DST
+transitions automatically). All hour labels, peak-hour bucketing, and
+hourly chart grouping (`dashboard_screen.dart`'s `_HourlyBarChart`,
+`statistics_screen.dart`'s `_HourlyTrendChart`/peak-hour computation)
+now key off `localHour` instead of the raw wire `hour`. To handle the
+UTC/local day-boundary edge case correctly rather than just relabeling
+around it, both screens now fetch hourly rows with a 1-day UTC pad on
+each side of the requested range, then filter to rows whose
+`localDate` actually matches the target local day.
+Not fixed in this pass (documented, not silently ignored): the
+`_todayString()`/`dailyForDate()`/`recentDaily()` *daily* queries and
+the weekday-pattern chart's `DateTime.utc(...).weekday` computation
+(`statistics_screen.dart`) still use the raw UTC `date` field directly -
+correct the overwhelming majority of the day, wrong only for the ~2h
+window right after local midnight when the local and UTC calendar dates
+briefly disagree. Narrower blast radius than the hourly bug (affects at
+most which single day/weekday a record is bucketed under, not a
+constant 2h mislabel applied to literally every hourly value), scoped
+out of this pass rather than expanding it into a full day-boundary
+rework of the daily/weekday query paths too.
+Status: RESOLVED (2026-07-11) for hourly labels/peak-hour/hourly chart
+grouping - builds/analyzes/tests clean, not yet visually re-verified on
+hardware.

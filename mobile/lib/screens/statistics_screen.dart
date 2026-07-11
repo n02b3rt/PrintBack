@@ -83,8 +83,15 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
 
     final daily =
         await _localDb.dailyInRange(_deviceId, _fmt(range.start), _fmt(range.end));
+    // Firmware hourly rows are dated in UTC (no RTC on the device,
+    // docs/DATA_MODEL.md); a 1-day pad on each side plus grouping by
+    // Aggregate.localHour/localDate below covers hours that land on the
+    // other side of the UTC/local day boundary (e.g. 00:30 CEST is
+    // still 22:30 UTC the previous day).
     final hourly = await _localDb.hourlyInRange(
-        _deviceId, _fmt(range.start), _fmt(range.end));
+        _deviceId,
+        _fmt(range.start.subtract(const Duration(days: 1))),
+        _fmt(range.end.add(const Duration(days: 1))));
     final prevDaily =
         await _localDb.dailyInRange(_deviceId, _fmt(prevStart), _fmt(prevEnd));
 
@@ -169,9 +176,18 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     final hourSums = List<int>.filled(24, 0);
     final hourCounts = List<int>.filled(24, 0);
     for (final a in _hourly) {
-      hourSums[a.hour!] += a.unique;
-      hourCounts[a.hour!]++;
+      // Local hour, not the raw UTC hour on the wire - see
+      // Aggregate.localHour.
+      hourSums[a.localHour] += a.unique;
+      hourCounts[a.localHour]++;
     }
+    // _hourly was fetched with a 1-day UTC pad on each side (see
+    // _reload()) to catch hours that land on the other side of the
+    // UTC/local day boundary - the "Dziś" hourly chart needs only the
+    // rows that actually fall on today's *local* calendar date.
+    final todayLocal = _fmt(DateTime.now());
+    final hourlyToday =
+        _hourly.where((a) => a.localDate == todayLocal).toList();
     int? peakHour;
     double peakAvg = -1;
     for (var h = 0; h < 24; h++) {
@@ -306,9 +322,9 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                 child: SizedBox(
                   height: 160,
                   child: _period == _Period.today
-                      ? (_hourly.isEmpty
+                      ? (hourlyToday.isEmpty
                           ? Center(child: Text(l10n.noDataYet))
-                          : _HourlyTrendChart(data: _hourly))
+                          : _HourlyTrendChart(data: hourlyToday))
                       : (_daily.isEmpty
                           ? Center(child: Text(l10n.noDataYet))
                           : _DailyTrendChart(data: _daily)),
@@ -560,7 +576,7 @@ class _HourlyTrendChart extends StatelessWidget {
   const _HourlyTrendChart({required this.data});
 
   void _showDetail(BuildContext context, AppLocalizations l10n, Aggregate agg) {
-    final hour = agg.hour!;
+    final hour = agg.localHour;
     final dayTotal = data.fold<int>(0, (s, a) => s + a.unique);
     final dayAvg = data.isEmpty ? 0.0 : dayTotal / data.length;
     final isPeak =
@@ -593,7 +609,9 @@ class _HourlyTrendChart extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
-    final byHour = {for (final a in data) a.hour!: a};
+    // Keyed by local hour, not the raw UTC hour on the wire - see
+    // Aggregate.localHour.
+    final byHour = {for (final a in data) a.localHour: a};
     final maxY = data
         .map((a) => a.unique)
         .fold<int>(1, (m, v) => v > m ? v : m)
