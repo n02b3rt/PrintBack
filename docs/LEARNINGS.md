@@ -1070,3 +1070,34 @@ Status: OPEN - two real, justified fixes landed this session
 user-visible "can't pair" symptom persists. Stopping here per the "2
 tries" rule instead of attempting a third blind change; asked the user
 how to proceed.
+
+Update (same date, user explicitly said to keep going): tried the
+encryption-settle hypothesis as a code change (`8bea399`) - 500ms delay
+before the first `_writeTimeSync()` plus one catch-and-retry with
+another 500ms, per flutter_blue_plus's own README guidance for this
+class of Android flakiness. **Did not fix it** - next attempt failed
+with `fbp-code: 6 | Device is disconnected` on writeCharacteristic,
+i.e. the link was already gone before even the delayed first write.
+That result actually narrows things further: the disconnect is not
+racing our write at all - the link is dying on its own between
+service discovery and the first ATT operation over an encrypted
+characteristic. Combined with the two hardest facts of the session -
+(a) this exact phone+device pair completed a full TIME_SYNC + SYNC
+replay flawlessly earlier the same evening (22:14, first capture), and
+(b) the failures started immediately after the board's unexplained
+spontaneous reset - the strongest remaining hypothesis is a **bond key
+mismatch**: the phone re-encrypts with its stored LTK, the device no
+longer accepts it (bond store state diverged around the reset), the SMP
+re-encryption times out (`encryption change; status=13` seen on the
+device), and Android tears the link down locally. No app code can fix
+mismatched keys; the deterministic test/repair is deleting the bond on
+BOTH sides and re-pairing fresh: forget "PrintBack" in the phone's
+system Bluetooth settings (app-level "forget" doesn't touch the OS
+bond), hard-reset the board (done over serial via esptool), open the
+pairing window with the button, connect fresh. NimBLE overwrites the
+stale bond for the same peer on re-pair, so the device side doesn't
+need an NVS wipe for this test - that's the escalation step only if a
+fresh re-pair still fails.
+Status: OPEN - fresh re-pair test prepared and running (board reset,
+phone's Bluetooth settings opened via adb, serial capture live);
+outcome to be recorded here.
