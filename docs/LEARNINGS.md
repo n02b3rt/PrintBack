@@ -873,3 +873,44 @@ degradation this targets can't be reproduced or disproven in one dev
 session - needs a real unattended multi-hour run to confirm `dropped`
 stays near 0 and capture keeps working past the point where it
 previously stopped.
+
+## [MOBILE] connect() had no reentrancy guard, auto-reconnect raced concurrent GATT writes
+Date: 2026-07-11
+Problem: during the Etap 0 hardware verification session (SYNC hourly
+backfill test), the phone's pairing screen showed "Połączenie nieudane"
+twice with different underlying causes, both on `writeCharacteristic`:
+`PlatformException(writeCharacteristic, gatt.writeCharacteristic()
+returned 201 : ERROR_GATT_WRITE_REQUEST_BUSY, null, null)` and
+`FlutterBluePlusException | writeCharacteristic | fbp-code: 1 | Timed
+out after 15s`. The firmware's serial log showed a repeated
+connect/disconnect loop (`ble_gatt: disconnect; reason=531` - HCI 0x13,
+remote-terminated - every ~15-40s, each followed by `connection
+established` again) for several minutes, even though one connection in
+the middle of it completed `time sync` + `sync: backlog replay
+complete` cleanly.
+Root cause: `BleService.connect()` (`mobile/lib/ble/ble_service.dart`)
+had no guard against running twice concurrently. `_scheduleReconnect()`
+(added earlier today, auto-reconnect on an unexpected drop) fires
+`tryAutoConnect()` -> `connect()` 3s after any disconnect; if that raced
+against another in-flight `connect()` (a manual retry from the pairing
+screen, or a second reconnect timer firing before the first attempt's
+GATT operations had actually finished at the OS level), two
+`writeCharacteristic()` calls landed on the same GATT connection at
+once - Android's stack answers the second one with
+`ERROR_GATT_WRITE_REQUEST_BUSY` or lets the first one time out. Either
+way `connect()` throws partway through, `_device`/`_connSub` are left in
+a half-set state, and the resulting disconnect/retry repeats the same
+race. Checked `HomeShell`'s own `requestSync()` (the only other
+`writeCharacteristic` caller) and ruled it out - it only fires once from
+`initState()`, before any reconnect could occur, so this isn't a factor.
+Fix: added a `bool _connecting` guard around `connect()`'s whole body
+(set at entry, cleared in a `finally`); a second concurrent call now
+throws `StateError('connect() already in progress')` immediately
+instead of racing a live write. Every caller (`tryAutoConnect()`'s loop,
+`_scanAndConnect()`, `_scheduleReconnect()`) already treats any
+`connect()` failure as "try the next candidate / give up for now", so
+failing fast needed no new handling.
+Status: OPEN - `flutter analyze`/`flutter test` clean, rebuilt and
+reinstalled on the test phone over adb; not yet re-verified on hardware
+that the connect/disconnect loop actually stops - that's the immediate
+next step of the same Etap 0 hardware session.

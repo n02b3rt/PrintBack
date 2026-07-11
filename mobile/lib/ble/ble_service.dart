@@ -66,6 +66,14 @@ class BleService extends ChangeNotifier {
   /// 2026-07-11).
   Timer? _reconnectTimer;
 
+  /// Guards connect() against running twice concurrently - a manual retry
+  /// racing _scheduleReconnect()'s auto-reconnect (or two reconnect timers
+  /// overlapping after repeated drops) issues two GATT writeCharacteristic
+  /// calls on the same connection at once, which Android's stack answers
+  /// with ERROR_GATT_WRITE_REQUEST_BUSY or a 15s timeout instead of a clean
+  /// result (docs/LEARNINGS.md 2026-07-11 "connect/disconnect churn").
+  bool _connecting = false;
+
   Stream<List<ScanResult>> get scanResults => FlutterBluePlus.scanResults;
 
   /// Android 12+ (API 31+) treats BLE scan/connect as runtime-requestable
@@ -196,78 +204,86 @@ class BleService extends ChangeNotifier {
   /// clock to TIME_SYNC (docs/DECISIONS.md D6 - "on every connection", not
   /// just first pairing), then subscribes to STATS notifications.
   Future<void> connect(BluetoothDevice device) async {
-    if (!await requestPermissions()) {
-      throw StateError('Bluetooth permission not granted');
+    if (_connecting) {
+      throw StateError('connect() already in progress');
     }
-    _reconnectTimer?.cancel();
-    if (_device != null && _device!.remoteId != device.remoteId) {
-      await disconnect();
-    }
-    _device = device;
-    await device.connect(mtu: null);
-
-    await _connSub?.cancel();
-    _connSub = device.connectionState.listen((state) {
-      _connectionState = state;
-      notifyListeners();
-      // disconnect() below cancels _connSub before calling
-      // device.disconnect(), so a disconnected event that actually
-      // reaches this listener is never self-initiated - it's the link
-      // dropping out from under us (device reflashed/rebooted, walked
-      // out of range).
-      if (state == BluetoothConnectionState.disconnected) {
-        _scheduleReconnect();
+    _connecting = true;
+    try {
+      if (!await requestPermissions()) {
+        throw StateError('Bluetooth permission not granted');
       }
-    });
+      _reconnectTimer?.cancel();
+      if (_device != null && _device!.remoteId != device.remoteId) {
+        await disconnect();
+      }
+      _device = device;
+      await device.connect(mtu: null);
 
-    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
-      await device.requestMtu(185);
-      // Android caches a device's GATT table by Bluetooth address across
-      // connections. During firmware development the same physical device
-      // gets new characteristics added between flashes (e.g. TIME_SYNC in
-      // this phase) while keeping the same address, so a stale cache can
-      // hide them from discoverServices() below even though the firmware
-      // genuinely serves them. Best-effort: a failure here just means
-      // discoverServices() falls back to whatever Android already has.
-      try {
-        await device.clearGattCache();
-      } catch (_) {}
+      await _connSub?.cancel();
+      _connSub = device.connectionState.listen((state) {
+        _connectionState = state;
+        notifyListeners();
+        // disconnect() below cancels _connSub before calling
+        // device.disconnect(), so a disconnected event that actually
+        // reaches this listener is never self-initiated - it's the link
+        // dropping out from under us (device reflashed/rebooted, walked
+        // out of range).
+        if (state == BluetoothConnectionState.disconnected) {
+          _scheduleReconnect();
+        }
+      });
+
+      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+        await device.requestMtu(185);
+        // Android caches a device's GATT table by Bluetooth address across
+        // connections. During firmware development the same physical device
+        // gets new characteristics added between flashes (e.g. TIME_SYNC in
+        // this phase) while keeping the same address, so a stale cache can
+        // hide them from discoverServices() below even though the firmware
+        // genuinely serves them. Best-effort: a failure here just means
+        // discoverServices() falls back to whatever Android already has.
+        try {
+          await device.clearGattCache();
+        } catch (_) {}
+      }
+
+      final services = await device.discoverServices();
+      final service = services.firstWhere(
+        (s) => s.serviceUuid == PrintBackUuids.service,
+        orElse: () =>
+            throw StateError('PrintBack GATT service not found on device'),
+      );
+
+      _statsChr = service.characteristics.firstWhere(
+        (c) => c.characteristicUuid == PrintBackUuids.stats,
+        orElse: () => throw StateError('STATS characteristic not found'),
+      );
+      _configChr = service.characteristics.firstWhere(
+        (c) => c.characteristicUuid == PrintBackUuids.config,
+        orElse: () => throw StateError('CONFIG characteristic not found'),
+      );
+      _timeSyncChr = service.characteristics.firstWhere(
+        (c) => c.characteristicUuid == PrintBackUuids.timeSync,
+        orElse: () => throw StateError('TIME_SYNC characteristic not found'),
+      );
+      _syncChr = service.characteristics.firstWhere(
+        (c) => c.characteristicUuid == PrintBackUuids.sync,
+        orElse: () => throw StateError('SYNC characteristic not found'),
+      );
+
+      await _writeTimeSync();
+
+      await _statsChr!.setNotifyValue(true);
+      await _statsSub?.cancel();
+      _statsSub = _statsChr!.lastValueStream.listen(_onStatsNotification);
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_activeDeviceIdKey, device.remoteId.str);
+
+      notifyListeners();
+    } finally {
+      _connecting = false;
     }
-
-    final services = await device.discoverServices();
-    final service = services.firstWhere(
-      (s) => s.serviceUuid == PrintBackUuids.service,
-      orElse: () =>
-          throw StateError('PrintBack GATT service not found on device'),
-    );
-
-    _statsChr = service.characteristics.firstWhere(
-      (c) => c.characteristicUuid == PrintBackUuids.stats,
-      orElse: () => throw StateError('STATS characteristic not found'),
-    );
-    _configChr = service.characteristics.firstWhere(
-      (c) => c.characteristicUuid == PrintBackUuids.config,
-      orElse: () => throw StateError('CONFIG characteristic not found'),
-    );
-    _timeSyncChr = service.characteristics.firstWhere(
-      (c) => c.characteristicUuid == PrintBackUuids.timeSync,
-      orElse: () => throw StateError('TIME_SYNC characteristic not found'),
-    );
-    _syncChr = service.characteristics.firstWhere(
-      (c) => c.characteristicUuid == PrintBackUuids.sync,
-      orElse: () => throw StateError('SYNC characteristic not found'),
-    );
-
-    await _writeTimeSync();
-
-    await _statsChr!.setNotifyValue(true);
-    await _statsSub?.cancel();
-    _statsSub = _statsChr!.lastValueStream.listen(_onStatsNotification);
-
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_activeDeviceIdKey, device.remoteId.str);
-
-    notifyListeners();
   }
 
   /// Subscribing only gets *future* notifications (next hour/day rollover
