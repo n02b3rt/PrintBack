@@ -914,3 +914,67 @@ Status: OPEN - `flutter analyze`/`flutter test` clean, rebuilt and
 reinstalled on the test phone over adb; not yet re-verified on hardware
 that the connect/disconnect loop actually stops - that's the immediate
 next step of the same Etap 0 hardware session.
+
+Update (same date, continued hardware session): re-verification showed
+the connect/disconnect loop recurring even with the `_connecting` guard
+in place, so the reentrancy race was real but not the only cause.
+Additional findings from a live, unbuffered serial capture across many
+repeated cycles:
+- The board reset itself at some point mid-session (uptime restarted
+  from ~0; the boot banner and real reset reason were lost because the
+  serial capture wasn't watching yet - see the separate "capture
+  buffering" note below). `sd_storage: raw log:
+  /sdcard/logs/raw/20260708.bin` after the reset confirms the wallclock
+  reverted to the stale Kconfig fallback date, exactly the class of
+  problem 9b (not yet implemented) is meant to fix - expected given the
+  reset, not a new bug on its own.
+- Every single post-reset connection attempt (many cycles observed)
+  shows `connection established` -> `mtu update` -> a `subscribe event;
+  attr_handle=8 cur_notify=0` (an OS-automatic CCCD event, not our app
+  code - our own STATS subscribe would show `attr_handle=16
+  cur_notify=1`, never observed in any of these cycles) -> then either a
+  ~15-22s stall ending in `disconnect; reason=531`, or (once) an explicit
+  `encryption change; conn_handle=0 status=13` before the disconnect.
+  Checked NimBLE's `ble_hs_err.h`: status 13 = `BLE_HS_ETIMEOUT` - the
+  encryption/bonding renegotiation with the already-bonded phone timed
+  out at the BLE link layer itself, before the app's `connect()` ever
+  got a chance to call `discoverServices()`/write TIME_SYNC. `attr_handle
+  =16` (our own STATS notify) and `time sync:` never appear again in any
+  cycle after the reset, meaning the app-level flow this session's fix
+  targeted isn't even being reached - the failure moved earlier, to the
+  BLE encryption handshake itself.
+- The loop is self-sustaining without any user action: cycle time
+  dropped from ~15-40s (before the reentrancy fix) to a fairly steady
+  ~7-11s (connect -> disconnect -> `_scheduleReconnect()`'s 3s timer ->
+  connect again), consistent with the app's own auto-reconnect hammering
+  a link that cannot complete encryption, not a user retrying manually.
+- Separately (tooling, not a project bug): the first live-capture attempt
+  after the fix produced an empty log file with zero Monitor
+  notifications - `dev_cycle.py`'s stdout is fully block-buffered by
+  Python when piped (not a TTY), so `print()` output sat in an internal
+  buffer and was lost when the process was stopped instead of reaching
+  `tee`/`grep` in anything close to real time. Fixed by invoking
+  `python -u firmware/scripts/dev_cycle.py ...` (unbuffered stdout) for
+  every capture from that point on - worth remembering for any future
+  live-log session, this file doesn't otherwise track tooling-only
+  findings but this one directly caused a diagnostic dead end mid-session.
+Next hypothesis (not tried - stopping here per the "2 tries" rule and
+CLAUDE.md's "real BLE pairing: always ask instead of guessing
+repeatedly", since `BLE_HS_ETIMEOUT` on encryption is a link-layer/radio
+symptom, not something a third blind app-code change is likely to fix):
+either genuine RF/interference in this test session (unrelated devices,
+antenna position - same general class as the 2026-07-08 WiFi antenna
+finding, though that was WiFi not BLE), or the ESP32's bonding/bond-store
+state got into a bad spot specifically because of the unexplained reset
+mid-session (NVS-persisted bond record vs. some in-RAM SMP state now
+disagreeing). A clean test would be: fully forget/unpair the device on
+the phone's system Bluetooth settings (not just the app's "aktywne
+urządzenie"), power-cycle the ESP32 fresh, and re-bond from scratch
+during a fresh pairing window - rules out stale bond state on either
+side at once. Not attempted without asking first, since it's a step
+outside pure app code and outside Etap 0's actual scope.
+Status: OPEN - reentrancy-guard fix (`30f8e56`) is real and stays (it
+prevents a genuine, separate race), but does not by itself explain the
+symptom the user is seeing. Root cause of the encryption-timeout loop is
+unconfirmed; asked the user how to proceed rather than attempting a
+third change blind.
