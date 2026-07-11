@@ -222,15 +222,28 @@
       replay extended to a two-phase state machine - after the daily
       backlog, it also replays today's already-finalized hours from
       `stats/hourly/<today>.bin` (docs/LEARNINGS.md 2026-07-11,
-      docs/DATA_MODEL.md updated). Builds clean
-      (`idf.py build`, zero warnings), but the board wasn't plugged into
-      this machine when this landed - NOT YET flashed/verified on real
-      hardware. This is the one remaining hardware-verification gap
-      before Phase 8 can be marked fully done.
+      docs/DATA_MODEL.md updated). Flashed and confirmed on hardware:
+      connecting triggers a burst of STATS notifications right after the
+      SYNC write, hourly chart populates immediately.
+      2026-07-11 hardware pass also added: `UI_STATE_SYNCING` breathing-
+      blue LED during a SYNC replay; `Aggregate.localHour`/`localDate`
+      (mobile) converting the wire's raw UTC hour/date to the phone's
+      actual timezone, previously unconverted everywhere; `BleService`
+      auto-reconnect on an unexpected BLE drop (confirmed on hardware -
+      reflashing the board while the phone app stayed running triggered
+      a reconnect + fresh TIME_SYNC on its own, no manual relaunch); and
+      a WiFi capture/I-O decoupling fix (`wifi_sniffer.c`, queue + a
+      dedicated consumer task) addressing a user-reported "capture stops
+      after a few hours, power cycle fixes it" pattern - mitigated and
+      confirmed not to regress short-term capture, but the actual
+      multi-hour degradation needs a real unattended soak test to fully
+      confirm (docs/LEARNINGS.md 2026-07-11).
 
 Note: the current code in `firmware/` and `app/` is still the old
 architecture (USB-CDC → Python desktop dashboard, SQLite). Don't remove /
 change it until the new path (BLE+SD) is ready and tested in parallel.
 
-Last updated: 2026-07-10 (Phase 8a-8f verified on real hardware; hourly
-backfill on connect still open, see Phase 8 notes above).
+Last updated: 2026-07-11 (Phase 8a-8f verified on real hardware,
+including hourly backfill; WiFi capture/IO decoupling fix flashed,
+pending a multi-hour soak test to fully confirm - see Phase 8 notes
+above).
