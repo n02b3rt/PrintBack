@@ -6,9 +6,11 @@ import '../ble/ble_service.dart';
 import '../l10n/app_localizations.dart';
 import '../models/device_config.dart';
 import '../theme/theme_controller.dart';
+import '../storage/local_db.dart';
 import '../widgets/glass_card.dart';
 import '../widgets/gradient_background.dart';
 import 'home_shell.dart';
+import 'pairing_screen.dart';
 
 /// Mirrors firmware/main/runtime_config_parse.h - single source of truth
 /// for the valid CONFIG ranges, kept in sync by hand since the phone has
@@ -123,6 +125,53 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _error = AppLocalizations.of(context)!.switchDeviceFailed;
       });
     }
+  }
+
+  Future<void> _forgetDevice() async {
+    final l10n = AppLocalizations.of(context)!;
+    final ble = context.read<BleService>();
+    final deviceId = ble.activeDeviceId;
+    // keep = forget but leave cached data; delete = also wipe it; null = cancel.
+    final choice = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(l10n.forgetDeviceTitle),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(l10n.forgetDeviceBody),
+            const SizedBox(height: 12),
+            Text(l10n.forgetDeviceUnbondHint,
+                style: Theme.of(ctx).textTheme.bodySmall),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(null),
+            child: Text(l10n.cancelButton),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(l10n.forgetDeviceKeepData),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text(l10n.forgetDeviceDeleteData),
+          ),
+        ],
+      ),
+    );
+    if (choice == null) return;
+    if (choice && deviceId != null) {
+      await LocalDb().deleteDevice(deviceId);
+    }
+    await ble.forgetActiveDevice();
+    if (!mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const PairingScreen()),
+      (route) => false,
+    );
   }
 
   Future<void> _save() async {
@@ -356,6 +405,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               onTap: _switching ? null : () => _switchTo(d),
                             ),
                           ),
+                        const Divider(height: 1),
+                        ListTile(
+                          leading: Icon(Icons.link_off,
+                              color: Theme.of(context).colorScheme.error),
+                          title: Text(
+                            l10n.forgetDevice,
+                            style: TextStyle(
+                                color: Theme.of(context).colorScheme.error),
+                          ),
+                          onTap: ble.activeDeviceId == null || _switching
+                              ? null
+                              : _forgetDevice,
+                        ),
                       ],
                     ),
                   ),

@@ -93,6 +93,13 @@ class LocalDb {
     return rows.isNotEmpty;
   }
 
+  /// Deletes every row for one device - used when the user forgets a
+  /// device and chooses to wipe its cached data from the phone too.
+  Future<void> deleteDevice(String deviceId) async {
+    final db = await _open();
+    await db.delete(_table, where: 'device_id = ?', whereArgs: [deviceId]);
+  }
+
   /// Hourly rows (`hour` 0-23) for one device and date, ordered by hour.
   Future<List<Aggregate>> hourlyForDate(String deviceId, String date) async {
     final db = await _open();

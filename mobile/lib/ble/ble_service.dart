@@ -439,6 +439,19 @@ class BleService extends ChangeNotifier {
     await _configChr!.write(bytes);
   }
 
+  /// Forgets the active device: drops any live connection and clears the
+  /// persisted active-device id so the app returns to a fresh, unpaired
+  /// state. Does NOT remove the OS-level Bluetooth bond (an app can't -
+  /// the user does that in system settings); the UI shows that instruction
+  /// separately.
+  Future<void> forgetActiveDevice() async {
+    await disconnect();
+    _activeDeviceId = null;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_activeDeviceIdKey);
+    notifyListeners();
+  }
+
   Future<void> disconnect() async {
     _reconnectTimer?.cancel();
     await _statsSub?.cancel();
