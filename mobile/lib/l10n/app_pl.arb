@@ -90,7 +90,7 @@
   "appearanceSectionTitle": "Wygląd",
   "themeLight": "Jasny",
   "themeDark": "Ciemny",
-  "themeSystem": "Systemowy",
+  "themeSystem": "Auto",
   "detectionSectionTitle": "Wykrywanie",
   "deviceSectionTitle": "Urządzenie",
   "currentDevice": "Aktualnie połączone",
