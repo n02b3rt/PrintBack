@@ -4,8 +4,10 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "esp_app_desc.h"
 #include "esp_err.h"
 #include "esp_log.h"
+#include "esp_system.h"
 #include "esp_timer.h"
 #include "sdkconfig.h"
 
@@ -21,6 +23,7 @@
 #include "store/config/ble_store_config.h"
 
 #include "aggregate.h"
+#include "app_info.h"
 #include "runtime_config.h"
 #include "sd_storage.h"
 #include "ui.h"
@@ -43,6 +46,7 @@ static const char *TAG = "ble_gatt";
 
 #define STATS_JSON_MAX_LEN 96
 #define CONFIG_JSON_MAX_LEN 64
+#define STATUS_JSON_MAX_LEN 160
 
 /* e794a7d8-6905-4552-b7a2-d0cdc9dae0f6 (docs/DATA_MODEL.md) */
 static const ble_uuid128_t s_svc_uuid =
@@ -84,6 +88,14 @@ static const ble_uuid128_t s_time_sync_chr_uuid =
 static const ble_uuid128_t s_sync_chr_uuid =
     BLE_UUID128_INIT(0x77, 0x2f, 0x5a, 0x9d, 0x6b, 0x3c, 0x11, 0x9e,
                       0x9f, 0x4b, 0xb5, 0x7b, 0x40, 0x1e, 0x2c, 0x8f);
+
+/* cf2c77c3-71e7-4121-a695-e22fdbcbe4ba (docs/DATA_MODEL.md), read-only.
+ * Diagnostics for a phone: firmware version, SD health/free space, uptime,
+ * free heap, last reset reason. No encryption flag - same as STATS, and
+ * only bonded peers reach it anyway via the connection whitelist. */
+static const ble_uuid128_t s_status_chr_uuid =
+    BLE_UUID128_INIT(0xba, 0xe4, 0xcb, 0xdb, 0x2f, 0xe2, 0x95, 0xa6,
+                      0x21, 0x41, 0xe7, 0x71, 0xc3, 0x77, 0x2c, 0xcf);
 
 /* Sync backlog replay is paced off a dedicated fast timer, not the
  * write callback itself - draining hundreds of days of history
@@ -202,6 +214,28 @@ static int gatt_config_read(struct ble_gatt_access_ctxt *ctxt)
     int len = snprintf(json, sizeof(json),
         "{\"rssi_floor\":%d,\"returning_window_days\":%d}",
         runtime_config_rssi_floor(), runtime_config_returning_window_days());
+
+    if (len < 0) return BLE_ATT_ERR_UNLIKELY;
+    int rc = os_mbuf_append(ctxt->om, json, (uint16_t)len);
+    return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+}
+
+/* Read-only device diagnostics (9c, docs/DATA_MODEL.md "BLE STATUS
+ * payload"). All fields are live device state, never per-client data, so
+ * no k-anonymity/privacy concern. */
+static int gatt_status_read(struct ble_gatt_access_ctxt *ctxt)
+{
+    const esp_app_desc_t *desc = esp_app_get_description();
+    char json[STATUS_JSON_MAX_LEN];
+    int len = snprintf(json, sizeof(json),
+        "{\"fw\":\"%s\",\"sd_ok\":%s,\"sd_free_mb\":%" PRIu32 ","
+        "\"uptime_s\":%" PRId64 ",\"heap\":%" PRIu32 ",\"reset\":\"%s\"}",
+        desc->version,
+        sd_storage_is_ready() ? "true" : "false",
+        sd_storage_free_mb(),
+        esp_timer_get_time() / 1000000,
+        esp_get_free_heap_size(),
+        app_reset_reason_str());
 
     if (len < 0) return BLE_ATT_ERR_UNLIKELY;
     int rc = os_mbuf_append(ctxt->om, json, (uint16_t)len);
@@ -413,6 +447,9 @@ static int gatt_access_cb(uint16_t conn_handle, uint16_t attr_handle,
     if (ble_uuid_cmp(uuid, &s_sync_chr_uuid.u) == 0) {
         return gatt_sync_write(ctxt);
     }
+    if (ble_uuid_cmp(uuid, &s_status_chr_uuid.u) == 0) {
+        return gatt_status_read(ctxt);
+    }
     return BLE_ATT_ERR_UNLIKELY;
 }
 
@@ -443,6 +480,10 @@ static const struct ble_gatt_svc_def s_gatt_svcs[] = {
                 .uuid = &s_sync_chr_uuid.u,
                 .access_cb = gatt_access_cb,
                 .flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_ENC,
+            }, {
+                .uuid = &s_status_chr_uuid.u,
+                .access_cb = gatt_access_cb,
+                .flags = BLE_GATT_CHR_F_READ,
             }, {
                 0, /* No more characteristics in this service. */
             }

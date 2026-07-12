@@ -21,6 +21,7 @@ idf_component_register(
         nvs_flash
         mbedtls
         esp_timer
+        esp_app_format
         driver
         fatfs
         sdmmc

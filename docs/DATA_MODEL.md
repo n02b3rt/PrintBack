@@ -97,7 +97,7 @@ unlimited retention, per D3, aggregates aren't personal data).
 
 ## BLE GATT service and characteristic UUIDs
 
-One primary service, four characteristics (vendor-specific 128-bit
+One primary service, five characteristics (vendor-specific 128-bit
 UUIDs, randomly generated, no relation to any BLE SIG-adopted service).
 PAIRING_STATUS is still not implemented - see docs/ARCHITECTURE.md "BLE
 GATT (sketch)".
@@ -109,6 +109,26 @@ GATT (sketch)".
 | CONFIG     | `c5468eed-52a8-434b-bc6f-0d60c323f07f`  | read, write (bonded only) |
 | TIME_SYNC  | `5ebb01c3-8110-4ace-b139-436c1fa0b81f`  | write-only (bonded only) |
 | SYNC       | `8f2c1e40-7bb5-4b9f-9e11-3c6b9d5a2f77`  | write-only (bonded only) |
+| STATUS     | `cf2c77c3-71e7-4121-a695-e22fdbcbe4ba`  | read-only         |
+
+## BLE STATUS payload (read-only)
+
+Device diagnostics, one JSON object, read on demand (never notified). All
+fields are live device state, never per-client data:
+
+```json
+{"fw":"1.0.0","sd_ok":true,"sd_free_mb":59421,"uptime_s":86321,"heap":142000,"reset":"poweron"}
+```
+
+`fw` is `esp_app_get_description()->version` (from the git tag / CMake
+project version), `sd_ok`/`sd_free_mb` come from `sd_storage`, `uptime_s`
+from `esp_timer`, `heap` from `esp_get_free_heap_size()`, and `reset` is
+the last reset reason string (`poweron`/`panic`/`brownout`/... captured at
+boot). Read-only, no encryption flag - same as STATS, and only bonded
+peers reach it through the connection whitelist anyway. A phone treats the
+characteristic as optional: older firmware without it must not break the
+connect flow (Etap 2 mobile `readStatus()` uses a null-returning lookup,
+not a throwing one).
 
 ## BLE STATS payload: JSON (not CBOR)
 

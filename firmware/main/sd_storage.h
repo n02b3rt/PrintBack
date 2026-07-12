@@ -47,6 +47,10 @@ void sd_storage_persist_wallclock(void);
  * the card. */
 uint32_t sd_storage_raw_bytes_written(void);
 
+/* Free space on the mounted card in whole megabytes (0 if not mounted or
+ * the query fails). Reported by the BLE STATUS characteristic (9c). */
+uint32_t sd_storage_free_mb(void);
+
 /* Deletes raw log files older than `retention_days` (docs/ARCHITECTURE.md
  * "SD layout"). Called once at init and again on every day rollover, so
  * callers outside sd_storage.c normally don't need to call this

@@ -98,6 +98,14 @@ uint32_t sd_storage_raw_bytes_written(void)
     return pos > 0 ? (uint32_t)pos : 0;
 }
 
+uint32_t sd_storage_free_mb(void)
+{
+    if (!s_ready) return 0;
+    uint64_t total_bytes = 0, free_bytes = 0;
+    if (esp_vfs_fat_info(MOUNT_POINT, &total_bytes, &free_bytes) != ESP_OK) return 0;
+    return (uint32_t)(free_bytes / (1024 * 1024));
+}
+
 void sd_storage_purge_old(uint32_t retention_days)
 {
     if (!s_ready) return;

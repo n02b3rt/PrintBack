@@ -20,8 +20,18 @@
 #include "aggregate.h"
 #include "ble_gatt.h"
 #include "runtime_config.h"
+#include "app_info.h"
 
 static const char *TAG = "printback";
+
+/* Captured once at boot (app_main), served by the BLE STATUS
+ * characteristic via app_reset_reason_str(). */
+static const char *s_reset_reason = "unknown";
+
+const char *app_reset_reason_str(void)
+{
+    return s_reset_reason;
+}
 
 #define LOW_HEAP_WARN_BYTES (20 * 1024)
 
@@ -235,8 +245,9 @@ static void housekeeper(void *arg)
 void app_main(void)
 {
     esp_reset_reason_t reason = esp_reset_reason();
+    s_reset_reason = reset_reason_str(reason);
     ESP_LOGI(TAG, "boot: reset_reason=%s (%d) free_heap=%" PRIu32,
-             reset_reason_str(reason), (int)reason, esp_get_free_heap_size());
+             s_reset_reason, (int)reason, esp_get_free_heap_size());
 
     /* Initialize NVS first: whitelist_init(), runtime_config_init() and
      * sd_storage_init() below all read persisted state, and NimBLE's bond
