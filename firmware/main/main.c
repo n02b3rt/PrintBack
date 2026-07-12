@@ -174,6 +174,11 @@ static void check_aggregation_rollover(void)
         }
     }
 
+    /* Once per crossed hour boundary, save the wall clock to NVS so a
+     * reboot without a phone keeps roughly-correct dates (9b). Piggybacks
+     * on the boundary detection above - no separate timer, ~24 writes/day. */
+    sd_storage_persist_wallclock();
+
     s_agg_day = day;
     s_agg_hour = hour;
 }

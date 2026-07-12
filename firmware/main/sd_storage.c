@@ -11,12 +11,16 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "esp_vfs_fat.h"
+#include "nvs.h"
 #include "sdmmc_cmd.h"
 #include "sdkconfig.h"
 
 #include "sd_paths.h"
 
 static const char *TAG = "sd_storage";
+
+#define CLOCK_NVS_NS  "pb_clock"
+#define CLOCK_NVS_KEY "last_unix_s"
 
 #define MOUNT_POINT   "/sdcard"
 #define RAW_DIR       MOUNT_POINT "/logs/raw"
@@ -52,6 +56,34 @@ void sd_storage_set_wallclock_unix_s(uint32_t unix_s)
 uint32_t sd_storage_current_unix_s(void)
 {
     return current_unix_s();
+}
+
+void sd_storage_persist_wallclock(void)
+{
+    nvs_handle_t h;
+    if (nvs_open(CLOCK_NVS_NS, NVS_READWRITE, &h) != ESP_OK) return;
+    nvs_set_u32(h, CLOCK_NVS_KEY, current_unix_s());
+    nvs_commit(h);
+    nvs_close(h);
+}
+
+/* Restores the wall clock from the last hourly-persisted NVS value if it's
+ * newer than the current estimate (at boot, the Kconfig fallback). Without
+ * an RTC this is the only thing keeping dates roughly right across a reboot
+ * with no phone in range to send a fresh TIME_SYNC: a reboot otherwise
+ * reverts the clock to the stale compile-time epoch and misdates everything
+ * captured until the phone reconnects (docs/LEARNINGS.md 2026-07-11).
+ * TIME_SYNC still overrides this on the next connection. */
+static void restore_wallclock_from_nvs(void)
+{
+    nvs_handle_t h;
+    if (nvs_open(CLOCK_NVS_NS, NVS_READONLY, &h) != ESP_OK) return;
+    uint32_t stored = 0;
+    if (nvs_get_u32(h, CLOCK_NVS_KEY, &stored) == ESP_OK && stored > current_unix_s()) {
+        sd_storage_set_wallclock_unix_s(stored);
+        ESP_LOGI(TAG, "wallclock restored from nvs: unix_s=%" PRIu32, stored);
+    }
+    nvs_close(h);
 }
 
 bool sd_storage_is_ready(void)
@@ -182,6 +214,7 @@ static esp_err_t ensure_dir(const char *path)
 esp_err_t sd_storage_init(void)
 {
     sd_storage_set_wallclock_unix_s(CONFIG_PRINTBACK_FALLBACK_UNIX_EPOCH);
+    restore_wallclock_from_nvs(); /* bump to the NVS value if it's newer (9b) */
 
     esp_vfs_fat_sdmmc_mount_config_t mount_config = {
         .format_if_mount_failed = false,

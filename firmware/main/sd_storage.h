@@ -35,6 +35,12 @@ void sd_storage_set_wallclock_unix_s(uint32_t unix_s);
  * same clock sd_storage itself uses for file naming. */
 uint32_t sd_storage_current_unix_s(void);
 
+/* Saves the current wall-clock estimate to NVS. main.c calls this once per
+ * hour boundary so a reboot without a phone (no RTC on this board) can
+ * restore a roughly-correct date at the next boot instead of reverting to
+ * the stale Kconfig fallback epoch (9b, docs/LEARNINGS.md 2026-07-11). */
+void sd_storage_persist_wallclock(void);
+
 /* Bytes written so far to the currently-open raw file (0 if none open
  * or SD not ready). Operational visibility only, so "is SD actually
  * accumulating data" is answerable from the serial log without pulling
