@@ -39,6 +39,8 @@
   "connecting": "Connecting...",
   "connected": "Connected",
   "connectionFailed": "Connection failed",
+  "notPrintBackDevice": "This doesn't look like a PrintBack device. Pick the right one from the list.",
+  "connectionFailedHint": "Couldn't connect. Check that the device's LED is blinking cyan and try again.",
   "bluetoothPermissionDenied": "Bluetooth permission denied - allow it in app settings",
 
   "dashboardTitle": "Dashboard",

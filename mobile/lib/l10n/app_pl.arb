@@ -39,6 +39,8 @@
   "connecting": "Łączenie...",
   "connected": "Połączono",
   "connectionFailed": "Połączenie nieudane",
+  "notPrintBackDevice": "To chyba nie jest urządzenie PrintBack. Wybierz z listy właściwe.",
+  "connectionFailedHint": "Nie udało się połączyć. Sprawdź, czy dioda na urządzeniu miga na turkusowo, i spróbuj ponownie.",
   "bluetoothPermissionDenied": "Odmówiono uprawnień Bluetooth - zezwól w ustawieniach aplikacji",
 
   "dashboardTitle": "Panel",

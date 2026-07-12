@@ -55,14 +55,33 @@ class _PairingScreenState extends State<PairingScreen> {
         MaterialPageRoute(builder: (_) => const HomeShell()),
       );
     } catch (e, st) {
+      // Raw exception text stays in the log only; the user sees one of
+      // three plain-language messages (10d).
       debugPrint('BLE connect failed: $e\n$st');
       if (!mounted) return;
       final l10n = AppLocalizations.of(context)!;
       setState(() {
-        _error = '${l10n.connectionFailed} ($e)';
+        _error = _friendlyError(e, l10n);
         _connecting = false;
       });
     }
+  }
+
+  /// Maps a connect() failure onto a message a non-technical user can act
+  /// on. A permission error tells them where to fix it; a missing
+  /// characteristic/service (connect()'s own StateError when the GATT
+  /// table isn't ours) means they tapped the wrong device; anything else
+  /// is a generic "check the LED and retry".
+  String _friendlyError(Object e, AppLocalizations l10n) {
+    final msg = e.toString().toLowerCase();
+    if (msg.contains('permission')) {
+      return l10n.bluetoothPermissionDenied;
+    }
+    if (e is StateError &&
+        (msg.contains('characteristic') || msg.contains('service'))) {
+      return l10n.notPrintBackDevice;
+    }
+    return l10n.connectionFailedHint;
   }
 
   @override
