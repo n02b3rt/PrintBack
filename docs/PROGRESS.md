@@ -266,11 +266,53 @@
       explicit createBond() after connect) - not fixed here to avoid a
       fourth untested BLE change on top of a freshly-working state.
 
+- [x] Phase 9: firmware reliability for field deployments (done 2026-07-12,
+      `feature/firmware-reliability` off `main`). Eight commits, each built
+      clean + host tests green: (9a) a versioned 5-byte header on every SD
+      `.bin` file (magic "PBK" + type + version, pure encode/validate in
+      `sd_paths.c`, host-tested; every writer lays it down, every reader
+      validates and skips a foreign/old-format file as empty); an NVS
+      init-ordering fix (moved `nvs_flash_init()` to the top of `app_main`
+      so whitelist/runtime-config/wallclock actually load persisted state at
+      boot, not only after the next write - it used to run inside
+      `wifi_sniffer_start`, after those readers); (9b) hourly wallclock
+      persistence to NVS + restore-at-boot, the only date protection without
+      an RTC (9e RTC deferred); (9c) a read-only STATUS characteristic (fw
+      version, sd_ok, sd_free_mb, uptime, heap, reset reason; new UUID
+      `cf2c77c3-…`); (9d) SYNC phase 3 replaying the last 7 days of hourly
+      stats after the daily backlog; an end-of-sync marker record
+      (`date_unix_day=0`) so the phone knows a replay finished; a
+      host-tested auto-whitelist accumulator (`wl_auto.c`, ≥6 distinct hours
+      in an 8h rolling window → `whitelist_add`, LRU-capped); and a
+      per-device fingerprint salt (16B from NVS, `esp_fill_random` on first
+      boot, hashed first into every fingerprint so the same phone hashes
+      differently per unit).
+      Hardware validation (2026-07-12) confirmed the risky changes
+      end-to-end on the board: 9b clock restored from NVS on a fresh boot
+      with no phone (`raw log: …/20260712.bin`, today, not the Kconfig
+      epoch); 9a readers correctly skip old header-less files
+      (`missing/invalid file header, treating as empty`) with no crash;
+      pairing works after the NVS-init move (`encryption change; status=0`,
+      no disconnect loop); 9d + marker replay runs to `sync: backlog replay
+      complete` repeatedly; salt didn't break capture; and STATUS reads a
+      valid JSON in nRF Connect
+      (`{"fw":"5563585","sd_ok":true,"sd_free_mb":431,"uptime_s":168,…}`).
+      The `sdkconfig.defaults` audit found zero drift - a fresh
+      `set-target` regenerate produced a byte-identical config, confirming
+      repeatable production of a second unit. Two minor STATUS follow-ups
+      noted: `sd_free_mb` reads low for the card size (likely an
+      `esp_vfs_fat_info` quirk, to sanity-check) and `reset:"unknown"` (the
+      RST reset code isn't mapped in `reset_reason_str`, harmless fallback).
+      Items that need real elapsed time are folded into the soak, not
+      blockers: 9d with genuine multi-day hourly data, `wl_auto`
+      qualification (needs 6h of presence), and the explicit
+      `wallclock restored from nvs` boot line.
+
 Note: the current code in `firmware/` and `app/` is still the old
 architecture (USB-CDC → Python desktop dashboard, SQLite). Don't remove /
 change it until the new path (BLE+SD) is ready and tested in parallel.
 
-Last updated: 2026-07-12 (Phase 8 closed and merged to `main`: hourly
-backfill re-verified end to end after resolving a one-sided stale-bond
-pairing deadlock; WiFi capture/IO decoupling fix still pending a
-multi-hour soak test to fully confirm - see Phase 8 notes above).
+Last updated: 2026-07-12 (Phase 9 firmware reliability done and hardware-
+validated, merged to `main`; firmware is now frozen for the 30-day soak.
+Remaining firmware verification is soak-observed, not blocking - see Phase
+9 notes. Mobile work, Etap 2 onward, runs in parallel with the soak).
