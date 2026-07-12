@@ -158,13 +158,13 @@ characteristic below - the device replays unsynced daily rows as
 consecutive individual STATS notifications (no new batch format on this
 one either), same JSON as a live rollover notify. See "BLE SYNC payload"
 below for the protocol; docs/DECISIONS.md D10 for why the device doesn't
-track per-bond sync state itself. Multi-day hourly historical backfill is
-still out of scope, but today's hourly breakdown is not (Phase 8f,
-revising the earlier scope cut below): after the daily backlog, SYNC also
-replays today's already-finalized hours from
-`stats/hourly/<today>.bin` - the dashboard's hourly chart otherwise
-stayed empty until a live hour-boundary notification happened to arrive
-during some future connection, confirmed as a real (not cosmetic)
+track per-bond sync state itself. Hourly detail is backfilled too, not
+just daily totals (9d): after the daily backlog, SYNC replays the hourly
+files for the last 7 days (`today-7 .. today-1`) and then today's own
+hours from `stats/hourly/<today>.bin`, so a phone that was away for days
+still gets a real per-hour pattern. The dashboard's hourly chart would
+otherwise stay empty until a live hour-boundary notification happened to
+arrive during some future connection, confirmed as a real (not cosmetic)
 problem on hardware.
 
 ## BLE CONFIG payload (read + write)
@@ -208,24 +208,25 @@ JSON, same reasoning as TIME_SYNC. `0` means "send everything".
 The phone already knows the newest date it has stored locally, so it
 computes `since_unix_day` itself (typically "latest local date + 1") and
 writes it once per connection, right after TIME_SYNC. The device replays
-every `stats/daily.bin` record with `date_unix_day >= since_unix_day`,
-oldest first, as ordinary STATS notifications
-(`firmware/main/ble_gatt.c`'s `sync_tick_cb()`, paced off a dedicated
-timer so a large backlog doesn't block the NimBLE host task - see
-docs/DECISIONS.md D10). Once that backlog is exhausted, the same replay
-continues with a second phase: every already-finalized hour from today's
-`stats/hourly/<today>.bin`, unconditionally (not gated by
-`since_unix_day` - at most 24 small records, and the phone's local dedup
-already makes a repeat replay a harmless no-op). There is no explicit
-"replay finished" marker on the wire for either phase; the phone treats
-a ~1.5s gap with no new STATS notification as "caught up". Write requires
-a bonded/encrypted link, same reasoning as CONFIG/TIME_SYNC.
+the backlog in three phases (`firmware/main/ble_gatt.c`'s `sync_tick_cb()`,
+paced off a dedicated timer so a large backlog doesn't block the NimBLE
+host task - see docs/DECISIONS.md D10), all as ordinary STATS
+notifications:
 
-**File format header (recommendation, beyond the letter of TASKS.md):**
-none of the structs above have a version/magic byte. If the layout ever
-changes after Phase 2/3 lands, old `.bin` files become ambiguous.
-Recommendation: a 5-byte header per file (4B magic + 1B format version),
-cheap now, painful to retrofit later.
+1. every `stats/daily.bin` record with `date_unix_day >= since_unix_day`,
+   oldest first;
+2. the hourly files for the last 7 days (`today-7 .. today-1`), a day at a
+   time, each day's hours in order - unconditional, not gated by
+   `since_unix_day`, so a phone away for several days still gets per-hour
+   detail, not just daily totals (9d);
+3. today's already-finalized hours from `stats/hourly/<today>.bin`.
+
+Phases 2 and 3 are bounded (at most `8*24` records) and the phone's local
+dedup makes a repeat replay a harmless no-op, so neither needs its own
+cursor on the device. There is no explicit "replay finished" marker on the
+wire; the phone treats a ~1.5s gap with no new STATS notification as
+"caught up". Write requires a bonded/encrypted link, same reasoning as
+CONFIG/TIME_SYNC.
 
 ## Open questions: deliberately unresolved in this phase
 

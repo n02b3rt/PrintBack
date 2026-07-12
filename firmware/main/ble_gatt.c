@@ -120,20 +120,30 @@ static bool               s_pairing_mode_active = false;
 static esp_timer_handle_t s_pairing_timer;
 static ble_addr_t         s_whitelist[MAX_BONDED_PEERS];
 
-/* SYNC backlog replay state (docs/DECISIONS.md D10). Two phases:
- * SYNC_PHASE_DAILY replays stats/daily.bin from s_sync_cursor_unix_day
- * onward, then SYNC_PHASE_HOURLY_TODAY replays today's
- * stats/hourly/<today>.bin from s_sync_hour_cursor (0-23) onward.
+/* SYNC backlog replay state (docs/DECISIONS.md D10). Three phases, in
+ * order: SYNC_PHASE_DAILY replays stats/daily.bin from
+ * s_sync_cursor_unix_day onward; SYNC_PHASE_HOURLY_HISTORY replays the
+ * hourly files for the last 7 days (today-7 .. today-1), a day at a time
+ * via s_sync_hist_day, so a phone that was away for days still gets a real
+ * per-hour pattern, not just daily totals; SYNC_PHASE_HOURLY_TODAY then
+ * replays today's stats/hourly/<today>.bin from s_sync_hour_cursor (0-23).
  * sync_tick_cb() advances whichever cursor is active and stops the timer
- * once both phases run off the end of their file. */
+ * once the last phase runs off the end of its file. */
 typedef enum {
     SYNC_PHASE_DAILY,
+    SYNC_PHASE_HOURLY_HISTORY,
     SYNC_PHASE_HOURLY_TODAY,
 } sync_phase_t;
+
+/* How many days of past hourly detail to replay on a sync (today-N ..
+ * today-1). Capped small: at most HISTORY_DAYS*24 records on top of the
+ * daily backlog, still seconds at the SYNC_BATCH_SIZE pacing below. */
+#define SYNC_HOURLY_HISTORY_DAYS 7
 
 static bool               s_sync_pending = false;
 static sync_phase_t       s_sync_phase;
 static uint32_t           s_sync_cursor_unix_day;
+static uint32_t           s_sync_hist_day;
 static int                s_sync_hour_cursor;
 static esp_timer_handle_t s_sync_timer;
 
@@ -304,13 +314,24 @@ static void sync_start_hourly_phase(void)
     s_sync_hour_cursor = 0;
 }
 
+/* Begins SYNC_PHASE_HOURLY_HISTORY at the oldest day in the window
+ * (today - SYNC_HOURLY_HISTORY_DAYS), hour 0; sync_tick_hourly_history()
+ * walks forward one day at a time up to yesterday. */
+static void sync_start_history_phase(void)
+{
+    uint32_t today = sd_unix_day_from_unix_s(sd_storage_current_unix_s());
+    s_sync_phase = SYNC_PHASE_HOURLY_HISTORY;
+    s_sync_hist_day = today - SYNC_HOURLY_HISTORY_DAYS;
+    s_sync_hour_cursor = 0;
+}
+
 /* SYNC_PHASE_DAILY: streams the next batch of matching stats/daily.bin
  * records via ble_gatt_notify_stats() - same JSON, same wire format as a
  * live rollover notify, the phone can't tell the difference. Re-scans
  * the file from the start every tick rather than tracking a byte offset:
  * simpler, and daily.bin stays small (12B/record) even after years of
  * history, so the repeated scan is cheap at this scale. Falls through to
- * SYNC_PHASE_HOURLY_TODAY once exhausted, instead of finishing here. */
+ * SYNC_PHASE_HOURLY_HISTORY once exhausted, instead of finishing here. */
 static void sync_tick_daily(void)
 {
     char path[SD_STATS_PATH_MAX_LEN];
@@ -320,7 +341,7 @@ static void sync_tick_daily(void)
     }
     if (!f || !skip_valid_header(f, SD_FILE_TYPE_DAILY)) {
         if (f) fclose(f);
-        sync_start_hourly_phase();
+        sync_start_history_phase();
         return;
     }
 
@@ -340,7 +361,55 @@ static void sync_tick_daily(void)
     fclose(f);
 
     if (!more) {
+        sync_start_history_phase();
+    }
+}
+
+/* SYNC_PHASE_HOURLY_HISTORY: replays the hourly file for one past day per
+ * tick (s_sync_hist_day, from today-N up to yesterday), same batching as
+ * the other phases. A missing/invalid day file is skipped to the next day.
+ * Once the cursor reaches today, hands off to SYNC_PHASE_HOURLY_TODAY. This
+ * is what gives a phone that was away for days a real per-hour pattern, not
+ * just daily totals (9d, docs/DATA_MODEL.md "Backfill after a longer gap"). */
+static void sync_tick_hourly_history(void)
+{
+    uint32_t today = sd_unix_day_from_unix_s(sd_storage_current_unix_s());
+    if (s_sync_hist_day >= today) {
         sync_start_hourly_phase();
+        return;
+    }
+
+    char path[SD_STATS_PATH_MAX_LEN];
+    FILE *f = NULL;
+    if (sd_storage_is_ready() &&
+        sd_format_stats_hourly_path(s_sync_hist_day, path, sizeof(path)) == 0) {
+        f = fopen(path, "rb");
+    }
+    if (!f || !skip_valid_header(f, SD_FILE_TYPE_HOURLY)) {
+        if (f) fclose(f);
+        s_sync_hist_day++;      /* no data for this day, try the next one */
+        s_sync_hour_cursor = 0;
+        return;
+    }
+
+    aggregate_record_t rec;
+    int sent = 0;
+    bool more_this_day = false;
+    while (fread(&rec, sizeof(rec), 1, f) == 1) {
+        if (rec.hour_or_day < s_sync_hour_cursor) continue;
+        if (sent >= SYNC_BATCH_SIZE) {
+            more_this_day = true;
+            break;
+        }
+        ble_gatt_notify_stats(&rec);
+        s_sync_hour_cursor = rec.hour_or_day + 1;
+        sent++;
+    }
+    fclose(f);
+
+    if (!more_this_day) {
+        s_sync_hist_day++;      /* finished this day, advance next tick */
+        s_sync_hour_cursor = 0;
     }
 }
 
@@ -389,6 +458,8 @@ static void sync_tick_cb(void *arg)
 
     if (s_sync_phase == SYNC_PHASE_DAILY) {
         sync_tick_daily();
+    } else if (s_sync_phase == SYNC_PHASE_HOURLY_HISTORY) {
+        sync_tick_hourly_history();
     } else {
         sync_tick_hourly_today();
     }
