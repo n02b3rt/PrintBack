@@ -43,9 +43,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void initState() {
     super.initState();
     final ble = context.read<BleService>();
-    // DashboardScreen is only ever reached after a successful connect(),
-    // so a device is always present here.
-    _deviceId = ble.device!.remoteId.str;
+    // Keyed by the active device id, not a live connection: the dashboard
+    // is reached either after a successful connect() or (offline mode)
+    // when cached data exists for a previously-paired device, so
+    // activeDeviceId is always set by the time this screen mounts, but
+    // ble.device may be null (offline).
+    _deviceId = ble.activeDeviceId!;
     _statsSub = ble.statsUpdates.listen((agg) async {
       await _localDb.upsert(_deviceId, agg);
       await _reload();

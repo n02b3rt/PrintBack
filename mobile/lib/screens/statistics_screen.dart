@@ -56,7 +56,9 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     super.dispose();
   }
 
-  String get _deviceId => context.read<BleService>().device!.remoteId.str;
+  // The active device id, not a live connection - the statistics screen
+  // reads cached aggregates offline too (see BleService.activeDeviceId).
+  String get _deviceId => context.read<BleService>().activeDeviceId!;
 
   DateTimeRange _rangeFor(_Period period) {
     final now = DateTime.now();

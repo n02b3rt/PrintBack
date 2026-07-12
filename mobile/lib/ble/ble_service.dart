@@ -25,6 +25,10 @@ class PrintBackUuids {
 /// device (docs/DECISIONS.md D5) - this class only drives the GATT
 /// characteristics once a connection exists.
 class BleService extends ChangeNotifier {
+  BleService() {
+    _loadActiveDeviceId();
+  }
+
   BluetoothDevice? _device;
   BluetoothCharacteristic? _statsChr;
   BluetoothCharacteristic? _configChr;
@@ -41,6 +45,22 @@ class BleService extends ChangeNotifier {
   BluetoothConnectionState get connectionState => _connectionState;
 
   BluetoothDevice? get device => _device;
+
+  /// The remoteId of the device the user is currently working with, whether
+  /// or not a live connection exists right now. Loaded from the persisted
+  /// `active_device_id` at startup and updated on every successful
+  /// connect(), so the dashboard/statistics screens can read this device's
+  /// cached aggregates offline instead of crashing on `device!` when
+  /// nothing is connected (the whole point of offline mode). Null only
+  /// before the very first successful pairing.
+  String? _activeDeviceId;
+  String? get activeDeviceId => _activeDeviceId;
+
+  Future<void> _loadActiveDeviceId() async {
+    final prefs = await SharedPreferences.getInstance();
+    _activeDeviceId = prefs.getString(_activeDeviceIdKey);
+    notifyListeners();
+  }
 
   /// True from the moment requestSync() is called until ~1.5s pass with
   /// no new STATS notification arriving - the same "quiet period means
@@ -296,6 +316,7 @@ class BleService extends ChangeNotifier {
 
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_activeDeviceIdKey, device.remoteId.str);
+      _activeDeviceId = device.remoteId.str;
 
       notifyListeners();
     } catch (e) {
