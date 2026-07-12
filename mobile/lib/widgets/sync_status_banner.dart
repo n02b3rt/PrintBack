@@ -8,9 +8,31 @@ import '../l10n/app_localizations.dart';
 /// Persistent, visible connection/sync status - explicit confirmation
 /// the device is paired and connected (not just silently assumed), and
 /// real feedback while a sync is actually moving data instead of a
-/// button that fires-and-forgets with no visible result.
-class SyncStatusBanner extends StatelessWidget {
+/// button that fires-and-forgets with no visible result. When
+/// disconnected (offline mode), offers a [Connect] button that runs a
+/// background reconnect without leaving the screen.
+class SyncStatusBanner extends StatefulWidget {
   const SyncStatusBanner({super.key});
+
+  @override
+  State<SyncStatusBanner> createState() => _SyncStatusBannerState();
+}
+
+class _SyncStatusBannerState extends State<SyncStatusBanner> {
+  bool _connecting = false;
+
+  Future<void> _reconnect() async {
+    setState(() => _connecting = true);
+    try {
+      await context.read<BleService>().tryAutoConnect();
+    } catch (_) {
+      // tryAutoConnect() already swallows its own failures and returns
+      // null; a throw here would only be an unexpected one. Either way the
+      // provider's connectionState drives the banner, so nothing to do but
+      // stop showing the local spinner.
+    }
+    if (mounted) setState(() => _connecting = false);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -22,7 +44,8 @@ class SyncStatusBanner extends StatelessWidget {
     if (ble.isSyncing) {
       statusText = l10n.syncingNow;
     } else if (ble.lastSyncCompleted != null) {
-      statusText = l10n.lastSyncedAgo(_relativeTime(ble.lastSyncCompleted!, l10n));
+      statusText =
+          l10n.lastSyncedAgo(_relativeTime(ble.lastSyncCompleted!, l10n));
     } else {
       statusText = l10n.neverSynced;
     }
@@ -64,6 +87,20 @@ class SyncStatusBanner extends StatelessWidget {
               ],
             ),
           ),
+          if (!connected) ...[
+            const SizedBox(width: 8),
+            if (_connecting)
+              SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2, color: accent),
+              )
+            else
+              TextButton(
+                onPressed: _reconnect,
+                child: Text(l10n.connectButton),
+              ),
+          ],
         ],
       ),
     );

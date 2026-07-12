@@ -99,5 +99,7 @@
   "settingsSaved": "Zapisano",
   "settingsLoadFailed": "Nie udało się odczytać ustawień urządzenia",
   "settingsSaveFailed": "Nie udało się zapisać ustawień urządzenia",
-  "notConnected": "Brak połączenia z urządzeniem"
+  "notConnected": "Brak połączenia z urządzeniem",
+  "connectButton": "Połącz",
+  "requiresConnection": "wymaga połączenia z urządzeniem"
 }

@@ -99,5 +99,7 @@
   "settingsSaved": "Saved",
   "settingsLoadFailed": "Failed to read device settings",
   "settingsSaveFailed": "Failed to save device settings",
-  "notConnected": "Not connected to a device"
+  "notConnected": "Not connected to a device",
+  "connectButton": "Connect",
+  "requiresConnection": "requires a device connection"
 }
