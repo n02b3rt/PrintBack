@@ -93,9 +93,13 @@ LineChartBarData revolutLine(
   );
 }
 
-/// Two-series version of revolutLine - "Nowi" (primary, filled) and
-/// "Powracający" (tertiary, unfilled so its area doesn't muddy the
-/// primary series' fill underneath it). Tertiary rather than secondary:
+/// Two-series version of revolutLine - "Odwiedzający" (all visitors;
+/// primary, filled) and "Powracający" (the returning subset; tertiary,
+/// unfilled so its area doesn't muddy the primary series' fill underneath
+/// it). The two lines are the visitor total and its returning subset, not
+/// "new vs returning" - two overlapping "new/returning" lines would sum to
+/// an invisible whole, whereas total + subset reads cleanly (10k).
+/// Tertiary rather than secondary:
 /// Material 3's seed algorithm makes secondary a desaturated variant of
 /// the SAME hue as primary (reads as "duller teal", easy to confuse at a
 /// glance), while tertiary is hue-shifted to a genuinely different color

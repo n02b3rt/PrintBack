@@ -147,6 +147,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     child: _KpiCard(label: l10n.uniqueLabel, value: todayUnique),
                   ),
                   const SizedBox(width: 12),
+                  // "New" is unique minus returning, clamped at 0 - a real
+                  // count of first-seen visitors, not the whole visitor
+                  // total mislabelled as new (see docs/LEARNINGS.md 10k).
+                  Expanded(
+                    child: _KpiCard(
+                        label: l10n.newVisitorsLabel,
+                        value: (todayUnique - todayReturning).clamp(0, todayUnique)),
+                  ),
+                  const SizedBox(width: 12),
                   Expanded(
                     child: _KpiCard(
                         label: l10n.returningLabel, value: todayReturning),
