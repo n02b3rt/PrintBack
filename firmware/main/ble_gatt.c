@@ -158,6 +158,18 @@ static int build_stats_json(const aggregate_record_t *rec, char *out, size_t out
         year, month, day, (int)rec->hour_or_day, rec->unique_count, rec->returning_count, kanon);
 }
 
+/* Reads and validates the 5-byte header at the start of an open SD stats
+ * file, leaving the read position just past it. Returns false on a short
+ * read or a header that isn't a valid `type` at the current format
+ * version, so a reader skips the file rather than decoding stale/foreign
+ * bytes as records (9a, docs/DATA_MODEL.md "File format"). */
+static bool skip_valid_header(FILE *f, sd_file_type_t type)
+{
+    uint8_t hdr[SD_FILE_HEADER_LEN];
+    return fread(hdr, sizeof(hdr), 1, f) == 1 &&
+           sd_file_header_validate(hdr, type);
+}
+
 static int gatt_stats_read(struct ble_gatt_access_ctxt *ctxt)
 {
     char json[STATS_JSON_MAX_LEN];
@@ -170,7 +182,8 @@ static int gatt_stats_read(struct ble_gatt_access_ctxt *ctxt)
         f = fopen(path, "rb");
     }
 
-    if (f && fread(&rec, sizeof(rec), 1, f) == 1) {
+    if (f && skip_valid_header(f, SD_FILE_TYPE_TODAY) &&
+        fread(&rec, sizeof(rec), 1, f) == 1) {
         fclose(f);
         len = build_stats_json(&rec, json, sizeof(json));
     } else {
@@ -271,7 +284,8 @@ static void sync_tick_daily(void)
     if (sd_storage_is_ready() && sd_format_stats_daily_path(path, sizeof(path)) == 0) {
         f = fopen(path, "rb");
     }
-    if (!f) {
+    if (!f || !skip_valid_header(f, SD_FILE_TYPE_DAILY)) {
+        if (f) fclose(f);
         sync_start_hourly_phase();
         return;
     }
@@ -308,7 +322,8 @@ static void sync_tick_hourly_today(void)
     if (sd_storage_is_ready() && sd_format_stats_hourly_path(today, path, sizeof(path)) == 0) {
         f = fopen(path, "rb");
     }
-    if (!f) {
+    if (!f || !skip_valid_header(f, SD_FILE_TYPE_HOURLY)) {
+        if (f) fclose(f);
         sync_finish();
         return;
     }

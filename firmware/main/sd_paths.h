@@ -11,6 +11,33 @@
 #define SD_RAW_FLAG_RETURNING   (1u << 1)
 #define SD_RAW_FLAG_WHITELISTED (1u << 2)
 
+/* Every .bin file on the SD card opens with this fixed 5-byte header:
+ * magic "PBK" + a 1-byte file-type tag + a 1-byte format version. It lets
+ * a reader reject a foreign/corrupt/older-format file explicitly (log +
+ * treat as empty) instead of blindly decoding whatever bytes it finds as
+ * records. Record N in a raw log therefore starts at byte
+ * SD_FILE_HEADER_LEN + N*sizeof(sd_raw_record_t), and the same offset
+ * shift applies to every stats file. See docs/DATA_MODEL.md "File format". */
+#define SD_FILE_HEADER_LEN     5
+#define SD_FILE_FORMAT_VERSION 1
+
+typedef enum {
+    SD_FILE_TYPE_RAW    = 0,
+    SD_FILE_TYPE_HOURLY = 1,
+    SD_FILE_TYPE_TODAY  = 2,
+    SD_FILE_TYPE_DAILY  = 3,
+} sd_file_type_t;
+
+/* Writes the 5-byte header for `type` into `buf` (must be at least
+ * SD_FILE_HEADER_LEN bytes). Pure, host-testable. */
+void sd_file_header_encode(uint8_t *buf, sd_file_type_t type);
+
+/* True if `buf` (at least SD_FILE_HEADER_LEN bytes) is a valid header for
+ * exactly `expected` type at the current format version. A wrong magic,
+ * an unknown version, or a mismatched type all return false so the caller
+ * can skip the file rather than misread it. Pure, host-testable. */
+bool sd_file_header_validate(const uint8_t *buf, sd_file_type_t expected);
+
 /* Format: docs/DATA_MODEL.md "Raw record on SD". Packed, fixed 16 bytes,
  * one record = one probe, append-only in the per-day raw log file. */
 typedef struct __attribute__((packed)) {

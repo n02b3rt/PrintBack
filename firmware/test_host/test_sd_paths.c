@@ -124,6 +124,43 @@ int main(void)
               "stats daily.bin path");
     }
 
+    /* File header (9a): encode/validate round-trips for every type,
+     * and a header is rejected on wrong magic, wrong version, or a
+     * mismatched type - the three ways a reader must refuse to decode. */
+    {
+        uint8_t hdr[SD_FILE_HEADER_LEN];
+        const sd_file_type_t types[] = {
+            SD_FILE_TYPE_RAW, SD_FILE_TYPE_HOURLY,
+            SD_FILE_TYPE_TODAY, SD_FILE_TYPE_DAILY,
+        };
+        for (unsigned i = 0; i < sizeof(types) / sizeof(types[0]); i++) {
+            sd_file_header_encode(hdr, types[i]);
+            CHECK(sd_file_header_validate(hdr, types[i]) == true,
+                  "header: encode/validate round-trips for its own type");
+        }
+
+        /* Header written as RAW must not validate as any other type. */
+        sd_file_header_encode(hdr, SD_FILE_TYPE_RAW);
+        CHECK(sd_file_header_validate(hdr, SD_FILE_TYPE_HOURLY) == false,
+              "header: RAW header rejected when TODAY/HOURLY expected");
+
+        /* On-disk layout is exactly magic 'P''B''K' + type + version. */
+        CHECK(hdr[0] == 'P' && hdr[1] == 'B' && hdr[2] == 'K' &&
+              hdr[3] == (uint8_t)SD_FILE_TYPE_RAW &&
+              hdr[4] == SD_FILE_FORMAT_VERSION,
+              "header: on-disk byte layout is magic+type+version");
+
+        sd_file_header_encode(hdr, SD_FILE_TYPE_DAILY);
+        hdr[0] = 'X';
+        CHECK(sd_file_header_validate(hdr, SD_FILE_TYPE_DAILY) == false,
+              "header: bad magic rejected");
+
+        sd_file_header_encode(hdr, SD_FILE_TYPE_DAILY);
+        hdr[4] = SD_FILE_FORMAT_VERSION + 1;
+        CHECK(sd_file_header_validate(hdr, SD_FILE_TYPE_DAILY) == false,
+              "header: unknown format version rejected");
+    }
+
     if (failures) {
         printf("%d test(s) FAILED\n", failures);
         return 1;

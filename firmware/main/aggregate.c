@@ -34,6 +34,34 @@ static uint16_t s_history_count;
  * own. Reset at every daily rollover. */
 static bool s_today_kanon_applied;
 
+/* Reads and validates the 5-byte header at the start of an open SD file,
+ * leaving the read position just past it. Returns false (and logs) on a
+ * short read or a header that isn't a valid `type` at the current format
+ * version, so the caller treats the file as empty instead of decoding
+ * stale/foreign bytes as records (9a, docs/DATA_MODEL.md "File format"). */
+static bool skip_valid_header(FILE *f, sd_file_type_t type, const char *what)
+{
+    uint8_t hdr[SD_FILE_HEADER_LEN];
+    if (fread(hdr, sizeof(hdr), 1, f) != 1 ||
+        !sd_file_header_validate(hdr, type)) {
+        ESP_LOGW(TAG, "%s: missing/invalid file header, treating as empty", what);
+        return false;
+    }
+    return true;
+}
+
+/* Writes the versioned header for `type` if `f` is a freshly-created
+ * (empty) file, no-op otherwise. Call right after opening in append mode
+ * and before the first record. */
+static void write_header_if_new(FILE *f, sd_file_type_t type)
+{
+    fseek(f, 0, SEEK_END);
+    if (ftell(f) != 0) return;
+    uint8_t hdr[SD_FILE_HEADER_LEN];
+    sd_file_header_encode(hdr, type);
+    fwrite(hdr, sizeof(hdr), 1, f);
+}
+
 static bool fp_in(const uint8_t fps[][FINGERPRINT_HASH_BYTES], uint16_t count,
                    const uint8_t *fp)
 {
@@ -66,6 +94,10 @@ static void scan_day(uint32_t unix_day, int hour_filter,
     FILE *f = fopen(path, "rb");
     if (!f) {
         ESP_LOGW(TAG, "scan_day: could not open %s for reading (errno=%d)", path, errno);
+        return;
+    }
+    if (!skip_valid_header(f, SD_FILE_TYPE_RAW, "scan_day")) {
+        fclose(f);
         return;
     }
 
@@ -108,6 +140,7 @@ static aggregate_record_t write_stats_hourly(uint32_t unix_day, int hour,
         ESP_LOGE(TAG, "failed to open %s for append", path);
         return rec;
     }
+    write_header_if_new(f, SD_FILE_TYPE_HOURLY);
     if (fwrite(&rec, sizeof(rec), 1, f) != 1) {
         ESP_LOGW(TAG, "hourly stats write failed");
     }
@@ -134,6 +167,9 @@ static aggregate_record_t write_stats_today(uint32_t unix_day, uint16_t unique_c
         ESP_LOGE(TAG, "failed to open %s for write", path);
         return rec;
     }
+    uint8_t hdr[SD_FILE_HEADER_LEN];
+    sd_file_header_encode(hdr, SD_FILE_TYPE_TODAY);
+    fwrite(hdr, sizeof(hdr), 1, f);
     if (fwrite(&rec, sizeof(rec), 1, f) != 1) {
         ESP_LOGW(TAG, "today.bin write failed");
     }
@@ -187,10 +223,12 @@ bool aggregate_run_daily_rollover(uint32_t new_unix_day, aggregate_record_t *out
         sd_format_stats_daily_path(daily_path, sizeof(daily_path)) == 0) {
         FILE *tf = fopen(today_path, "rb");
         if (tf) {
-            if (fread(&rec, sizeof(rec), 1, tf) == 1) {
+            if (skip_valid_header(tf, SD_FILE_TYPE_TODAY, "rollover today.bin") &&
+                fread(&rec, sizeof(rec), 1, tf) == 1) {
                 have_rec = true;
                 FILE *df = fopen(daily_path, "ab");
                 if (df) {
+                    write_header_if_new(df, SD_FILE_TYPE_DAILY);
                     if (fwrite(&rec, sizeof(rec), 1, df) != 1) {
                         ESP_LOGW(TAG, "daily.bin write failed");
                     }
@@ -221,6 +259,10 @@ bool aggregate_run_daily_rollover(uint32_t new_unix_day, aggregate_record_t *out
         if (sd_format_raw_path(d, path, sizeof(path)) != 0) continue;
         FILE *f = fopen(path, "rb");
         if (!f) continue;
+        if (!skip_valid_header(f, SD_FILE_TYPE_RAW, "history rebuild")) {
+            fclose(f);
+            continue;
+        }
 
         sd_raw_record_t raw_rec;
         while (fread(&raw_rec, sizeof(raw_rec), 1, f) == 1) {

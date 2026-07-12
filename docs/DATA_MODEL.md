@@ -5,6 +5,28 @@ Formats for the target architecture (`refactor/ble-sd-flutter`), context:
 core on the C6), matters for any future tool (Flutter, desktop) that ever
 reads raw `.bin` files directly.
 
+## File format (versioned header)
+
+Every `.bin` file on the SD card starts with a fixed 5-byte header,
+followed by the file's records:
+
+```
+byte 0..2  magic  "PBK"
+byte 3     type   0=raw, 1=hourly, 2=today, 3=daily
+byte 4     version  format version (currently 1)
+```
+
+Records therefore start at byte 5: record N in a raw log is at offset
+`5 + N*16`, and the single `today.bin` record is at offset 5. On open, a
+reader validates magic+type+version and skips the file (logs a warning,
+treats it as empty) on any mismatch, rather than decoding foreign or
+older-format bytes as records. The pure encode/validate helpers live in
+`firmware/main/sd_paths.c` (`sd_file_header_encode`/
+`sd_file_header_validate`, host-tested); each writer lays the header down
+when it first creates a file, each reader skips it before its record loop.
+There is no in-place migration of pre-header files: a card written by an
+older firmware is wiped before use (no production data yet).
+
 ## Raw record on SD
 
 ```c
@@ -32,10 +54,11 @@ typedef struct __attribute__((packed)) {
 ```
 
 File: `/sdcard/logs/raw/YYYYMMDD.bin`, append-only, fixed-length
-records, record N sits at offset N×16, trivial seek/truncate for the
-30-day purge. No dashes in the date: FAT short (8.3) filenames don't fit
-`YYYY-MM-DD` without enabling Long File Name support, learned the hard
-way on real hardware, see docs/LEARNINGS.md.
+records after the 5-byte header (see "File format" above), record N sits
+at offset 5 + N×16, trivial seek/truncate for the 30-day purge. No dashes
+in the date: FAT short (8.3) filenames don't fit `YYYY-MM-DD` without
+enabling Long File Name support, learned the hard way on real hardware,
+see docs/LEARNINGS.md.
 
 ## Aggregate record
 

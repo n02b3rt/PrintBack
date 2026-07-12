@@ -27,6 +27,31 @@ static void civil_from_days(int64_t z, int *y, unsigned *m, unsigned *d)
     *d = day;
 }
 
+/* Fixed magic prefix shared by every SD file header. Not NUL-terminated:
+ * exactly 3 bytes on disk, followed by the type and version bytes. */
+static const uint8_t SD_FILE_MAGIC[3] = { 'P', 'B', 'K' };
+
+void sd_file_header_encode(uint8_t *buf, sd_file_type_t type)
+{
+    buf[0] = SD_FILE_MAGIC[0];
+    buf[1] = SD_FILE_MAGIC[1];
+    buf[2] = SD_FILE_MAGIC[2];
+    buf[3] = (uint8_t)type;
+    buf[4] = SD_FILE_FORMAT_VERSION;
+}
+
+bool sd_file_header_validate(const uint8_t *buf, sd_file_type_t expected)
+{
+    if (buf[0] != SD_FILE_MAGIC[0] ||
+        buf[1] != SD_FILE_MAGIC[1] ||
+        buf[2] != SD_FILE_MAGIC[2]) {
+        return false;
+    }
+    if (buf[3] != (uint8_t)expected) return false;
+    if (buf[4] != SD_FILE_FORMAT_VERSION) return false;
+    return true;
+}
+
 void sd_record_from_observation(const probe_observation_t *obs,
                                  uint32_t unix_s, bool fresh, bool whitelisted,
                                  sd_raw_record_t *out)

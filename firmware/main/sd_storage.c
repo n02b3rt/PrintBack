@@ -128,6 +128,17 @@ static void ensure_raw_file_open(uint32_t today)
         ESP_LOGE(TAG, "failed to open %s for append", path);
         return;
     }
+    /* A brand-new (empty) file gets the 5-byte versioned header before any
+     * record. A file reopened for the same day (e.g. after a mid-day
+     * reboot) already has one - don't write a second. */
+    fseek(s_raw_fp, 0, SEEK_END);
+    if (ftell(s_raw_fp) == 0) {
+        uint8_t hdr[SD_FILE_HEADER_LEN];
+        sd_file_header_encode(hdr, SD_FILE_TYPE_RAW);
+        fwrite(hdr, sizeof(hdr), 1, s_raw_fp);
+        fflush(s_raw_fp);
+        fsync(fileno(s_raw_fp));
+    }
     s_raw_fp_day = today;
     ESP_LOGI(TAG, "raw log: %s", path);
 
