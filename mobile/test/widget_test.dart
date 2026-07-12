@@ -7,6 +7,8 @@ void main() {
     await tester.pumpWidget(const PrintBackApp());
     await tester.pump();
 
-    expect(find.text('Connecting to device...'), findsOneWidget);
+    // ConnectingScreen opens on the first auto-connect phase, looking for
+    // an already-known device before falling back to a nearby scan.
+    expect(find.text('Looking for known devices...'), findsOneWidget);
   });
 }

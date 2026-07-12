@@ -7,6 +7,9 @@
   "syncNowButton": "Synchronizuj teraz",
 
   "autoConnecting": "Łączenie z urządzeniem...",
+  "searchingKnownDevices": "Szukam znanych urządzeń...",
+  "scanningNearby": "Skanuję okolicę...",
+  "browseOffline": "Przeglądaj dane offline",
   "pairedAndConnected": "Sparowano i połączono",
   "syncingNow": "Synchronizowanie...",
   "neverSynced": "Jeszcze nie zsynchronizowano",
