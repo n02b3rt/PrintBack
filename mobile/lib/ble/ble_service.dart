@@ -209,6 +209,32 @@ class BleService extends ChangeNotifier {
   Future<BluetoothDevice?> tryAutoConnect() async {
     if (!await requestPermissions()) return null;
 
+    final prefs = await SharedPreferences.getInstance();
+    final preferredId = prefs.getString(_activeDeviceIdKey);
+
+    // First try the app's own registry of verified PrintBacks: those ids
+    // are proven to be our device, so we never even attempt a connection
+    // to an unrelated bonded device (e.g. the user's watch) - which is
+    // both faster and avoids the connect/drop flicker that a wrong-device
+    // attempt causes (docs/LEARNINGS.md 2026-07-10). Last-used first.
+    final registry = await knownPrintBackDevices();
+    final registryOrdered = [
+      ...registry.where((d) => d.id == preferredId),
+      ...registry.where((d) => d.id != preferredId),
+    ];
+    for (final entry in registryOrdered) {
+      try {
+        final device = BluetoothDevice.fromId(entry.id);
+        await connect(device);
+        return device;
+      } catch (_) {
+        continue;
+      }
+    }
+
+    // Fall back to the OS candidate list only if the registry is empty or
+    // its devices are all unreachable (e.g. first launch after install, or
+    // the device is powered off).
     List<BluetoothDevice> candidates;
     try {
       candidates = await knownDevices();
@@ -216,8 +242,6 @@ class BleService extends ChangeNotifier {
       candidates = [];
     }
 
-    final prefs = await SharedPreferences.getInstance();
-    final preferredId = prefs.getString(_activeDeviceIdKey);
     final ordered = [
       ...candidates.where((d) => d.remoteId.str == preferredId),
       ...candidates.where((d) => d.remoteId.str != preferredId),
