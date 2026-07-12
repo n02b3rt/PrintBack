@@ -32,9 +32,8 @@ ethos (docs/compliance/README.md).
 │        ▼                                                                 │
 │ main.c: on_probe()                                                       │
 │    ├─ fingerprint_from_ies()   SHA-256 over stable IEs → 8-byte hash     │
-│    ├─ whitelist_contains(fp)   NVS: MANUAL button capture, not the auto- │
-│    │                           heuristic compliance/README.md describes  │
-│    │                           (see note below)                         │
+│    ├─ whitelist_contains(fp)   NVS: manual button capture + the auto-    │
+│    │                           heuristic (wl_auto.c), see note below     │
 │    ├─ tracker_observe(obs)     RAM hash table, 5-minute active window    │
 │    └─ output_emit(obs,...)                                               │
 │              │                                                           │
@@ -48,13 +47,13 @@ ethos (docs/compliance/README.md).
                   L3 daily totals ∞) → dashboard
 ```
 
-**Note on the documentation/code gap:** `docs/compliance/README.md` describes
-auto-whitelist ("6+ hours in an 8h window → automatically whitelisted"). This
-mechanism **doesn't exist in the firmware**: today the whitelist is built
-exclusively by manually holding the button (`ui.c`, `UI_EVENT_LONG_PRESS`,
-3000ms). We're not carrying that inaccuracy into the new architecture
-without a conscious decision: if the auto-heuristic gets built, it's a
-separate, named phase, not something that's "already" happening.
+**Auto-whitelist (implemented):** `docs/compliance/README.md` describes
+auto-whitelist ("6+ distinct hours in an 8h window → automatically
+whitelisted"). This is now real in the firmware: `wl_auto.c` (a pure,
+host-tested accumulator) tracks each fingerprint's distinct in-window hours
+and, on qualification, calls `whitelist_add()` from `on_probe()`. It runs
+alongside the manual button capture (`ui.c`, `UI_EVENT_LONG_PRESS`, 3000ms),
+which is unchanged. Thresholds are Kconfig (`PRINTBACK_AUTO_WL_*`).
 
 ## Diagram B: target (this branch, after Phases 2-6)
 

@@ -136,6 +136,33 @@ config PRINTBACK_ARMED_RSSI_THRESHOLD
         Captured fingerprint must be at least this strong. Default -45 dBm
         means the device must be within ~30 cm of the antenna.
 
+config PRINTBACK_AUTO_WL_WINDOW_HOURS
+    int "Auto-whitelist rolling window (hours)"
+    range 2 24
+    default 8
+    help
+        A fingerprint seen in enough distinct hours within this rolling
+        window is treated as "sits here all shift, not a customer" and
+        auto-whitelisted (docs/compliance/README.md "Auto-whitelist").
+
+config PRINTBACK_AUTO_WL_MIN_DISTINCT_HOURS
+    int "Auto-whitelist threshold (distinct hours in the window)"
+    range 2 24
+    default 6
+    help
+        How many distinct hours within the window a fingerprint must
+        appear in before it is auto-whitelisted. Must be <= the window.
+
+config PRINTBACK_AUTO_WL_MAX_CANDIDATES
+    int "Max fingerprints tracked for auto-whitelisting"
+    range 8 256
+    default 64
+    help
+        RAM cap: the accumulator tracks at most this many candidate
+        fingerprints, evicting the least-recently-seen one when full
+        (firmware/main/wl_auto.c). Keeps per-fingerprint hour-set state
+        bounded regardless of foot traffic.
+
 endmenu
 
 menu "Pairing (BLE bonding)"

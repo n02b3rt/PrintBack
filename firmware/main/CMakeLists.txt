@@ -14,6 +14,7 @@ idf_component_register(
         "ble_gatt.c"
         "runtime_config_parse.c"
         "runtime_config.c"
+        "wl_auto.c"
     INCLUDE_DIRS "."
     REQUIRES
         esp_wifi

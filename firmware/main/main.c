@@ -20,6 +20,7 @@
 #include "aggregate.h"
 #include "ble_gatt.h"
 #include "runtime_config.h"
+#include "wl_auto.h"
 #include "app_info.h"
 
 static const char *TAG = "printback";
@@ -109,6 +110,21 @@ static void on_probe(const probe_observation_t *obs)
             ui_set_state(UI_STATE_CAPTURED);
         } else {
             ui_set_state(UI_STATE_ERROR);
+        }
+    }
+
+    /* Auto-whitelist devices that sit here across a shift (staff, router,
+     * a neighbour's fridge) rather than passing through like a customer
+     * (docs/compliance/README.md "Auto-whitelist"). Only feed non-
+     * whitelisted observations; qualification fires once, then whitelist_add
+     * excludes it from every future count. */
+    if (!whitelisted &&
+        wl_auto_observe(obs->fp.hash, sd_storage_current_unix_s())) {
+        if (whitelist_add(obs->fp.hash)) {
+            whitelisted = true;
+            ESP_LOGI(TAG, "auto-whitelist: fp=%s seen across %d+ distinct hours, "
+                     "excluded (whitelist now=%u)", obs->fp.hex,
+                     CONFIG_PRINTBACK_AUTO_WL_MIN_DISTINCT_HOURS, whitelist_count());
         }
     }
 
@@ -260,6 +276,11 @@ void app_main(void)
     ESP_ERROR_CHECK(nvs_flash_init());
 
     whitelist_init();
+    wl_auto_init(&(wl_auto_config_t){
+        .window_hours       = CONFIG_PRINTBACK_AUTO_WL_WINDOW_HOURS,
+        .min_distinct_hours = CONFIG_PRINTBACK_AUTO_WL_MIN_DISTINCT_HOURS,
+        .max_candidates     = CONFIG_PRINTBACK_AUTO_WL_MAX_CANDIDATES,
+    });
     tracker_init();
     runtime_config_init(); /* before wifi_sniffer_start(): on_probe() needs the RSSI floor from the first packet */
     ui_init();
