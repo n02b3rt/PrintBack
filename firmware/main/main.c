@@ -5,12 +5,15 @@
 #include "driver/usb_serial_jtag.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
+#include "esp_random.h"
 #include "esp_system.h"
 #include "esp_timer.h"
+#include "nvs.h"
 #include "nvs_flash.h"
 #include "sdkconfig.h"
 
 #include "wifi_sniffer.h"
+#include "fingerprint.h"
 #include "tracker.h"
 #include "output.h"
 #include "whitelist.h"
@@ -32,6 +35,41 @@ static const char *s_reset_reason = "unknown";
 const char *app_reset_reason_str(void)
 {
     return s_reset_reason;
+}
+
+/* Loads the per-device fingerprint salt from NVS, generating and storing a
+ * fresh random one on first boot. Mixed into every fingerprint so the same
+ * phone hashes to a different value on each physical unit
+ * (fingerprint_set_salt, docs/compliance/README.md). Wiping the SD card
+ * alongside a salt change is required: every previously-stored fingerprint
+ * stops matching, which is the whole point but also resets returning
+ * history. */
+static void load_or_create_fingerprint_salt(void)
+{
+    uint8_t salt[FINGERPRINT_SALT_BYTES];
+    size_t len = sizeof(salt);
+    bool have = false;
+
+    nvs_handle_t h;
+    if (nvs_open("pb_fp", NVS_READWRITE, &h) == ESP_OK) {
+        if (nvs_get_blob(h, "salt", salt, &len) == ESP_OK && len == sizeof(salt)) {
+            have = true;
+        }
+        if (!have) {
+            esp_fill_random(salt, sizeof(salt));
+            nvs_set_blob(h, "salt", salt, sizeof(salt));
+            nvs_commit(h);
+            ESP_LOGI(TAG, "fingerprint salt: generated a new per-device salt");
+        }
+        nvs_close(h);
+    } else {
+        /* No NVS: a session-only random salt still isolates this unit from
+         * others, it just won't survive a reboot (fingerprints shift). */
+        esp_fill_random(salt, sizeof(salt));
+        ESP_LOGW(TAG, "fingerprint salt: NVS unavailable, using a session-only salt");
+    }
+
+    fingerprint_set_salt(salt, sizeof(salt));
 }
 
 #define LOW_HEAP_WARN_BYTES (20 * 1024)
@@ -274,6 +312,7 @@ void app_main(void)
      * nvs_flash_init() (no erase-on-mismatch) on purpose: a version/space
      * problem should fail loudly, never silently wipe the bond store. */
     ESP_ERROR_CHECK(nvs_flash_init());
+    load_or_create_fingerprint_salt(); /* before any probe is hashed */
 
     whitelist_init();
     wl_auto_init(&(wl_auto_config_t){
