@@ -102,7 +102,9 @@ void wifi_sniffer_start(probe_cb_t cb)
     s_probe_queue = xQueueCreate(PROBE_QUEUE_LEN, sizeof(probe_observation_t));
     xTaskCreate(probe_proc_task, "probe_proc", 4096, NULL, 3, NULL);
 
-    ESP_ERROR_CHECK(nvs_flash_init());
+    /* NVS is initialized once in app_main() before any subsystem starts,
+     * not here - esp_wifi_init() below needs it, but so do whitelist,
+     * runtime config and the BLE bond store, all of which come up earlier. */
     ESP_ERROR_CHECK(esp_event_loop_create_default());
 
     wifi_init_config_t wcfg = WIFI_INIT_CONFIG_DEFAULT();

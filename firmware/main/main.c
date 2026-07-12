@@ -7,6 +7,7 @@
 #include "esp_log.h"
 #include "esp_system.h"
 #include "esp_timer.h"
+#include "nvs_flash.h"
 #include "sdkconfig.h"
 
 #include "wifi_sniffer.h"
@@ -231,6 +232,16 @@ void app_main(void)
     esp_reset_reason_t reason = esp_reset_reason();
     ESP_LOGI(TAG, "boot: reset_reason=%s (%d) free_heap=%" PRIu32,
              reset_reason_str(reason), (int)reason, esp_get_free_heap_size());
+
+    /* Initialize NVS first: whitelist_init(), runtime_config_init() and
+     * sd_storage_init() below all read persisted state, and NimBLE's bond
+     * store uses NVS too. It used to be initialized inside
+     * wifi_sniffer_start(), which runs after those readers - so their
+     * boot-time nvs_open() silently failed and persisted values were only
+     * ever reloaded after the next write, not at boot. Bare
+     * nvs_flash_init() (no erase-on-mismatch) on purpose: a version/space
+     * problem should fail loudly, never silently wipe the bond store. */
+    ESP_ERROR_CHECK(nvs_flash_init());
 
     whitelist_init();
     tracker_init();
