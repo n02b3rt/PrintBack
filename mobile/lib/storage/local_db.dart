@@ -29,6 +29,15 @@ class LocalDb {
   /// A real integer sentinel makes the UNIQUE index actually work.
   static const _dayHour = -1;
 
+  /// Closes the underlying database handle. Production screens keep their
+  /// LocalDb for the app's lifetime and never call this; it exists so unit
+  /// tests can release the file between cases (an open SQLite file can't be
+  /// deleted on Windows).
+  Future<void> close() async {
+    await _db?.close();
+    _db = null;
+  }
+
   Future<Database> _open() async {
     if (_db != null) return _db!;
     final path = join(await getDatabasesPath(), _dbName);

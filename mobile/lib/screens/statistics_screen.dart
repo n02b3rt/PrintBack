@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import '../ble/ble_service.dart';
 import '../l10n/app_localizations.dart';
 import '../logic/format.dart';
+import '../logic/stats_math.dart';
 import '../models/aggregate.dart';
 import '../storage/local_db.dart';
 import '../widgets/chart_style.dart';
@@ -150,40 +151,22 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
 
-    final totalUnique = _daily.fold<int>(0, (s, a) => s + a.unique);
-    final totalReturning = _daily.fold<int>(0, (s, a) => s + a.returning);
-    final prevTotalUnique = _prevDaily.fold<int>(0, (s, a) => s + a.unique);
-    final avgDaily = _daily.isEmpty ? 0 : (totalUnique / _daily.length).round();
-    final returningRate =
-        totalUnique == 0 ? 0 : (totalReturning * 100 / totalUnique).round();
-    final delta = prevTotalUnique == 0
-        ? null
-        : ((totalUnique - prevTotalUnique) * 100 / prevTotalUnique).round();
-
-    Aggregate? best;
-    for (final a in _daily) {
-      if (best == null || a.unique > best.unique) best = a;
-    }
+    final totalUnique = sumUnique(_daily);
+    final totalReturning = sumReturning(_daily);
+    final prevTotalUnique = sumUnique(_prevDaily);
+    final avgDaily = averagePerDay(totalUnique, _daily.length);
+    final returningRatePct = returningRate(totalUnique, totalReturning);
+    final delta = deltaPercent(totalUnique, prevTotalUnique);
+    final best = bestDay(_daily);
 
     final weekdaySums = List<int>.filled(7, 0);
     final weekdayCounts = List<int>.filled(7, 0);
     for (final a in _daily) {
-      final parts = a.date.split('-');
-      final d = DateTime.utc(
-          int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
-      final idx = d.weekday - 1;
+      final idx = weekdayIndex(a.date);
       weekdaySums[idx] += a.unique;
       weekdayCounts[idx]++;
     }
 
-    final hourSums = List<int>.filled(24, 0);
-    final hourCounts = List<int>.filled(24, 0);
-    for (final a in _hourly) {
-      // Local hour, not the raw UTC hour on the wire - see
-      // Aggregate.localHour.
-      hourSums[a.localHour] += a.unique;
-      hourCounts[a.localHour]++;
-    }
     // _hourly was fetched with a 1-day UTC pad on each side (see
     // _reload()) to catch hours that land on the other side of the
     // UTC/local day boundary - the "Dziś" hourly chart needs only the
@@ -191,26 +174,11 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     final todayLocal = _fmt(DateTime.now());
     final hourlyToday =
         _hourly.where((a) => a.localDate == todayLocal).toList();
-    int? peakHour;
-    double peakAvg = -1;
-    for (var h = 0; h < 24; h++) {
-      if (hourCounts[h] == 0) continue;
-      final avg = hourSums[h] / hourCounts[h];
-      if (avg > peakAvg) {
-        peakAvg = avg;
-        peakHour = h;
-      }
-    }
+    final peakHourValue = peakHour(_hourly);
 
     final weekdayLabels = _weekdayLabels(l10n);
-    final bestDayLabel = best == null
-        ? '-'
-        : weekdayLabels[DateTime.utc(
-                  int.parse(best.date.split('-')[0]),
-                  int.parse(best.date.split('-')[1]),
-                  int.parse(best.date.split('-')[2]),
-                ).weekday -
-                1];
+    final bestDayLabel =
+        best == null ? '-' : weekdayLabels[weekdayIndex(best.date)];
 
     return Scaffold(
       appBar: AppBar(
@@ -281,7 +249,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                   Expanded(
                     child: _StatCard(
                         label: l10n.returningRateLabel,
-                        value: '$returningRate%'),
+                        value: '$returningRatePct%'),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -301,7 +269,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                   Expanded(
                     child: _StatCard(
                       label: l10n.peakHourLabel,
-                      value: peakHour != null ? '$peakHour:00' : '-',
+                      value: peakHourValue != null ? '$peakHourValue:00' : '-',
                     ),
                   ),
                 ],
@@ -407,18 +375,13 @@ class _WeekdayChart extends StatelessWidget {
     final maxAvg = activeAvgs.fold<double>(0, (m, v) => v > m ? v : m);
     final isBest = avgs[i] == maxAvg && maxAvg > 0;
 
-    String interpretation;
-    if (isBest) {
-      interpretation = l10n.interpretationBestDay;
-    } else if (overallAvg > 0 && avgs[i] > overallAvg * 1.2) {
-      interpretation = l10n.interpretationAboveAverage(
-          ((avgs[i] / overallAvg - 1) * 100).round());
-    } else if (overallAvg > 0 && avgs[i] < overallAvg * 0.8) {
-      interpretation = l10n.interpretationBelowAverage(
-          ((1 - avgs[i] / overallAvg) * 100).round());
-    } else {
-      interpretation = l10n.interpretationAroundAverage;
-    }
+    final trend = classifyTrend(avgs[i], overallAvg, isExtreme: isBest);
+    final interpretation = switch (trend.cls) {
+      TrendClass.extreme => l10n.interpretationBestDay,
+      TrendClass.above => l10n.interpretationAboveAverage(trend.percent),
+      TrendClass.below => l10n.interpretationBelowAverage(trend.percent),
+      TrendClass.around => l10n.interpretationAroundAverage,
+    };
 
     showDetailSheet(
       context,
@@ -494,18 +457,13 @@ class _DailyTrendChart extends StatelessWidget {
     final maxUnique = data.map((a) => a.unique).reduce((a, b) => a > b ? a : b);
     final isBest = agg.unique == maxUnique && agg.unique > 0;
 
-    String interpretation;
-    if (isBest) {
-      interpretation = l10n.interpretationBestDay;
-    } else if (avg > 0 && agg.unique > avg * 1.2) {
-      interpretation =
-          l10n.interpretationAboveAverage(((agg.unique / avg - 1) * 100).round());
-    } else if (avg > 0 && agg.unique < avg * 0.8) {
-      interpretation = l10n.interpretationBelowAverage(
-          ((1 - agg.unique / avg) * 100).round());
-    } else {
-      interpretation = l10n.interpretationAroundAverage;
-    }
+    final trend = classifyTrend(agg.unique, avg, isExtreme: isBest);
+    final interpretation = switch (trend.cls) {
+      TrendClass.extreme => l10n.interpretationBestDay,
+      TrendClass.above => l10n.interpretationAboveAverage(trend.percent),
+      TrendClass.below => l10n.interpretationBelowAverage(trend.percent),
+      TrendClass.around => l10n.interpretationAroundAverage,
+    };
 
     showDetailSheet(
       context,
@@ -581,18 +539,13 @@ class _HourlyTrendChart extends StatelessWidget {
         agg.unique == data.map((a) => a.unique).reduce((a, b) => a > b ? a : b) &&
             agg.unique > 0;
 
-    String interpretation;
-    if (isPeak) {
-      interpretation = l10n.interpretationPeakHour;
-    } else if (dayAvg > 0 && agg.unique > dayAvg * 1.2) {
-      interpretation = l10n.interpretationAboveAverage(
-          ((agg.unique / dayAvg - 1) * 100).round());
-    } else if (dayAvg > 0 && agg.unique < dayAvg * 0.8) {
-      interpretation = l10n.interpretationBelowAverage(
-          ((1 - agg.unique / dayAvg) * 100).round());
-    } else {
-      interpretation = l10n.interpretationAroundAverage;
-    }
+    final trend = classifyTrend(agg.unique, dayAvg, isExtreme: isPeak);
+    final interpretation = switch (trend.cls) {
+      TrendClass.extreme => l10n.interpretationPeakHour,
+      TrendClass.above => l10n.interpretationAboveAverage(trend.percent),
+      TrendClass.below => l10n.interpretationBelowAverage(trend.percent),
+      TrendClass.around => l10n.interpretationAroundAverage,
+    };
 
     showDetailSheet(
       context,

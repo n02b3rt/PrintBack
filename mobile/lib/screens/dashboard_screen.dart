@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 import '../ble/ble_service.dart';
 import '../l10n/app_localizations.dart';
 import '../logic/format.dart';
+import '../logic/stats_math.dart';
 import '../models/aggregate.dart';
 import '../storage/local_db.dart';
 import '../widgets/brand_mark.dart';
@@ -229,18 +230,13 @@ class _HourlyBarChart extends StatelessWidget {
         agg.unique == data.map((a) => a.unique).reduce((a, b) => a > b ? a : b) &&
             agg.unique > 0;
 
-    String interpretation;
-    if (isPeak) {
-      interpretation = l10n.interpretationPeakHour;
-    } else if (dayAvg > 0 && agg.unique > dayAvg * 1.2) {
-      interpretation = l10n.interpretationAboveAverage(
-          ((agg.unique / dayAvg - 1) * 100).round());
-    } else if (dayAvg > 0 && agg.unique < dayAvg * 0.8) {
-      interpretation = l10n.interpretationBelowAverage(
-          ((1 - agg.unique / dayAvg) * 100).round());
-    } else {
-      interpretation = l10n.interpretationAroundAverage;
-    }
+    final trend = classifyTrend(agg.unique, dayAvg, isExtreme: isPeak);
+    final interpretation = switch (trend.cls) {
+      TrendClass.extreme => l10n.interpretationPeakHour,
+      TrendClass.above => l10n.interpretationAboveAverage(trend.percent),
+      TrendClass.below => l10n.interpretationBelowAverage(trend.percent),
+      TrendClass.around => l10n.interpretationAroundAverage,
+    };
 
     showDetailSheet(
       context,
@@ -318,18 +314,13 @@ class _DailyBarChart extends StatelessWidget {
     final maxUnique = data.map((a) => a.unique).reduce((a, b) => a > b ? a : b);
     final isBest = agg.unique == maxUnique && agg.unique > 0;
 
-    String interpretation;
-    if (isBest) {
-      interpretation = l10n.interpretationBestDay;
-    } else if (avg > 0 && agg.unique > avg * 1.2) {
-      interpretation =
-          l10n.interpretationAboveAverage(((agg.unique / avg - 1) * 100).round());
-    } else if (avg > 0 && agg.unique < avg * 0.8) {
-      interpretation = l10n.interpretationBelowAverage(
-          ((1 - agg.unique / avg) * 100).round());
-    } else {
-      interpretation = l10n.interpretationAroundAverage;
-    }
+    final trend = classifyTrend(agg.unique, avg, isExtreme: isBest);
+    final interpretation = switch (trend.cls) {
+      TrendClass.extreme => l10n.interpretationBestDay,
+      TrendClass.above => l10n.interpretationAboveAverage(trend.percent),
+      TrendClass.below => l10n.interpretationBelowAverage(trend.percent),
+      TrendClass.around => l10n.interpretationAroundAverage,
+    };
 
     showDetailSheet(
       context,

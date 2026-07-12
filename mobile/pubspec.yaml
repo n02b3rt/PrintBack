@@ -51,6 +51,9 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  # Host-side SQLite for local_db unit tests (sqflite itself is Android/iOS
+  # only; the ffi variant runs the same schema on the desktop test VM).
+  sqflite_common_ffi: ^2.3.3
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
