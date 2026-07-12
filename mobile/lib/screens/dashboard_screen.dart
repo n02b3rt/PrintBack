@@ -286,11 +286,10 @@ class _HourlyBarChart extends StatelessWidget {
             _showDetail(context, l10n, agg);
           },
         ),
-        // 24 hour numbers crammed under the bars read as clutter/overlap
-        // (confirmed on hardware) regardless of thinning - dropped
-        // entirely, matching the already-hidden y-axis: exact hour lives
-        // in the tap-to-detail sheet's title instead.
-        titlesData: revolutTitlesNone,
+        // Sparse anchors at 0/6/12/18 give the day a readable frame
+        // (morning/noon/evening) without 24 crammed numbers; the exact
+        // hour still lives in the tap-to-detail sheet's title.
+        titlesData: revolutTitlesSparseHours(context),
         barGroups: List.generate(24, (hour) {
           final agg = byHour[hour];
           final value = (agg?.unique ?? 0).toDouble();

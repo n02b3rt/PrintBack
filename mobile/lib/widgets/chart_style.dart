@@ -60,6 +60,34 @@ final revolutBorder = FlBorderData(show: false);
 /// the only place a specific value/hour ever gets named.
 const revolutTitlesNone = FlTitlesData(show: false);
 
+/// Bottom axis for the 24-bar hourly chart: labels only at 0/6/12/18, so
+/// the day has readable anchors (morning/noon/evening) without 24 crammed
+/// numbers. A per-x index filter, not fl_chart's `interval`, which
+/// doesn't reliably thin a discrete bar axis (docs/LEARNINGS.md hourly
+/// x-axis note). x values are the local hour 0-23.
+FlTitlesData revolutTitlesSparseHours(BuildContext context) {
+  const anchors = {0, 6, 12, 18};
+  return FlTitlesData(
+    show: true,
+    topTitles: const AxisTitles(),
+    rightTitles: const AxisTitles(),
+    leftTitles: const AxisTitles(),
+    bottomTitles: AxisTitles(
+      sideTitles: SideTitles(
+        showTitles: true,
+        getTitlesWidget: (value, meta) {
+          final hour = value.toInt();
+          if (!anchors.contains(hour)) return const SizedBox.shrink();
+          return Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text('$hour', style: Theme.of(context).textTheme.bodySmall),
+          );
+        },
+      ),
+    ),
+  );
+}
+
 /// Same visual language as revolutRod, for a line/trend chart instead of
 /// bars: a smooth curved gradient stroke with a soft gradient fill below
 /// it, no dots (the touch line + detail sheet carry the "exact point"
