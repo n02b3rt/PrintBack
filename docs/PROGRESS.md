@@ -151,8 +151,8 @@
       next real rollover (docs/DECISIONS.md D6 already frames this as
       expected drift-then-catch-up, not a bug).
 - [ ] Phase 7: docs/compliance/README.md + README.md, final documentation
-- [ ] Phase 8: production sync, multi-device, redesign (in progress,
-      2026-07-10). Not in the original plan - added after real-phone use
+- [x] Phase 8: production sync, multi-device, redesign (done 2026-07-12).
+      Not in the original plan - added after real-phone use
       of Phase 6 surfaced concrete gaps: no way to get more than "today"
       onto the phone, had to manually re-scan every app launch even
       though already bonded, and the UI was bare Material widgets.
@@ -238,12 +238,39 @@
       confirmed not to regress short-term capture, but the actual
       multi-hour degradation needs a real unattended soak test to fully
       confirm (docs/LEARNINGS.md 2026-07-11).
+      Closing verification (2026-07-12): the hourly-backfill build was
+      flashed and re-tested end to end. Pairing initially failed
+      repeatedly (writeCharacteristic BUSY / timeout /
+      CONNECTION_TERMINATED_BY_LOCAL_HOST); a native Android BLE log the
+      user captured traced it to a one-sided stale bond - the phone had
+      silently lost its bond record while the device still held its half,
+      so every re-encryption timed out (`encryption change; status=13`).
+      Three genuine app-side fixes landed along the way (`30f8e56`
+      connect() reentrancy guard, `2d2cfea` cleanup-on-failure so a failed
+      connect can't orphan a native GATT client, `8bea399` settle-delay +
+      retry on the first encrypted write). The bond asymmetry itself was
+      unfixable in app code: erasing the device NVS partition (bond store
+      + the two runtime-config values; SD untouched) and re-pairing from a
+      fresh window resolved it immediately - `encryption change; status=0`
+      -> `new bond established` -> `time sync` -> `sync: backlog replay
+      complete`, then a live hour-23 finalize + deferred daily rollover
+      (196 unique fp/30 days) streamed to the phone as STATS notifies,
+      connection stable with zero drops afterward. Full write-up in
+      docs/LEARNINGS.md 2026-07-11. Two follow-ups noted there: a
+      PC-free "factory reset bonds" gesture on the device (a shop owner
+      can't run parttool), and the board's one unexplained spontaneous
+      reset that evening (no panic/brownout marker - watch during soak).
+      Known minor UX item deferred to the Phase 10/11 pairing work: on a
+      from-scratch bond Android shows its pairing dialog twice (documented
+      flutter_blue_plus "popup appears twice" quirk, resolvable with an
+      explicit createBond() after connect) - not fixed here to avoid a
+      fourth untested BLE change on top of a freshly-working state.
 
 Note: the current code in `firmware/` and `app/` is still the old
 architecture (USB-CDC → Python desktop dashboard, SQLite). Don't remove /
 change it until the new path (BLE+SD) is ready and tested in parallel.
 
-Last updated: 2026-07-11 (Phase 8a-8f verified on real hardware,
-including hourly backfill; WiFi capture/IO decoupling fix flashed,
-pending a multi-hour soak test to fully confirm - see Phase 8 notes
-above).
+Last updated: 2026-07-12 (Phase 8 closed and merged to `main`: hourly
+backfill re-verified end to end after resolving a one-sided stale-bond
+pairing deadlock; WiFi capture/IO decoupling fix still pending a
+multi-hour soak test to fully confirm - see Phase 8 notes above).
