@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 
 import '../ble/ble_service.dart';
 import '../l10n/app_localizations.dart';
+import '../logic/format.dart';
 import '../models/aggregate.dart';
 import '../storage/local_db.dart';
 import '../widgets/chart_style.dart';
@@ -508,7 +509,7 @@ class _DailyTrendChart extends StatelessWidget {
 
     showDetailSheet(
       context,
-      title: agg.date,
+      title: formatDayTitle(agg.date, Localizations.localeOf(context).languageCode),
       primaryValue: '${agg.unique}',
       primaryLabel: l10n.uniqueLabel,
       rows: [
@@ -526,11 +527,6 @@ class _DailyTrendChart extends StatelessWidget {
         .map((a) => a.unique)
         .fold<int>(1, (m, v) => v > m ? v : m)
         .toDouble();
-    // Same label-thinning approach as the dashboard's daily bar chart -
-    // one label per point overlaps into an unreadable smear once there
-    // are more than ~6-7 points in a card-width chart (e.g. a month).
-    final labelInterval = (data.length / 6).ceil().clamp(1, data.length);
-
     return LineChart(
       LineChartData(
         minY: 0,
@@ -547,15 +543,15 @@ class _DailyTrendChart extends StatelessWidget {
         ),
         titlesData: revolutTitles(
           context,
-          bottomInterval: labelInterval.toDouble(),
           bottomBuilder: (value, meta) {
             final index = value.toInt();
             if (index < 0 || index >= data.length) return const SizedBox.shrink();
-            if (index % labelInterval != 0) return const SizedBox.shrink();
-            final date = data[index].date;
+            if (!showDayLabelAt(index, data.length)) {
+              return const SizedBox.shrink();
+            }
             return Padding(
               padding: const EdgeInsets.only(top: 4),
-              child: Text(date.substring(5),
+              child: Text(formatAxisDay(data[index].date),
                   style: Theme.of(context).textTheme.bodySmall),
             );
           },

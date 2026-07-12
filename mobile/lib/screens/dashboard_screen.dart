@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 
 import '../ble/ble_service.dart';
 import '../l10n/app_localizations.dart';
+import '../logic/format.dart';
 import '../models/aggregate.dart';
 import '../storage/local_db.dart';
 import '../widgets/brand_mark.dart';
@@ -333,7 +334,7 @@ class _DailyBarChart extends StatelessWidget {
 
     showDetailSheet(
       context,
-      title: agg.date,
+      title: formatDayTitle(agg.date, Localizations.localeOf(context).languageCode),
       primaryValue: '${agg.unique}',
       primaryLabel: l10n.uniqueLabel,
       rows: [
@@ -351,10 +352,6 @@ class _DailyBarChart extends StatelessWidget {
         .map((a) => a.unique)
         .fold<int>(1, (m, v) => v > m ? v : m)
         .toDouble();
-    // Cap visible x-axis labels regardless of how many days are shown -
-    // one label per bar overlaps into an unreadable smear once there are
-    // more than ~6-7 bars in a card-width chart.
-    final labelInterval = (data.length / 6).ceil().clamp(1, data.length);
 
     final peak = data.map((a) => a.unique).fold<int>(0, (m, v) => v > m ? v : m);
 
@@ -376,15 +373,15 @@ class _DailyBarChart extends StatelessWidget {
         ),
         titlesData: revolutTitles(
           context,
-          bottomInterval: labelInterval.toDouble(),
           bottomBuilder: (value, meta) {
             final index = value.toInt();
             if (index < 0 || index >= data.length) return const SizedBox.shrink();
-            if (index % labelInterval != 0) return const SizedBox.shrink();
-            final date = data[index].date;
+            if (!showDayLabelAt(index, data.length)) {
+              return const SizedBox.shrink();
+            }
             return Padding(
               padding: const EdgeInsets.only(top: 4),
-              child: Text(date.substring(5),
+              child: Text(formatAxisDay(data[index].date),
                   style: Theme.of(context).textTheme.bodySmall),
             );
           },
