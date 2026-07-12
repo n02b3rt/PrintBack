@@ -61,7 +61,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   int _loadedRssiFloor = _rssiFloorMin;
   bool _advancedOpen = false;
 
-  List<BluetoothDevice> _otherDevices = [];
+  List<KnownDevice> _otherDevices = [];
   bool _switching = false;
 
   @override
@@ -97,19 +97,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _loadOtherDevices() async {
     final ble = context.read<BleService>();
-    final known = await ble.knownDevices();
+    // The verified-PrintBack registry, not systemDevices() - the latter
+    // can surface an unrelated bonded watch/band on Android (10j).
+    final known = await ble.knownPrintBackDevices();
     if (!mounted) return;
     setState(() {
       _otherDevices =
-          known.where((d) => d.remoteId != ble.device?.remoteId).toList();
+          known.where((d) => d.id != ble.activeDeviceId).toList();
     });
   }
 
-  Future<void> _switchTo(BluetoothDevice device) async {
+  Future<void> _switchTo(String deviceId) async {
     final ble = context.read<BleService>();
     setState(() => _switching = true);
     try {
-      await ble.connect(device);
+      await ble.connect(BluetoothDevice.fromId(deviceId));
       if (!mounted) return;
       // A fresh HomeShell (and the screens inside it) picks up the new
       // device id in its own initState() - simpler and more robust than
@@ -378,7 +380,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           title: Text(
                             ble.device?.platformName.isNotEmpty == true
                                 ? ble.device!.platformName
-                                : (ble.device?.remoteId.str ?? l10n.notConnected),
+                                : (ble.activeDeviceId ?? l10n.notConnected),
                           ),
                           subtitle: Text(l10n.currentDevice),
                         ),
@@ -397,12 +399,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ..._otherDevices.map(
                             (d) => ListTile(
                               leading: const Icon(Icons.bluetooth),
-                              title: Text(
-                                d.platformName.isNotEmpty
-                                    ? d.platformName
-                                    : d.remoteId.str,
-                              ),
-                              onTap: _switching ? null : () => _switchTo(d),
+                              title: Text(d.name),
+                              onTap: _switching ? null : () => _switchTo(d.id),
                             ),
                           ),
                         const Divider(height: 1),

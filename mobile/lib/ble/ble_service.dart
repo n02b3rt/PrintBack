@@ -10,6 +10,13 @@ import '../models/aggregate.dart';
 import '../models/device_config.dart';
 
 const _activeDeviceIdKey = 'active_device_id';
+const _knownDevicesKey = 'known_printback_devices';
+
+/// One entry in the app's own registry of devices it has actually
+/// connected to and verified as a PrintBack (all four characteristics
+/// present). Unlike the OS bonded-device list, this can never contain an
+/// unrelated watch or band (docs/LEARNINGS.md 2026-07-10).
+typedef KnownDevice = ({String id, String name});
 
 /// UUIDs from docs/DATA_MODEL.md "BLE GATT service and characteristic UUIDs".
 class PrintBackUuids {
@@ -125,12 +132,56 @@ class BleService extends ChangeNotifier {
 
   Future<void> stopScan() => FlutterBluePlus.stopScan();
 
-  /// All PrintBack devices the OS currently knows about (bonded, or
-  /// recently connected by any app on this phone) - a live query, not a
-  /// list we maintain ourselves, so it can never drift from what's
-  /// actually bonded. Used by Settings' device switcher.
+  /// Candidate devices the OS knows about (bonded, or recently connected
+  /// by any app) - a best-effort list used only as *input* to
+  /// tryAutoConnect(), which validates each before trusting it. Not shown
+  /// in the UI: on Android this can return an unrelated bonded watch/band
+  /// (docs/LEARNINGS.md 2026-07-10), so Settings uses the verified
+  /// registry (knownPrintBackDevices()) instead.
   Future<List<BluetoothDevice>> knownDevices() {
     return FlutterBluePlus.systemDevices([PrintBackUuids.service]);
+  }
+
+  /// The app's own registry of devices it has actually connected to and
+  /// verified as PrintBacks. Backs the Settings device switcher, so it can
+  /// never list a stranger's watch. Also works offline (no BT query
+  /// needed), unlike systemDevices().
+  Future<List<KnownDevice>> knownPrintBackDevices() async {
+    final prefs = await SharedPreferences.getInstance();
+    return _readRegistry(prefs);
+  }
+
+  List<KnownDevice> _readRegistry(SharedPreferences prefs) {
+    final raw = prefs.getString(_knownDevicesKey);
+    if (raw == null) return [];
+    try {
+      final list = jsonDecode(raw) as List;
+      return [
+        for (final e in list)
+          (id: (e as Map)['id'] as String, name: e['name'] as String),
+      ];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Records a just-verified device in the registry (upsert by id, so a
+  /// reconnect refreshes its name without duplicating). Called from
+  /// connect() only after the full characteristic lookup succeeded, which
+  /// is the proof it's really a PrintBack.
+  Future<void> _recordVerifiedDevice(BluetoothDevice device) async {
+    final prefs = await SharedPreferences.getInstance();
+    final entries = _readRegistry(prefs);
+    final id = device.remoteId.str;
+    final name = device.platformName.isNotEmpty ? device.platformName : id;
+    final updated = [
+      (id: id, name: name),
+      ...entries.where((e) => e.id != id),
+    ];
+    await prefs.setString(
+      _knownDevicesKey,
+      jsonEncode([for (final e in updated) {'id': e.id, 'name': e.name}]),
+    );
   }
 
   /// Looks for an already-bonded PrintBack device, preferring a quick
@@ -317,6 +368,10 @@ class BleService extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_activeDeviceIdKey, device.remoteId.str);
       _activeDeviceId = device.remoteId.str;
+      // Reaching here means every PrintBack characteristic was found -
+      // proof this is really our device, so add it to the verified
+      // registry the Settings switcher shows.
+      await _recordVerifiedDevice(device);
 
       notifyListeners();
     } catch (e) {
