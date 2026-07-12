@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:provider/provider.dart';
 
 import '../ble/ble_service.dart';
@@ -110,10 +109,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
-    // The sync icon needs a live connection; offline it's disabled (the
-    // status banner carries the [Connect] affordance instead).
-    final connected = context.watch<BleService>().connectionState ==
-        BluetoothConnectionState.connected;
+    // The sync icon needs a fully-ready connection; offline (or mid-attempt
+    // on a wrong device) it's disabled - the status banner carries the
+    // [Connect] affordance instead.
+    final connected = context.watch<BleService>().isConnectedReady;
     // Prefer the daily "today so far" running total (from readCurrentStats()
     // on connect, or a daily rollover notification) over summing hourly
     // rows: the hourly breakdown only fills in as real hour-boundary

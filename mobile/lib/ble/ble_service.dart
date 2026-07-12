@@ -51,6 +51,15 @@ class BleService extends ChangeNotifier {
       BluetoothConnectionState.disconnected;
   BluetoothConnectionState get connectionState => _connectionState;
 
+  /// A connection that's not just linked but fully verified as ours -
+  /// characteristics discovered. The raw [connectionState] briefly reads
+  /// `connected` during an attempt on a wrong device (e.g. a bonded watch)
+  /// before discovery fails and drops it; gating UI on this instead avoids
+  /// the banner flashing "connected" mid-attempt.
+  bool get isConnectedReady =>
+      _connectionState == BluetoothConnectionState.connected &&
+      _statsChr != null;
+
   BluetoothDevice? get device => _device;
 
   /// The remoteId of the device the user is currently working with, whether

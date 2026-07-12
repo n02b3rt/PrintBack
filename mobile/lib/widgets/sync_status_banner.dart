@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:provider/provider.dart';
 
 import '../ble/ble_service.dart';
@@ -38,7 +37,10 @@ class _SyncStatusBannerState extends State<SyncStatusBanner> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
     final ble = context.watch<BleService>();
-    final connected = ble.connectionState == BluetoothConnectionState.connected;
+    // isConnectedReady, not the raw connectionState, so the banner doesn't
+    // flash "connected" while auto-connect is briefly linked to a wrong
+    // device mid-attempt.
+    final connected = ble.isConnectedReady;
 
     final String statusText;
     if (ble.isSyncing) {
