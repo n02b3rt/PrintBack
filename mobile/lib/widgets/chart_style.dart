@@ -100,13 +100,17 @@ LineChartBarData revolutLine(
 }) {
   final scheme = Theme.of(context).colorScheme;
   final lineColor = color ?? scheme.primary;
+  // With few points, a smooth curve invents motion between measurements
+  // that were never taken - draw a straight polyline and mark the actual
+  // data points instead, so early/sparse data reads honestly (10m). Past
+  // ~6-10 points the curve reads fine and dots would just be clutter.
   return LineChartBarData(
     spots: spots,
-    isCurved: true,
+    isCurved: spots.length > 6,
     curveSmoothness: 0.25,
     barWidth: 3,
     color: lineColor,
-    dotData: const FlDotData(show: false),
+    dotData: FlDotData(show: spots.length <= 10),
     belowBarData: BarAreaData(
       show: fill,
       gradient: LinearGradient(

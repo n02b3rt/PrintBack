@@ -85,6 +85,21 @@
   "weekdayFri": "Pt",
   "weekdaySat": "Sb",
   "weekdaySun": "Nd",
+  "weekdayMonFull": "Poniedziałek",
+  "weekdayTueFull": "Wtorek",
+  "weekdayWedFull": "Środa",
+  "weekdayThuFull": "Czwartek",
+  "weekdayFriFull": "Piątek",
+  "weekdaySatFull": "Sobota",
+  "weekdaySunFull": "Niedziela",
+  "peakHourCoverage": "na podst. {count} dni z danymi godz.",
+  "@peakHourCoverage": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "weekdayPatternCoverage": "na podstawie {count} dni — wzorzec uzupełni się w ciągu tygodnia",
+  "@weekdayPatternCoverage": {
+    "placeholders": { "count": { "type": "int" } }
+  },
 
   "settingsTitle": "Ustawienia",
   "appearanceSectionTitle": "Wygląd",

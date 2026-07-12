@@ -376,12 +376,18 @@ class _DailyBarChart extends StatelessWidget {
             );
           },
         ),
-        barGroups: List.generate(data.length, (i) {
+        // Reserve at least 7 slots so a 2-day-old install shows two
+        // normal-width bars in a stable frame, not two giant bars filling
+        // the card (10m). Extra slots past the real data are empty.
+        barGroups: List.generate(data.length < 7 ? 7 : data.length, (i) {
+          final value = i < data.length ? data[i].unique.toDouble() : 0.0;
           return BarChartGroupData(
             x: i,
             barRods: [
-              revolutRod(context, data[i].unique.toDouble(),
-                  highlight: data[i].unique == peak && peak > 0),
+              revolutRod(context, value,
+                  highlight: i < data.length &&
+                      data[i].unique == peak &&
+                      peak > 0),
             ],
           );
         }),

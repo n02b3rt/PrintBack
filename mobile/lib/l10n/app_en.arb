@@ -85,6 +85,21 @@
   "weekdayFri": "Fri",
   "weekdaySat": "Sat",
   "weekdaySun": "Sun",
+  "weekdayMonFull": "Monday",
+  "weekdayTueFull": "Tuesday",
+  "weekdayWedFull": "Wednesday",
+  "weekdayThuFull": "Thursday",
+  "weekdayFriFull": "Friday",
+  "weekdaySatFull": "Saturday",
+  "weekdaySunFull": "Sunday",
+  "peakHourCoverage": "from {count} days with hourly data",
+  "@peakHourCoverage": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "weekdayPatternCoverage": "from {count} days — the pattern fills in over the week",
+  "@weekdayPatternCoverage": {
+    "placeholders": { "count": { "type": "int" } }
+  },
 
   "settingsTitle": "Settings",
   "appearanceSectionTitle": "Appearance",

@@ -147,6 +147,19 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
         l10n.weekdaySun,
       ];
 
+  // Full weekday names for the "best day" KPI tile, where a lone "Śr"
+  // reads ambiguously as either "środa" or "średnia" (10l). Short labels
+  // stay under the chart, where the week context disambiguates them.
+  List<String> _weekdayLabelsFull(AppLocalizations l10n) => [
+        l10n.weekdayMonFull,
+        l10n.weekdayTueFull,
+        l10n.weekdayWedFull,
+        l10n.weekdayThuFull,
+        l10n.weekdayFriFull,
+        l10n.weekdaySatFull,
+        l10n.weekdaySunFull,
+      ];
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
@@ -177,8 +190,10 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     final peakHourValue = peakHour(_hourly);
 
     final weekdayLabels = _weekdayLabels(l10n);
+    final weekdayLabelsFull = _weekdayLabelsFull(l10n);
     final bestDayLabel =
-        best == null ? '-' : weekdayLabels[weekdayIndex(best.date)];
+        best == null ? '-' : weekdayLabelsFull[weekdayIndex(best.date)];
+    final hourlyCoverageDays = daysWithHourlyData(_hourly);
 
     return Scaffold(
       appBar: AppBar(
@@ -270,6 +285,9 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                     child: _StatCard(
                       label: l10n.peakHourLabel,
                       value: peakHourValue != null ? '$peakHourValue:00' : '-',
+                      subtitle: peakHourValue != null
+                          ? l10n.peakHourCoverage(hourlyCoverageDays)
+                          : null,
                     ),
                   ),
                 ],
@@ -309,6 +327,14 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                 const SizedBox(height: 24),
                 Text(l10n.weekdayPatternTitle,
                     style: Theme.of(context).textTheme.titleMedium),
+                // Fewer than 7 days can't fill the weekday pattern - a
+                // caption explains the empty bars so the chart doesn't
+                // read as broken during a pilot's first week (10m).
+                if (_daily.isNotEmpty && _daily.length < 7) ...[
+                  const SizedBox(height: 4),
+                  Text(l10n.weekdayPatternCoverage(_daily.length),
+                      style: Theme.of(context).textTheme.bodySmall),
+                ],
                 const SizedBox(height: 8),
                 GlassCard(
                   child: SizedBox(
@@ -334,8 +360,9 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
 class _StatCard extends StatelessWidget {
   final String label;
   final String value;
+  final String? subtitle;
 
-  const _StatCard({required this.label, required this.value});
+  const _StatCard({required this.label, required this.value, this.subtitle});
 
   @override
   Widget build(BuildContext context) {
@@ -346,6 +373,10 @@ class _StatCard extends StatelessWidget {
           Text(label, style: Theme.of(context).textTheme.bodySmall),
           const SizedBox(height: 4),
           Text(value, style: Theme.of(context).textTheme.titleLarge),
+          if (subtitle != null) ...[
+            const SizedBox(height: 4),
+            Text(subtitle!, style: Theme.of(context).textTheme.bodySmall),
+          ],
         ],
       ),
     );
