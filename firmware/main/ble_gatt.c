@@ -297,6 +297,15 @@ static int gatt_time_sync_write(struct ble_gatt_access_ctxt *ctxt)
 
 static void sync_finish(void)
 {
+    /* End-of-sync marker: one sentinel STATS notify with date_unix_day 0
+     * (1970-01-01, a date no real aggregate ever has) tells the phone the
+     * replay is done right away, instead of it having to infer completion
+     * from a ~1.5s quiet gap. Backward compatible both ways: firmware
+     * without this falls back to the phone's idle timer, and an app that
+     * doesn't recognize the marker just drops an unrenderable 1970 row. */
+    aggregate_record_t marker = {0};
+    ble_gatt_notify_stats(&marker);
+
     s_sync_pending = false;
     esp_timer_stop(s_sync_timer);
     /* Same simplification as housekeeper()'s pairing-window-closed ->

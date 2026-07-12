@@ -223,10 +223,15 @@ notifications:
 
 Phases 2 and 3 are bounded (at most `8*24` records) and the phone's local
 dedup makes a repeat replay a harmless no-op, so neither needs its own
-cursor on the device. There is no explicit "replay finished" marker on the
-wire; the phone treats a ~1.5s gap with no new STATS notification as
-"caught up". Write requires a bonded/encrypted link, same reasoning as
-CONFIG/TIME_SYNC.
+cursor on the device. When all three phases finish, the device sends one
+end-of-sync marker: a STATS notify with `date_unix_day == 0`
+(`1970-01-01`, a date no real aggregate ever has), so the phone can flip
+its "syncing" state off immediately rather than waiting on a timeout. The
+phone filters that row out before storing it; an older app that doesn't
+know the marker just drops an unrenderable 1970 row, and older firmware
+that never sends one falls back to the phone's ~1.5s idle-gap heuristic -
+backward compatible both ways. Write requires a bonded/encrypted link,
+same reasoning as CONFIG/TIME_SYNC.
 
 ## Open questions: deliberately unresolved in this phase
 
