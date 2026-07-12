@@ -77,6 +77,22 @@ class LocalDb {
     );
   }
 
+  /// Whether any row (hourly or daily) exists for this device - the gate
+  /// for offline mode: if a previously-paired device has cached data,
+  /// ConnectingScreen can drop straight into the dashboard without a live
+  /// connection instead of forcing the pairing screen.
+  Future<bool> hasAnyData(String deviceId) async {
+    final db = await _open();
+    final rows = await db.query(
+      _table,
+      columns: ['1'],
+      where: 'device_id = ?',
+      whereArgs: [deviceId],
+      limit: 1,
+    );
+    return rows.isNotEmpty;
+  }
+
   /// Hourly rows (`hour` 0-23) for one device and date, ordered by hour.
   Future<List<Aggregate>> hourlyForDate(String deviceId, String date) async {
     final db = await _open();
