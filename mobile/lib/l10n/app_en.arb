@@ -140,5 +140,6 @@
   "settingsSaveFailed": "Failed to save device settings",
   "notConnected": "Not connected to a device",
   "connectButton": "Connect",
+  "reconnecting": "Reconnecting...",
   "requiresConnection": "requires a device connection"
 }

@@ -91,11 +91,25 @@ class _SyncStatusBannerState extends State<SyncStatusBanner> {
           ),
           if (!connected) ...[
             const SizedBox(width: 8),
-            if (_connecting)
-              SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(strokeWidth: 2, color: accent),
+            if (_connecting || ble.isReconnecting)
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    width: 16,
+                    height: 16,
+                    child:
+                        CircularProgressIndicator(strokeWidth: 2, color: accent),
+                  ),
+                  // While the app is auto-reconnecting on its backoff loop,
+                  // say so instead of offering a manual [Connect] that would
+                  // just race it.
+                  if (ble.isReconnecting) ...[
+                    const SizedBox(width: 8),
+                    Text(l10n.reconnecting,
+                        style: Theme.of(context).textTheme.bodySmall),
+                  ],
+                ],
               )
             else
               TextButton(

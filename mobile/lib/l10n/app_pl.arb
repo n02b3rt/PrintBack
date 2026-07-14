@@ -140,5 +140,6 @@
   "settingsSaveFailed": "Nie udało się zapisać ustawień urządzenia",
   "notConnected": "Brak połączenia z urządzeniem",
   "connectButton": "Połącz",
+  "reconnecting": "Łączenie ponowne...",
   "requiresConnection": "wymaga połączenia z urządzeniem"
 }

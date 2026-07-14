@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart' show WidgetsBinding, WidgetsBindingObserver, AppLifecycleState;
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -31,8 +32,9 @@ class PrintBackUuids {
 /// (bonding) is handled by the OS after the physical button press on the
 /// device (docs/DECISIONS.md D5) - this class only drives the GATT
 /// characteristics once a connection exists.
-class BleService extends ChangeNotifier {
+class BleService extends ChangeNotifier with WidgetsBindingObserver {
   BleService() {
+    WidgetsBinding.instance.addObserver(this);
     _loadActiveDeviceId();
   }
 
@@ -92,15 +94,32 @@ class BleService extends ChangeNotifier {
 
   Timer? _syncIdleTimer;
 
-  /// Retries once, after a short settle delay, when the BLE link drops
-  /// unexpectedly (device reflashed/rebooted, walked out of range) -
-  /// without this, the app just sits disconnected until the user
-  /// manually relaunches it or reconnects via Settings, which also means
-  /// the device's clock (no RTC, corrected only by TIME_SYNC on connect,
-  /// docs/DECISIONS.md D6) stays stuck on a stale fallback and misdates
-  /// everything it captures in the meantime (docs/LEARNINGS.md
-  /// 2026-07-11).
+  /// Auto-reconnect after the BLE link drops unexpectedly (device
+  /// reflashed/rebooted, walked out of range) - without this the app sits
+  /// disconnected until the user relaunches it or reconnects via Settings,
+  /// which also leaves the device's clock stuck on a stale fallback
+  /// (no RTC, corrected only by TIME_SYNC on connect, docs/DECISIONS.md D6)
+  /// misdating everything it captures meanwhile (docs/LEARNINGS.md
+  /// 2026-07-11). Retries on a growing backoff so a device that's simply
+  /// out of range for a while doesn't get hammered.
   Timer? _reconnectTimer;
+
+  /// Growing delay between auto-reconnect attempts; caps at the last entry.
+  static const _reconnectBackoff = [
+    Duration(seconds: 3),
+    Duration(seconds: 10),
+    Duration(seconds: 30),
+    Duration(seconds: 60),
+  ];
+  int _reconnectAttempt = 0;
+
+  bool _isReconnecting = false;
+  bool get isReconnecting => _isReconnecting;
+
+  /// App foreground/background, so the reconnect loop only runs while the
+  /// app is actually in use - retrying BLE in the background would drain
+  /// the battery for no benefit (nothing's watching the data).
+  AppLifecycleState _lifecycle = AppLifecycleState.resumed;
 
   /// Guards connect() against running twice concurrently - a manual retry
   /// racing _scheduleReconnect()'s auto-reconnect (or two reconnect timers
@@ -406,6 +425,10 @@ class BleService extends ChangeNotifier {
       // registry the Settings switcher shows.
       await _recordVerifiedDevice(device);
 
+      // Connected cleanly - reset the auto-reconnect backoff.
+      _reconnectAttempt = 0;
+      _isReconnecting = false;
+
       notifyListeners();
     } catch (e) {
       // A failure partway through (permission denied, service/characteristic
@@ -467,21 +490,41 @@ class BleService extends ChangeNotifier {
     await _syncChr!.write(bytes.buffer.asUint8List());
   }
 
-  /// One retry, after a short delay to let the device's BLE stack come
-  /// back up (e.g. mid-reboot after a reflash) rather than hammering it
-  /// immediately. Reuses tryAutoConnect() rather than reconnecting to
-  /// [device] directly: it already prefers the last-connected device (the
-  /// one that just dropped) via the same SharedPreferences key connect()
-  /// writes on every success, so this naturally retries the right device
-  /// first without duplicating that logic. Deliberately just one retry,
-  /// not a backoff loop - if it fails, the device is genuinely
-  /// unreachable and the manual pairing screen is the right fallback,
-  /// same as any other tryAutoConnect() failure.
+  /// Schedules the next auto-reconnect attempt on the backoff schedule.
+  /// Foreground-only; each failed attempt lengthens the delay up to the
+  /// cap. Reuses tryAutoConnect() (which prefers the last-connected device
+  /// and validates it's really ours), and reschedules itself on failure so
+  /// a device that comes back into range eventually reconnects on its own.
   void _scheduleReconnect() {
+    if (_lifecycle != AppLifecycleState.resumed) return;
     _reconnectTimer?.cancel();
-    _reconnectTimer = Timer(const Duration(seconds: 3), () {
-      tryAutoConnect();
+    final delay = _reconnectBackoff[
+        _reconnectAttempt.clamp(0, _reconnectBackoff.length - 1)];
+    if (!_isReconnecting) {
+      _isReconnecting = true;
+      notifyListeners();
+    }
+    _reconnectTimer = Timer(delay, () async {
+      _reconnectAttempt++;
+      final device = await tryAutoConnect();
+      // connect() resets the backoff state on success; if we're still not
+      // connected, queue the next (longer) attempt.
+      if (device == null) _scheduleReconnect();
     });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final wasResumed = _lifecycle == AppLifecycleState.resumed;
+    _lifecycle = state;
+    if (state != AppLifecycleState.resumed) {
+      // Backgrounded: stop retrying (battery), keep the flag so we resume
+      // the loop when the app comes back.
+      _reconnectTimer?.cancel();
+    } else if (!wasResumed && _isReconnecting) {
+      // Foregrounded again mid-reconnect - resume the loop immediately.
+      _scheduleReconnect();
+    }
   }
 
   void _armSyncIdleTimer() {
@@ -562,6 +605,10 @@ class BleService extends ChangeNotifier {
 
   Future<void> disconnect() async {
     _reconnectTimer?.cancel();
+    // A user-initiated disconnect ends the reconnect loop too - don't keep
+    // trying to reconnect to a device the user deliberately dropped.
+    _reconnectAttempt = 0;
+    _isReconnecting = false;
     await _statsSub?.cancel();
     await _connSub?.cancel();
     _syncIdleTimer?.cancel();
@@ -578,6 +625,7 @@ class BleService extends ChangeNotifier {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _statsSub?.cancel();
     _connSub?.cancel();
     _syncIdleTimer?.cancel();
