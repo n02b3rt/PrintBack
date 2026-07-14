@@ -1141,3 +1141,42 @@ Status: RESOLVED (2026-07-11) - root cause: one-sided (device-side)
 stale BLE bond after the phone silently lost its own; fix: NVS erase +
 fresh pairing. Confirmed on hardware end-to-end, connection stable,
 full sync replay verified.
+
+## [FIRMWARE] board went unresponsive after an unclean USB power removal, only a physical replug recovered it
+Date: 2026-07-12
+Problem: during Phase 10 on-device testing, after the board had been
+physically unplugged from USB mid-session (part of an offline-mode test
+that called for cutting the device's power), the phone app could no
+longer see or pair with it - a general BLE scan returned nothing and the
+physical pairing button did nothing. A serial capture on the same COM
+port that had been working earlier the same day showed ZERO output over
+multiple 35-40s windows (not even the housekeeper's 30s stats line),
+ruling out "just quiet traffic".
+Investigation (each step ruled out one layer): plain pyserial capture -
+silent; capture with DTR/RTS deasserted (to rule out pyserial holding
+the ESP32-C6 in reset via the USB-serial-jtag control lines) - still
+silent; `esptool ... read_mac`/`chip_id` - succeeded (so the chip is
+alive and responds at the ROM level); `idf.py flash` of the same frozen
+build - wrote and verified successfully, hard-reset "Done", but the app
+STILL produced no serial output afterward. So: chip alive at ROM,
+flashing works, but the application firmware would not run/advertise -
+which explained both app-side symptoms at once (no BLE advertising, and
+a button the non-running app couldn't service).
+Root cause: not fully diagnosed at the register level, but empirically
+the ESP32-C6's native USB-serial-jtag got into a wedged state after the
+unclean power removal that neither an esptool-driven reset nor a reflash
+cleared. Consistent with known ESP32-C6 USB-serial-jtag quirks where the
+USB peripheral's state survives a software/RTS reset because it's tied to
+the USB host connection, not the chip reset domain.
+Fix: a full PHYSICAL power cycle - unplug the USB cable, wait ~5s, plug
+back in - brought the board straight back to life (normal boot, BLE
+advertising, the phone paired immediately). A software reset (esptool
+`--after hard_reset`) and a reflash both failed to recover it; only
+removing and restoring bus power did.
+Status: RESOLVED (2026-07-12) via physical replug. Flagged for the 30-day
+soak: a real-world power blip or brownout could plausibly wedge the board
+the same way, and it would then sit silent (not capturing, not
+advertising) until physically power-cycled - which a shop owner might not
+know to do. Worth watching for during the soak, and a candidate argument
+for a hardware watchdog/auto-recovery path or a cleaner power arrangement
+before a real pilot.
