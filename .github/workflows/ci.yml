@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  firmware-host-tests:
+    # Pure-logic modules in firmware/main/ have host-side unit tests that
+    # need only gcc, no ESP-IDF and no board (firmware/test_host/). The
+    # full ESP-IDF build is intentionally not run here - it needs the
+    # espressif/idf container and is slow; can be added later as its own
+    # cached job.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run host tests
+        run: bash firmware/test_host/run_tests.sh
+
+  mobile:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - name: Install dependencies
+        run: flutter pub get
+      - name: Generate localizations
+        run: flutter gen-l10n
+      - name: Analyze
+        run: flutter analyze
+      - name: Test
+        run: flutter test
