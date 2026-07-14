@@ -93,6 +93,16 @@ void main() {
     });
   });
 
+  group('sync end marker', () {
+    test('a 1970-01-01 row is the sentinel', () {
+      expect(daily('1970-01-01', 0).isSyncEndMarker, isTrue);
+    });
+    test('a real aggregate is not the sentinel', () {
+      expect(daily('2026-07-12', 0).isSyncEndMarker, isFalse);
+      expect(hourly('2026-07-12', 0, 0).isSyncEndMarker, isFalse);
+    });
+  });
+
   group('classifyTrend', () {
     test('extreme short-circuits', () {
       final r = classifyTrend(1, 100, isExtreme: true);

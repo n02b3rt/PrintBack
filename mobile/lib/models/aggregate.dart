@@ -37,6 +37,15 @@ class Aggregate {
     };
   }
 
+  /// The end-of-sync sentinel the device sends once a SYNC replay
+  /// finishes (a row dated 1970-01-01, a date no real aggregate ever has -
+  /// the device clock is never in 1970, even its Kconfig fallback is
+  /// 2026). Lets the app end the "syncing" state immediately instead of
+  /// waiting for the quiet-period idle timer, and must be dropped before
+  /// storing/rendering. See firmware/main/ble_gatt.c and
+  /// docs/DATA_MODEL.md "BLE SYNC payload".
+  bool get isSyncEndMarker => date == '1970-01-01';
+
   /// The UTC instant this hourly record represents - only meaningful
   /// when [hour] is not null (a daily record has no single instant).
   /// The firmware has no RTC/timezone concept, everything on the wire

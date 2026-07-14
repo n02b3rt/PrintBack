@@ -502,17 +502,37 @@ class BleService extends ChangeNotifier {
 
   void _onStatsNotification(List<int> value) {
     if (value.isEmpty) return;
-    // Every row that arrives while a sync is in flight pushes the "done"
-    // deadline back - a big backlog replay is many notifications in a
-    // row, not one.
-    if (_isSyncing) _armSyncIdleTimer();
+    final Aggregate agg;
     try {
       final map = jsonDecode(utf8.decode(value)) as Map<String, dynamic>;
-      _statsController.add(Aggregate.fromJson(map));
+      agg = Aggregate.fromJson(map);
     } catch (_) {
       // Malformed or mid-fragment notification: drop it, the next
       // notification carries the next row (docs/DATA_MODEL.md never
       // batches, so nothing besides this one row is lost).
+      return;
+    }
+    // The device's end-of-sync marker means the replay is done: finish the
+    // sync immediately rather than waiting out the idle timer, and never
+    // let the 1970 sentinel reach the db or the charts. The idle timer
+    // stays as a fallback for older firmware that doesn't send a marker.
+    if (agg.isSyncEndMarker) {
+      _completeSyncNow();
+      return;
+    }
+    // Every real row that arrives while a sync is in flight pushes the
+    // "done" deadline back - a big backlog replay is many notifications in
+    // a row, not one.
+    if (_isSyncing) _armSyncIdleTimer();
+    _statsController.add(agg);
+  }
+
+  void _completeSyncNow() {
+    _syncIdleTimer?.cancel();
+    if (_isSyncing) {
+      _isSyncing = false;
+      _lastSyncCompleted = DateTime.now();
+      notifyListeners();
     }
   }
 
