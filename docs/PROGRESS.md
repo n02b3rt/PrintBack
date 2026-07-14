@@ -308,11 +308,37 @@
       qualification (needs 6h of presence), and the explicit
       `wallclock restored from nvs` boot line.
 
+- [x] Phase 10: mobile offline mode + correctness/language fixes (done
+      2026-07-12, `feature/mobile-offline-fixes` off `main`, runs in
+      parallel with the soak - no firmware change). Sixteen commits, each
+      `flutter analyze` + `flutter test` green: offline mode (a new
+      `BleService.activeDeviceId` decouples the screens from a live
+      connection, `LocalDb.hasAnyData` gates it, `ConnectingScreen` drops
+      into the dashboard offline when cached data exists, connection-only
+      actions disable with a [Connect] affordance in the status banner);
+      KPI truth (unique = "Odwiedzający"/visitors, a real "Nowi"/new tile =
+      unique-returning, all the legends/detail-sheets that mislabelled
+      unique as "new" fixed); human-readable dates via `lib/logic/format.dart`
+      and a saner date-axis label rule; plain-language connection errors;
+      0/6/12/18 hourly-axis anchors; Settings range presets replacing the
+      raw RSSI slider (with an "Advanced" slider, returning-window presets,
+      a change-confirm dialog, all disabled offline); a forget-device
+      action; a verified-PrintBack device registry backing the Settings
+      switcher and now `tryAutoConnect()`'s first candidate source (so it
+      never attempts an unrelated bonded watch); full weekday names on KPI
+      tiles + sparse-data presentation (dots/straight segments on short
+      trend lines, coverage captions, a 7-slot-minimum daily chart); the
+      "Auto" theme label; and `lib/logic/stats_math.dart`, a pure,
+      unit-tested stats module (plus `sqflite_common_ffi` LocalDb tests -
+      29 tests total). Two follow-up reconnect fixes landed after on-device
+      testing: prefer the verified registry when auto-connecting, and only
+      show "connected" once the device is verified (not mid-attempt on a
+      wrong device). Verified end to end on hardware.
+
 Note: the current code in `firmware/` and `app/` is still the old
 architecture (USB-CDC → Python desktop dashboard, SQLite). Don't remove /
 change it until the new path (BLE+SD) is ready and tested in parallel.
 
-Last updated: 2026-07-12 (Phase 9 firmware reliability done and hardware-
-validated, merged to `main`; firmware is now frozen for the 30-day soak.
-Remaining firmware verification is soak-observed, not blocking - see Phase
-9 notes. Mobile work, Etap 2 onward, runs in parallel with the soak).
+Last updated: 2026-07-12 (Phase 10 mobile offline mode + fixes done and
+merged to `main`; firmware stays frozen for the 30-day soak. Next: Etap 3
+onboarding, then the mobile parts of Etap 4).
