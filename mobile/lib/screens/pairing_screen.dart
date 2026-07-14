@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../ble/ble_service.dart';
 import '../l10n/app_localizations.dart';
+import '../onboarding/permission_priming.dart';
 import '../widgets/gradient_background.dart';
 import 'home_shell.dart';
 
@@ -21,6 +22,17 @@ class _PairingScreenState extends State<PairingScreen> {
   List<ScanResult> _results = [];
 
   Future<void> _startScan() async {
+    // Explain and request BLE permission before the raw system prompt, and
+    // handle a denial gracefully (report 3.3) rather than just scanning and
+    // failing with a terse message.
+    if (!await primeAndRequestBlePermission(context)) {
+      if (mounted) {
+        setState(() =>
+            _error = AppLocalizations.of(context)!.bluetoothPermissionDenied);
+      }
+      return;
+    }
+    if (!mounted) return;
     setState(() {
       _scanning = true;
       _error = null;
