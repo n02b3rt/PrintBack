@@ -43,14 +43,35 @@ class LocalDb {
     final path = join(await getDatabasesPath(), _dbName);
     _db = await openDatabase(
       path,
-      version: 3,
+      version: 4,
       onCreate: (db, version) => _createTable(db),
-      onUpgrade: (db, oldVersion, newVersion) async {
-        await db.execute('DROP TABLE IF EXISTS $_table');
-        await _createTable(db);
-      },
+      onUpgrade: _onUpgrade,
     );
     return _db!;
+  }
+
+  /// Migration policy: from v4 onward every step preserves existing rows
+  /// (additive ALTER TABLE / copy-migrate, never DROP), so a shop owner's
+  /// synced history survives an app update. Only the pre-v3 schemas -
+  /// which had an incompatible nullable `hour` column and predate any real
+  /// user data - are recreated. Each `case` migrates exactly one version
+  /// forward.
+  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    for (var v = oldVersion; v < newVersion; v++) {
+      switch (v) {
+        case 1:
+        case 2:
+          // Legacy dev-only schemas (nullable hour); no data worth keeping.
+          await db.execute('DROP TABLE IF EXISTS $_table');
+          await _createTable(db);
+          break;
+        case 3:
+          // v3 -> v4: no column change; the point is routing through the
+          // data-preserving path instead of the old drop-and-recreate, so
+          // cached aggregates survive the upgrade. Nothing to alter.
+          break;
+      }
+    }
   }
 
   Future<void> _createTable(Database db) async {

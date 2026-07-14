@@ -84,4 +84,46 @@ void main() {
     await db.upsert(dev, daily('2026-07-11', 1));
     expect(await db.newestDailyDate(dev), '2026-07-12');
   });
+
+  test('v3 -> v4 upgrade preserves cached rows instead of dropping them',
+      () async {
+    // setUp already deleted the file and made a (lazy, unopened) LocalDb.
+    // Create a v3 database by hand - the same schema an older app build
+    // would have left on disk - with one synced day in it.
+    final path =
+        '${await databaseFactory.getDatabasesPath()}/printback_aggregates.db';
+    final v3 = await databaseFactory.openDatabase(
+      path,
+      options: OpenDatabaseOptions(
+        version: 3,
+        onCreate: (d, v) => d.execute('''
+          CREATE TABLE aggregates (
+            device_id TEXT NOT NULL,
+            date TEXT NOT NULL,
+            hour INTEGER NOT NULL,
+            unique_count INTEGER NOT NULL,
+            returning_count INTEGER NOT NULL,
+            kanon_applied INTEGER NOT NULL,
+            UNIQUE(device_id, date, hour)
+          )
+        '''),
+      ),
+    );
+    await v3.insert('aggregates', {
+      'device_id': dev,
+      'date': '2026-07-11',
+      'hour': -1,
+      'unique_count': 42,
+      'returning_count': 7,
+      'kanon_applied': 0,
+    });
+    await v3.close();
+
+    // Opening through LocalDb (version 4) runs the v3->v4 migration.
+    final upgraded = LocalDb();
+    final rows = await upgraded.recentDaily(dev);
+    expect(rows.single.unique, 42,
+        reason: 'v3 cached data must survive the upgrade to v4');
+    await upgraded.close();
+  });
 }
