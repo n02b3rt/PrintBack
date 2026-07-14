@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../ble/ble_service.dart';
 import '../l10n/app_localizations.dart';
 import '../models/device_config.dart';
+import '../onboarding/onboarding_flags.dart';
 import '../theme/theme_controller.dart';
 import '../storage/local_db.dart';
 import '../widgets/glass_card.dart';
@@ -446,9 +447,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           )
                         : Text(l10n.saveButton),
                   ),
+                  const SizedBox(height: 24),
+                  Text(l10n.aboutSectionTitle,
+                      style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(height: 8),
+                  GlassCard(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: ListTile(
+                      leading: const Icon(Icons.school_outlined),
+                      title: Text(l10n.replayTutorial),
+                      onTap: _replayTutorial,
+                    ),
+                  ),
                 ],
               ),
       ),
+    );
+  }
+
+  Future<void> _replayTutorial() async {
+    await OnboardingFlags.setCoachMarksDone(false);
+    if (!mounted) return;
+    // A fresh HomeShell re-runs the coach-mark tour from its initState.
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const HomeShell()),
+      (route) => false,
     );
   }
 }

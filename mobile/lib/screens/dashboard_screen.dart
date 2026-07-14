@@ -27,7 +27,19 @@ String _dateString(DateTime d) =>
     '${d.day.toString().padLeft(2, '0')}';
 
 class DashboardScreen extends StatefulWidget {
-  const DashboardScreen({super.key});
+  /// Optional keys the onboarding coach marks (11d) attach to the KPI row,
+  /// the hourly chart and the status banner, so the first-run tour can
+  /// spotlight each. Null in normal use.
+  final GlobalKey? kpiKey;
+  final GlobalKey? hourlyKey;
+  final GlobalKey? bannerKey;
+
+  const DashboardScreen({
+    super.key,
+    this.kpiKey,
+    this.hourlyKey,
+    this.bannerKey,
+  });
 
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
@@ -140,9 +152,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
           child: ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              const SyncStatusBanner(),
+              SyncStatusBanner(key: widget.bannerKey),
               const SizedBox(height: 16),
               Row(
+                key: widget.kpiKey,
                 children: [
                   Expanded(
                     child: _KpiCard(label: l10n.uniqueLabel, value: todayUnique),
@@ -168,6 +181,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   style: Theme.of(context).textTheme.titleMedium),
               const SizedBox(height: 8),
               GlassCard(
+                key: widget.hourlyKey,
                 child: SizedBox(
                   height: 200,
                   child: _hourlyToday.isEmpty

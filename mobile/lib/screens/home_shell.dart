@@ -3,6 +3,8 @@ import 'package:provider/provider.dart';
 
 import '../ble/ble_service.dart';
 import '../l10n/app_localizations.dart';
+import '../onboarding/coach_marks.dart';
+import '../onboarding/onboarding_flags.dart';
 import '../storage/local_db.dart';
 import 'dashboard_screen.dart';
 import 'settings_screen.dart';
@@ -22,10 +24,37 @@ class HomeShell extends StatefulWidget {
 class _HomeShellState extends State<HomeShell> {
   int _index = 0;
 
+  // Spotlight targets for the first-run coach marks (11d).
+  final _kpiKey = GlobalKey();
+  final _hourlyKey = GlobalKey();
+  final _bannerKey = GlobalKey();
+  final _navKey = GlobalKey();
+
   @override
   void initState() {
     super.initState();
     _triggerSync();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeShowCoachMarks());
+  }
+
+  /// First time the dashboard is reached, run the coach-mark tour once the
+  /// screen has settled a moment. Skipped for returning users (flag set)
+  /// or if the user has already navigated away.
+  Future<void> _maybeShowCoachMarks() async {
+    if (await OnboardingFlags.coachMarksDone()) return;
+    await Future.delayed(const Duration(milliseconds: 600));
+    if (!mounted || _index != 0) return;
+    final l10n = AppLocalizations.of(context)!;
+    CoachMarks.show(
+      context,
+      [
+        CoachTarget(_kpiKey, l10n.coachMarkKpi),
+        CoachTarget(_hourlyKey, l10n.coachMarkHourly),
+        CoachTarget(_bannerKey, l10n.coachMarkBanner),
+        CoachTarget(_navKey, l10n.coachMarkNav),
+      ],
+      onDone: () => OnboardingFlags.setCoachMarksDone(true),
+    );
   }
 
   /// Requests a backlog replay once per connection, picking up right
@@ -50,13 +79,18 @@ class _HomeShellState extends State<HomeShell> {
     return Scaffold(
       body: IndexedStack(
         index: _index,
-        children: const [
-          DashboardScreen(),
-          StatisticsScreen(),
-          SettingsScreen(),
+        children: [
+          DashboardScreen(
+            kpiKey: _kpiKey,
+            hourlyKey: _hourlyKey,
+            bannerKey: _bannerKey,
+          ),
+          const StatisticsScreen(),
+          const SettingsScreen(),
         ],
       ),
       bottomNavigationBar: NavigationBar(
+        key: _navKey,
         selectedIndex: _index,
         onDestinationSelected: (i) => setState(() => _index = i),
         destinations: [
