@@ -5,6 +5,7 @@ import '../screens/connecting_screen.dart';
 import '../widgets/device_illustration.dart';
 import '../widgets/gradient_background.dart';
 import 'onboarding_flags.dart';
+import 'pairing_wizard.dart';
 
 /// First-run intro: three full-screen cards (what it does / how it works /
 /// privacy) with progress dots and a skip. Copy is straight from the
@@ -28,15 +29,23 @@ class _WelcomeCarouselState extends State<WelcomeCarousel> {
     super.dispose();
   }
 
-  Future<void> _finish() async {
+  /// Skip / "I already have a paired device": mark onboarding done and go
+  /// straight to the normal connect flow, no guided wizard.
+  Future<void> _skipToConnect() async {
     await OnboardingFlags.setOnboardingDone();
     if (!mounted) return;
-    // 11a routes both the CTA and the "already paired" link here. In 11c
-    // the CTA is rewired to push the guided pairing wizard instead (which
-    // sets the done flag on completion); the link keeps going straight to
-    // the normal connect flow.
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(builder: (_) => const ConnectingScreen()),
+    );
+  }
+
+  /// Primary CTA: launch the guided pairing wizard. It sets the
+  /// onboarding-done flag itself once pairing completes, so backing out of
+  /// the wizard leaves onboarding un-finished (the user sees it again) -
+  /// deliberate, they haven't actually paired yet.
+  void _startWizard() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const PairingWizard()),
     );
   }
 
@@ -64,7 +73,7 @@ class _WelcomeCarouselState extends State<WelcomeCarousel> {
               Align(
                 alignment: Alignment.centerRight,
                 child: TextButton(
-                  onPressed: _finish,
+                  onPressed: _skipToConnect,
                   child: Text(l10n.onboardingSkip),
                 ),
               ),
@@ -86,7 +95,7 @@ class _WelcomeCarouselState extends State<WelcomeCarousel> {
                       width: double.infinity,
                       child: FilledButton(
                         onPressed: isLast
-                            ? _finish
+                            ? _startWizard
                             : () => _controller.nextPage(
                                   duration: const Duration(milliseconds: 300),
                                   curve: Curves.easeOut,
@@ -99,7 +108,7 @@ class _WelcomeCarouselState extends State<WelcomeCarousel> {
                     ),
                     if (isLast)
                       TextButton(
-                        onPressed: _finish,
+                        onPressed: _skipToConnect,
                         child: Text(l10n.welcomeAlreadyPaired),
                       ),
                   ],
