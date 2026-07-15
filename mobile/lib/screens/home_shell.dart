@@ -5,6 +5,7 @@ import '../ble/ble_service.dart';
 import '../l10n/app_localizations.dart';
 import '../onboarding/coach_marks.dart';
 import '../onboarding/onboarding_flags.dart';
+import '../onboarding/one_time_tip.dart';
 import '../storage/local_db.dart';
 import 'dashboard_screen.dart';
 import 'settings_screen.dart';
@@ -57,6 +58,24 @@ class _HomeShellState extends State<HomeShell> {
     );
   }
 
+  /// First time the user opens the Statistics tab, explain the
+  /// returning-rate stat once (report 3.6). Triggered from the nav handler
+  /// (not the screen's initState) because the IndexedStack builds all tabs
+  /// eagerly, so initState fires before the tab is ever seen. Gated on the
+  /// coach-mark tour being done so tips don't stack on the first run.
+  Future<void> _maybeShowReturningTip() async {
+    if (!await OnboardingFlags.coachMarksDone()) return;
+    if (await OnboardingFlags.returningRateTipSeen()) return;
+    await OnboardingFlags.setReturningRateTipSeen();
+    if (!mounted) return;
+    final l10n = AppLocalizations.of(context)!;
+    await showOneTimeTip(
+      context,
+      title: l10n.tipReturningRateTitle,
+      body: l10n.tipReturningRateBody,
+    );
+  }
+
   /// Requests a backlog replay once per connection, picking up right
   /// where the local db already left off (docs/DATA_MODEL.md "BLE SYNC
   /// payload") - this is the "sometimes syncs on its own" half of the
@@ -92,7 +111,10 @@ class _HomeShellState extends State<HomeShell> {
       bottomNavigationBar: NavigationBar(
         key: _navKey,
         selectedIndex: _index,
-        onDestinationSelected: (i) => setState(() => _index = i),
+        onDestinationSelected: (i) {
+          setState(() => _index = i);
+          if (i == 1) _maybeShowReturningTip();
+        },
         destinations: [
           NavigationDestination(
               icon: const Icon(Icons.home), label: l10n.navDashboard),

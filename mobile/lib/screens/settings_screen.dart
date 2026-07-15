@@ -6,6 +6,7 @@ import '../ble/ble_service.dart';
 import '../l10n/app_localizations.dart';
 import '../models/device_config.dart';
 import '../onboarding/onboarding_flags.dart';
+import 'faq_screen.dart';
 import '../theme/theme_controller.dart';
 import '../storage/local_db.dart';
 import '../widgets/glass_card.dart';
@@ -453,10 +454,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   const SizedBox(height: 8),
                   GlassCard(
                     padding: const EdgeInsets.symmetric(horizontal: 4),
-                    child: ListTile(
-                      leading: const Icon(Icons.school_outlined),
-                      title: Text(l10n.replayTutorial),
-                      onTap: _replayTutorial,
+                    child: Column(
+                      children: [
+                        ListTile(
+                          leading: const Icon(Icons.help_outline),
+                          title: Text(l10n.howItWorksTitle),
+                          onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                                builder: (_) => const FaqScreen()),
+                          ),
+                        ),
+                        const Divider(height: 1),
+                        ListTile(
+                          leading: const Icon(Icons.school_outlined),
+                          title: Text(l10n.replayTutorial),
+                          onTap: _replayTutorial,
+                        ),
+                      ],
                     ),
                   ),
                 ],

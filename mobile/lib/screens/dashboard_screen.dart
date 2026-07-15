@@ -9,6 +9,8 @@ import '../l10n/app_localizations.dart';
 import '../logic/format.dart';
 import '../logic/stats_math.dart';
 import '../models/aggregate.dart';
+import '../onboarding/onboarding_flags.dart';
+import '../onboarding/one_time_tip.dart';
 import '../storage/local_db.dart';
 import '../widgets/brand_mark.dart';
 import '../widgets/chart_style.dart';
@@ -110,6 +112,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _recentDaily = daily;
       _todayDaily = todayDaily;
     });
+    _maybeShowKanonTip();
+  }
+
+  bool _kanonTipShown = false;
+
+  /// First time a k-anonymity-collapsed day actually shows up, explain the
+  /// badge once (report 3.6). Only after the coach-mark tour, so tips don't
+  /// stack on the first run.
+  Future<void> _maybeShowKanonTip() async {
+    if (_kanonTipShown || !_recentDaily.any((a) => a.kanon)) return;
+    _kanonTipShown = true;
+    if (!await OnboardingFlags.coachMarksDone()) return;
+    if (await OnboardingFlags.kanonTipSeen()) return;
+    await OnboardingFlags.setKanonTipSeen();
+    if (!mounted) return;
+    final l10n = AppLocalizations.of(context)!;
+    await showOneTimeTip(context,
+        title: l10n.tipKanonTitle, body: l10n.tipKanonBody);
   }
 
   @override
@@ -185,7 +205,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 child: SizedBox(
                   height: 200,
                   child: _hourlyToday.isEmpty
-                      ? Center(child: Text(l10n.noDataYet))
+                      ? Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Text(l10n.emptyHourlyHint,
+                                textAlign: TextAlign.center),
+                          ),
+                        )
                       : _HourlyBarChart(data: _hourlyToday),
                 ),
               ),
@@ -197,7 +223,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 child: SizedBox(
                   height: 200,
                   child: _recentDaily.isEmpty
-                      ? Center(child: Text(l10n.noDataYet))
+                      ? Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Text(
+                              connected ? l10n.emptyNoData : l10n.emptyOffline,
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        )
                       : _DailyBarChart(data: _recentDaily.reversed.toList()),
                 ),
               ),
