@@ -183,7 +183,7 @@
   "forgetDeviceKeepData": "Forget, keep data",
   "forgetDeviceDeleteData": "Forget and delete data",
   "forgetDeviceBody": "Also delete this device's synced data from the phone?",
-  "forgetDeviceUnbondHint": "To fully disconnect, also remove \"PrintBack\" in your system Bluetooth settings - the app can't do that for you.",
+  "forgetDeviceUnbondHint": "The app also removes the Bluetooth pairing. If re-pairing fails, remove \"PrintBack\" in your system Bluetooth settings first.",
   "rssiFloorLabel": "Minimum signal strength (RSSI, dBm)",
   "returningWindowLabel": "Returning window (days)",
   "rangeLabel": "Counting range",

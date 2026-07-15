@@ -183,7 +183,7 @@
   "forgetDeviceKeepData": "Zapomnij, zostaw dane",
   "forgetDeviceDeleteData": "Zapomnij i usuń dane",
   "forgetDeviceBody": "Usunąć też zsynchronizowane dane tego urządzenia z telefonu?",
-  "forgetDeviceUnbondHint": "Aby całkowicie rozłączyć, usuń też „PrintBack” w systemowych ustawieniach Bluetooth - aplikacja nie może zrobić tego za Ciebie.",
+  "forgetDeviceUnbondHint": "Aplikacja usunie też parowanie Bluetooth. Gdyby ponowne parowanie nie ruszyło, usuń „PrintBack” w systemowych ustawieniach Bluetooth.",
   "rssiFloorLabel": "Minimalna siła sygnału (RSSI, dBm)",
   "returningWindowLabel": "Okno powracających (dni)",
   "rangeLabel": "Zasięg liczenia",

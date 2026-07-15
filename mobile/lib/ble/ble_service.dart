@@ -660,7 +660,19 @@ class BleService extends ChangeNotifier with WidgetsBindingObserver {
   /// the user does that in system settings); the UI shows that instruction
   /// separately.
   Future<void> forgetActiveDevice() async {
+    // Grab the id before disconnect() clears _device. Removing the OS-level
+    // bond (Android), not just the app's pref, is what lets a later re-pair
+    // start clean - otherwise the phone keeps its half of the bond while the
+    // device forgot its half, the exact one-sided-bond deadlock from
+    // docs/LEARNINGS.md 2026-07-11. Best-effort: removeBond can fail (or not
+    // exist on iOS), in which case the user falls back to system settings.
+    final id = _activeDeviceId ?? _device?.remoteId.str;
     await disconnect();
+    if (id != null && !kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      try {
+        await BluetoothDevice.fromId(id).removeBond();
+      } catch (_) {}
+    }
     _activeDeviceId = null;
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_activeDeviceIdKey);
