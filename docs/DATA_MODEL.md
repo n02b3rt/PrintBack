@@ -117,14 +117,18 @@ Device diagnostics, one JSON object, read on demand (never notified). All
 fields are live device state, never per-client data:
 
 ```json
-{"fw":"1.0.0","sd_ok":true,"sd_free_mb":59421,"uptime_s":86321,"heap":142000,"reset":"poweron"}
+{"fw":"1.0.0","sd_ok":true,"sd_free_mb":59421,"uptime_s":86321,"heap":142000,"reset":"poweron","wl":14}
 ```
 
 `fw` is `esp_app_get_description()->version` (from the git tag / CMake
 project version), `sd_ok`/`sd_free_mb` come from `sd_storage`, `uptime_s`
-from `esp_timer`, `heap` from `esp_get_free_heap_size()`, and `reset` is
+from `esp_timer`, `heap` from `esp_get_free_heap_size()`, `reset` is
 the last reset reason string (`poweron`/`panic`/`brownout`/... captured at
-boot). Read-only, no encryption flag - same as STATS, and only bonded
+boot), and `wl` is `whitelist_count()` - the total whitelist size
+(auto-whitelisted background devices + any manually armed). `wl` is an
+aggregate count only, never a fingerprint, so it carries no per-client
+data; the app shows it as "background devices excluded from the visitor
+count". Read-only, no encryption flag - same as STATS, and only bonded
 peers reach it through the connection whitelist anyway. A phone treats the
 characteristic as optional: older firmware without it must not break the
 connect flow (Etap 2 mobile `readStatus()` uses a null-returning lookup,

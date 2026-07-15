@@ -27,6 +27,7 @@
 #include "runtime_config.h"
 #include "sd_storage.h"
 #include "ui.h"
+#include "whitelist.h"
 
 static const char *TAG = "ble_gatt";
 
@@ -46,7 +47,7 @@ static const char *TAG = "ble_gatt";
 
 #define STATS_JSON_MAX_LEN 96
 #define CONFIG_JSON_MAX_LEN 64
-#define STATUS_JSON_MAX_LEN 160
+#define STATUS_JSON_MAX_LEN 176
 
 /* e794a7d8-6905-4552-b7a2-d0cdc9dae0f6 (docs/DATA_MODEL.md) */
 static const ble_uuid128_t s_svc_uuid =
@@ -237,15 +238,20 @@ static int gatt_status_read(struct ble_gatt_access_ctxt *ctxt)
 {
     const esp_app_desc_t *desc = esp_app_get_description();
     char json[STATUS_JSON_MAX_LEN];
+    /* "wl" is the total whitelist size (auto-whitelisted background devices
+     * + any manually armed). An aggregate count only, never a fingerprint -
+     * same privacy footing as the rest of STATUS. */
     int len = snprintf(json, sizeof(json),
         "{\"fw\":\"%s\",\"sd_ok\":%s,\"sd_free_mb\":%" PRIu32 ","
-        "\"uptime_s\":%" PRId64 ",\"heap\":%" PRIu32 ",\"reset\":\"%s\"}",
+        "\"uptime_s\":%" PRId64 ",\"heap\":%" PRIu32 ",\"reset\":\"%s\","
+        "\"wl\":%u}",
         desc->version,
         sd_storage_is_ready() ? "true" : "false",
         sd_storage_free_mb(),
         esp_timer_get_time() / 1000000,
         esp_get_free_heap_size(),
-        app_reset_reason_str());
+        app_reset_reason_str(),
+        (unsigned)whitelist_count());
 
     if (len < 0) return BLE_ATT_ERR_UNLIKELY;
     int rc = os_mbuf_append(ctxt->om, json, (uint16_t)len);
