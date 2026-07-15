@@ -225,15 +225,13 @@ anywhere in the local db or on the wire.
 
 Improvements to the staff/fixed-device auto-whitelist.
 
-1. **Firmware: add an observation-count gate.** Today `wl_auto.c`
-   qualifies a fingerprint purely on ">= 6 distinct hours in an 8h rolling
-   window". `docs/compliance/README.md`'s config already names
-   `auto_wl_min_observations: 30`, but the firmware doesn't enforce it.
-   Require ">= 6 distinct hours AND >= N observations" so a device is only
-   excluded once it's clearly fixed infrastructure/staff, not a visitor
-   who happened to linger across several hours. Keep the host test
-   (`test_wl_auto.c`) and add cases for the new gate. Still pending, tied
-   to a reflash (resets the soak).
+1. **Firmware: add an observation-count gate.** DONE (2026-07-15).
+   `wl_auto.c` now qualifies on ">= min_distinct_hours AND >=
+   min_observations total observations" (`PRINTBACK_AUTO_WL_MIN_OBSERVATIONS`,
+   default 30, 0 disables the gate). `test_wl_auto.c` covers the new cases
+   (sparse-but-many-hours stays blocked, dense qualifies once, gate=0
+   restores hours-only). The real-world effect (a device only excluded once
+   it actually generates traffic) is observable during the soak.
 
 2. **App: surface an auto-whitelist count (a count, never a list).** DONE
    (2026-07-15). The device's STATUS payload now carries `wl` =
