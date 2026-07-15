@@ -774,8 +774,27 @@ static void gatt_on_sync(void)
         return;
     }
 
+    /* Factory-reset-bonds gesture (ui.c): the button was held from boot, so
+     * wipe every persisted bond before we restore the whitelist from them.
+     * Only touches the NimBLE security store - the fingerprint salt and the
+     * fp-whitelist live in separate NVS namespaces, so returning-visitor
+     * history survives. */
+    bool wipe = ui_boot_reset_requested();
+    if (wipe) {
+        int crc = ble_store_clear();
+        ESP_LOGW(TAG, "boot bond reset: bond store cleared (rc=%d)", crc);
+    }
+
     refresh_whitelist(); /* restore bonds from NVS before the first advertise */
-    gatt_advertise();
+
+    if (wipe) {
+        /* Freshly wiped: no bonds to accept, so open the pairing window
+         * straight away instead of a whitelist-only advertise nobody can
+         * connect to. */
+        ble_gatt_enter_pairing_mode();
+    } else {
+        gatt_advertise();
+    }
 }
 
 static void gatt_host_task(void *param)

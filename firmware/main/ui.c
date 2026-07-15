@@ -36,6 +36,15 @@
  * gap has to be produced here, before the reset. */
 #define RESTART_DARK_MS  3000
 
+/* Factory-reset-bonds gesture: hold the button from boot/power-on for this
+ * long and every BLE bond is erased (ble_gatt does the actual wipe once the
+ * host is up), so a shop owner can re-pair a phone that lost its bond
+ * without a PC. Reached either by holding the button while powering on, or
+ * by simply not letting go through the hold-to-restart reboot above - the
+ * button is still down when the board comes back up. The LED warns in
+ * magenta the whole time, so releasing cancels it. */
+#define BOND_RESET_HOLD_MS 3000
+
 /* Release debounce: a press is only considered ended once the pin has read
  * released continuously for this long. A shorter high blip (marginal switch
  * contact, e.g. a breadboard tact switch) is ignored, so the hold counter
@@ -101,6 +110,50 @@ static void btn_init(void)
     };
     gpio_config(&g);
 }
+
+static bool s_boot_reset_requested = false;
+
+/* If the button is held from boot for BOND_RESET_HOLD_MS, arm a bond wipe.
+ * Runs from ui_init(), before ui_task starts, so it owns the LED
+ * uncontended. The magenta blink accelerates as it arms; releasing (for
+ * more than the debounce window, so a flickery contact doesn't cancel it)
+ * aborts. A solid magenta confirm means it's armed - ble_gatt performs the
+ * actual erase in gatt_on_sync(). Returns immediately if the button isn't
+ * held at boot, so a normal boot is unaffected. */
+static bool check_boot_bond_reset(void)
+{
+    if (gpio_get_level(PIN_BTN) != 0) return false;
+
+    int64_t start         = esp_timer_get_time();
+    int64_t release_since = 0;
+    for (;;) {
+        int64_t now = esp_timer_get_time();
+        if (gpio_get_level(PIN_BTN) == 0) {
+            release_since = 0;
+        } else {
+            if (release_since == 0) release_since = now;
+            if ((now - release_since) >= (int64_t)RELEASE_DEBOUNCE_MS * 1000) {
+                led_write(0, 0, 0);
+                return false;
+            }
+        }
+        int64_t held = (now - start) / 1000;
+        if (held >= BOND_RESET_HOLD_MS) break;
+        int period_ms = 400 - (int)(held * 300 / BOND_RESET_HOLD_MS);
+        if (period_ms < 100) period_ms = 100;
+        if (((now / 1000) / period_ms) % 2) led_write(200, 0, 120);
+        else                                led_write(20, 0, 12);
+        vTaskDelay(pdMS_TO_TICKS(20));
+    }
+    /* Armed: solid magenta so the user sees it took, then dark. */
+    led_write(200, 0, 120);
+    vTaskDelay(pdMS_TO_TICKS(1000));
+    led_write(0, 0, 0);
+    ESP_LOGW(TAG, "boot bond reset armed (held %dms)", BOND_RESET_HOLD_MS);
+    return true;
+}
+
+bool ui_boot_reset_requested(void) { return s_boot_reset_requested; }
 
 static void render(ui_state_t st, int64_t in_state_ms)
 {
@@ -265,6 +318,10 @@ void ui_init(void)
 {
     led_init();
     btn_init();
+    /* Before the ui_task owns the LED: check the boot-time bond-reset hold
+     * (button held from power-on). Blocks only while the button is actually
+     * held, so a normal boot falls straight through. */
+    s_boot_reset_requested = check_boot_bond_reset();
     s_state = UI_STATE_BOOT;
     xTaskCreate(ui_task, "ui", 3072, NULL, 5, NULL);
     ESP_LOGI(TAG, "ui started (btn=%d r=%d g=%d b=%d)", PIN_BTN, PIN_R, PIN_G, PIN_B);

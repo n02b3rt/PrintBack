@@ -31,6 +31,13 @@ void ui_init(void);
 void ui_set_state(ui_state_t st);
 void ui_set_event_handler(ui_event_cb_t cb);
 
+/* True if the button was held from boot long enough to arm a BLE bond
+ * wipe (the factory-reset gesture, see ui.c check_boot_bond_reset()).
+ * ble_gatt.c reads this in gatt_on_sync() and, if set, clears the bond
+ * store before restoring the connection whitelist. Latched at boot, so
+ * safe to read once the host has synced. */
+bool ui_boot_reset_requested(void);
+
 /* Overlay: when state is IDLE, this flag picks between the normal white
  * pulse (host is reading us) and a slow blue blink (no host, firmware OK
  * but the desktop app isn't listening). Higher-priority states (ARMED,
