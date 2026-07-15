@@ -217,6 +217,8 @@
   "statusSdError": "Błąd",
   "statusSdFree": "Wolne miejsce",
   "statusUptime": "Czas pracy",
+  "statusWhitelist": "Urządzenia w tle",
+  "statusWhitelistHint": "Urządzenia obecne przez większość dnia (personel, routery, sąsiedzi) — pomijamy je w liczbie odwiedzin.",
   "statusOfflineHint": "Połącz się z urządzeniem, żeby zobaczyć jego stan.",
   "syncDownloading": "Pobieram... {days} dni",
   "@syncDownloading": { "placeholders": { "days": { "type": "int" } } },

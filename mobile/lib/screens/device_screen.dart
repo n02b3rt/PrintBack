@@ -211,11 +211,25 @@ class _DeviceScreenState extends State<DeviceScreen> {
       );
     }
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _statusRow(l10n.statusFw, s.fw),
         _statusRow(l10n.statusSdCard, s.sdOk ? l10n.statusSdOk : l10n.statusSdError),
         _statusRow(l10n.statusSdFree, '${s.sdFreeMb} MB'),
         _statusRow(l10n.statusUptime, _uptime(s.uptimeS)),
+        if (s.whitelistCount != null) ...[
+          _statusRow(l10n.statusWhitelist, '${s.whitelistCount}'),
+          Padding(
+            padding: const EdgeInsets.only(top: 2, bottom: 4),
+            child: Text(
+              l10n.statusWhitelistHint,
+              style: Theme.of(context)
+                  .textTheme
+                  .bodySmall
+                  ?.copyWith(color: Theme.of(context).colorScheme.outline),
+            ),
+          ),
+        ],
         Align(
           alignment: Alignment.centerRight,
           child: IconButton(

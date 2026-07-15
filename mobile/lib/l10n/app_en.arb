@@ -217,6 +217,8 @@
   "statusSdError": "Error",
   "statusSdFree": "Free space",
   "statusUptime": "Uptime",
+  "statusWhitelist": "Background devices",
+  "statusWhitelistHint": "Devices present most of the day (staff, routers, neighbours) — excluded from the visitor count.",
   "statusOfflineHint": "Connect to the device to see its status.",
   "syncDownloading": "Downloading... {days} days",
   "@syncDownloading": { "placeholders": { "days": { "type": "int" } } },
