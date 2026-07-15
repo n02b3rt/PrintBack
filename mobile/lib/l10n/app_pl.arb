@@ -223,5 +223,12 @@
   "syncDone": "Zsynchronizowano",
   "restartTitle": "Uruchom ponownie urządzenie",
   "restartBody": "Odłącz urządzenie od zasilania (USB), odczekaj około 5 sekund i podłącz ponownie. Zacznie od nowa i połączy się samo.",
+  "insightsTitle": "Wnioski",
+  "insightRecord": "Ostatni dzień to rekord odwiedzin w tym okresie.",
+  "insightUp": "Ostatni dzień: o {percent}% więcej odwiedzających niż zwykle w ten dzień tygodnia.",
+  "@insightUp": { "placeholders": { "percent": { "type": "int" } } },
+  "insightDown": "Ostatni dzień: o {percent}% mniej odwiedzających niż zwykle w ten dzień tygodnia.",
+  "@insightDown": { "placeholders": { "percent": { "type": "int" } } },
+  "insightQuiet": "Ostatni dzień spokojniejszy niż zwykle.",
   "requiresConnection": "wymaga połączenia z urządzeniem"
 }

@@ -223,5 +223,12 @@
   "syncDone": "Synced",
   "restartTitle": "Restart the device",
   "restartBody": "Unplug the device from power (USB), wait about 5 seconds and plug it back in. It starts fresh and connects on its own.",
+  "insightsTitle": "Insights",
+  "insightRecord": "Your latest day was a record for this period.",
+  "insightUp": "Latest day: {percent}% more visitors than usual for this weekday.",
+  "@insightUp": { "placeholders": { "percent": { "type": "int" } } },
+  "insightDown": "Latest day: {percent}% fewer visitors than usual for this weekday.",
+  "@insightDown": { "placeholders": { "percent": { "type": "int" } } },
+  "insightQuiet": "Your latest day was quieter than usual.",
   "requiresConnection": "requires a device connection"
 }

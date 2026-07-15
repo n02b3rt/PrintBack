@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import '../ble/ble_service.dart';
 import '../l10n/app_localizations.dart';
 import '../logic/format.dart';
+import '../logic/insights.dart';
 import '../logic/stats_math.dart';
 import '../models/aggregate.dart';
 import '../onboarding/onboarding_flags.dart';
@@ -131,6 +132,51 @@ class _DashboardScreenState extends State<DashboardScreen> {
     super.dispose();
   }
 
+  List<Widget> _insightsSection(BuildContext context, AppLocalizations l10n) {
+    // Exclude today's partial running total - insights compare complete days.
+    final completeDays =
+        _recentDaily.where((a) => a.date != _todayString()).toList();
+    final insights = buildInsights(completeDays);
+    if (insights.isEmpty) return const [];
+    final scheme = Theme.of(context).colorScheme;
+    return [
+      Text(l10n.insightsTitle, style: Theme.of(context).textTheme.titleMedium),
+      const SizedBox(height: 8),
+      GlassCard(
+        child: Column(
+          children: [
+            for (var i = 0; i < insights.length; i++) ...[
+              if (i > 0) const Divider(height: 20),
+              Row(
+                children: [
+                  Icon(_insightIcon(insights[i].kind), color: scheme.primary),
+                  const SizedBox(width: 12),
+                  Expanded(child: Text(_insightText(l10n, insights[i]))),
+                ],
+              ),
+            ],
+          ],
+        ),
+      ),
+      const SizedBox(height: 24),
+    ];
+  }
+
+  IconData _insightIcon(InsightKind kind) => switch (kind) {
+        InsightKind.record => Icons.emoji_events,
+        InsightKind.up => Icons.trending_up,
+        InsightKind.down => Icons.trending_down,
+        InsightKind.quiet => Icons.bedtime,
+      };
+
+  String _insightText(AppLocalizations l10n, Insight insight) =>
+      switch (insight.kind) {
+        InsightKind.record => l10n.insightRecord,
+        InsightKind.up => l10n.insightUp(insight.percent),
+        InsightKind.down => l10n.insightDown(insight.percent),
+        InsightKind.quiet => l10n.insightQuiet,
+      };
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
@@ -169,6 +215,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
             children: [
               SyncStatusBanner(key: widget.bannerKey),
               const SizedBox(height: 16),
+              // Insights: at most two plain-language takeaways about the
+              // latest complete day (today's partial running total is
+              // excluded so a half-day never reads as a "quiet" drop).
+              ..._insightsSection(context, l10n),
               Row(
                 key: widget.kpiKey,
                 children: [
