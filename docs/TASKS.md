@@ -249,14 +249,17 @@ per `docs/compliance/README.md`, but the definitive read stays with the
 lawyer / operator DPIA - not decided here. This belongs in the Phase 7
 compliance/legal pass before a pilot.
 
-## Post-soak backlog: hold-to-restart gesture
+## Hold-to-restart gesture (flashed 2026-07-15)
 
-`firmware/main/ui.c` now reboots the device on a ~10s button hold
+`firmware/main/ui.c` reboots the device on a ~10s button hold
 (`RESTART_HOLD_MS`), with the LED signalling it - an accelerating red
 blink from `RESTART_WARN_MS` (5s), then a white confirm flash at 10s
-before `esp_restart()`. This replaces the old "unplug from power" field
-recovery (the app's restart instruction now describes the hold, not the
-unplug). Not yet flashed: it changes the frozen firmware, so it ships
-with the next reflash after the soak, together with the auto-whitelist
-refinements above. Until then the on-device gesture isn't live even
-though the app already documents it.
+before `esp_restart()`. Replaces the old "unplug from power" field
+recovery (the app's restart instruction now describes the hold). Flashed
+and verified booting clean on 2026-07-15 - this reflash intentionally
+interrupted the 30-day soak (user-approved), so the soak observation
+window (multi-hour capture stability, LEARNINGS 2026-07-11 SD/USB I/O
+entry) restarts from this date. The physical 10s-hold reboot itself
+still needs a hands-on confirmation on the button; boot after flash is
+confirmed. The auto-whitelist refinements above remain unbuilt and can
+ride the next reflash.

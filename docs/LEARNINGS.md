@@ -1180,3 +1180,36 @@ advertising) until physically power-cycled - which a shop owner might not
 know to do. Worth watching for during the soak, and a candidate argument
 for a hardware watchdog/auto-recovery path or a cleaner power arrangement
 before a real pilot.
+
+## [FIRMWARE] ESP-IDF 5.3.2 toolchain needed a manual reinstall to build/flash
+Date: 2026-07-15
+Problem: reflashing the hold-to-restart change, `export.ps1` for
+esp-idf-v5.3.2 reported `tool idf-exe / dfu-util / esp-rom-elfs has no
+installed versions`, then `idf.py` wasn't on PATH; after installing those,
+export failed again with `python_env\idf5.3_py3.11_env\...\python.exe
+doesn't exist`; and once that was fixed, `idf.py build` refused with the
+project "configured with 'C:\Espressif\python_env\...'" vs the now-active
+`C:\Users\norke\.espressif\python_env\...` and told me to `fullclean`.
+Root cause: the machine's IDF install was half-populated and, more
+importantly, `IDF_TOOLS_PATH` was inconsistent between whoever configured
+`firmware/build/` previously (`C:\Espressif`) and this session
+(`C:\Users\norke\.espressif`). ESP-IDF records the exact python path in
+the build tree, so switching IDF_TOOLS_PATH invalidates an existing
+build/ until a fullclean.
+Fix (repeatable recipe for this machine): with
+`IDF_PATH=C:\Espressif\frameworks\esp-idf-v5.3.2` and
+`IDF_TOOLS_PATH=C:\Users\norke\.espressif`, run
+`C:\Espressif\tools\idf-python\3.11.2\python.exe <IDF_PATH>\tools\idf_tools.py install`
+then the same with `install-python-env`, then source `export.ps1`, then
+`idf.py fullclean` before `idf.py build`. Keep IDF_TOOLS_PATH pinned to
+`C:\Users\norke\.espressif` from now on so the recorded python path stops
+drifting. dev_cycle.py's serial capture needs pyserial, which the system
+python lacks - run it via the IDF venv python
+(`C:\Users\norke\.espressif\python_env\idf5.3_py3.11_env\Scripts\python.exe`),
+not bare `python`. Board flashed clean on COM17 (VID 303A / PID 1001)
+after this; boot verified, real capture resumed (`active=1 obs=6 wl=14
+dropped=0`), and the wallclock was already correct (20260715) within ~30s
+of boot - the phone auto-reconnected and TIME_SYNC'd on its own after the
+reset, confirming the 2026-07-11 reconnect-on-drop fix also covers a
+reflash.
+Status: RESOLVED (2026-07-15)
