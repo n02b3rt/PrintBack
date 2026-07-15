@@ -33,6 +33,15 @@ class _PairingScreenState extends State<PairingScreen> {
       return;
     }
     if (!mounted) return;
+    // Offer to turn Bluetooth on if it's off, before scanning finds nothing.
+    if (!await context.read<BleService>().ensureAdapterOn()) {
+      if (mounted) {
+        setState(() =>
+            _error = AppLocalizations.of(context)!.bluetoothOffHint);
+      }
+      return;
+    }
+    if (!mounted) return;
     setState(() {
       _scanning = true;
       _error = null;

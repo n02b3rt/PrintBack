@@ -21,9 +21,21 @@ class _SyncStatusBannerState extends State<SyncStatusBanner> {
   bool _connecting = false;
 
   Future<void> _reconnect() async {
+    final ble = context.read<BleService>();
+    // If Bluetooth is off, offer to turn it on (Android one-tap dialog)
+    // instead of silently failing to connect.
+    if (!await ble.ensureAdapterOn()) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(AppLocalizations.of(context)!.bluetoothOffHint)),
+        );
+      }
+      return;
+    }
+    if (!mounted) return;
     setState(() => _connecting = true);
     try {
-      await context.read<BleService>().tryAutoConnect();
+      await ble.tryAutoConnect();
     } catch (_) {
       // tryAutoConnect() already swallows its own failures and returns
       // null; a throw here would only be an unexpected one. Either way the

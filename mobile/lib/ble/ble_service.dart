@@ -146,6 +146,26 @@ class BleService extends ChangeNotifier with WidgetsBindingObserver {
     return statuses.values.every((s) => s.isGranted);
   }
 
+  /// Ensures the Bluetooth adapter is on, popping the Android system
+  /// "turn on Bluetooth?" one-tap dialog if it's off (much better than a
+  /// dead "can't connect" - the user asked for exactly this). Returns
+  /// whether the adapter ends up on. On iOS the adapter can't be enabled
+  /// programmatically, so this just reports the current state and the UI
+  /// tells the user to enable it themselves.
+  Future<bool> ensureAdapterOn() async {
+    if (FlutterBluePlus.adapterStateNow == BluetoothAdapterState.on) {
+      return true;
+    }
+    if (defaultTargetPlatform != TargetPlatform.android) return false;
+    try {
+      await FlutterBluePlus.turnOn();
+      return FlutterBluePlus.adapterStateNow == BluetoothAdapterState.on;
+    } catch (_) {
+      // User declined the dialog or it timed out.
+      return false;
+    }
+  }
+
   Future<void> scan({
     Duration timeout = const Duration(seconds: 10),
   }) async {

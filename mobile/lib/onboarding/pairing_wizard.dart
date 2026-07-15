@@ -91,6 +91,13 @@ class _PairingWizardState extends State<PairingWizard> {
     }
     if (!mounted) return;
     final ble = context.read<BleService>();
+    // Offer to turn Bluetooth on if it's off; on decline fall to the rescue
+    // checklist (which itself reminds the user to enable Bluetooth).
+    if (!await ble.ensureAdapterOn()) {
+      if (mounted) _toRescue();
+      return;
+    }
+    if (!mounted) return;
     await _scanSub?.cancel();
     _scanSub = ble.scanResults.listen((results) {
       if (_connecting || !mounted) return;

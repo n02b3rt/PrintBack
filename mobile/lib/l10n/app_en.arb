@@ -208,5 +208,6 @@
   "notConnected": "Not connected to a device",
   "connectButton": "Connect",
   "reconnecting": "Reconnecting...",
+  "bluetoothOffHint": "Turn on Bluetooth to connect to the device.",
   "requiresConnection": "requires a device connection"
 }

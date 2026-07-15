@@ -208,5 +208,6 @@
   "notConnected": "Brak połączenia z urządzeniem",
   "connectButton": "Połącz",
   "reconnecting": "Łączenie ponowne...",
+  "bluetoothOffHint": "Włącz Bluetooth, żeby połączyć się z urządzeniem.",
   "requiresConnection": "wymaga połączenia z urządzeniem"
 }
