@@ -6,6 +6,7 @@
 #include "freertos/task.h"
 #include "esp_timer.h"
 #include "esp_log.h"
+#include "esp_system.h"
 #include "sdkconfig.h"
 
 #define PIN_BTN  CONFIG_PRINTBACK_PIN_BUTTON
@@ -18,6 +19,15 @@
  * is noise (contact bounce), not a deliberate click. Not Kconfig - this
  * is pure signal filtering, not a behavior to tune, unlike LONG_MS. */
 #define SHORT_CLICK_MIN_MS 30
+
+/* Hold-to-restart: keep the button down this long and the device reboots
+ * (esp_restart), no PC/power-unplug needed - the field recovery gesture a
+ * shop owner can actually perform. Distinct from LONG_MS (whitelist arm):
+ * from RESTART_WARN_MS on, the LED shows an accelerating red "charge" so
+ * the hold is visibly counting down, and a full white flash confirms the
+ * reboot at RESTART_HOLD_MS. Hardcoded (user-specified 10s), not Kconfig. */
+#define RESTART_WARN_MS  5000
+#define RESTART_HOLD_MS  10000
 
 static const char *TAG = "ui";
 
@@ -158,16 +168,26 @@ static void ui_task(void *arg)
 
         /* Button, polling debounce. The 20 ms tick is the debounce. */
         bool pressed = (gpio_get_level(PIN_BTN) == 0);
+        int64_t held_ms = 0;
         if (pressed) {
             if (press_started == 0) press_started = now;
-            if (!long_fired && (now - press_started) >= LONG_MS * 1000LL) {
+            held_ms = (now - press_started) / 1000;
+            if (!long_fired && held_ms >= LONG_MS) {
                 long_fired = true;
                 if (s_cb) s_cb(UI_EVENT_LONG_PRESS);
             }
+            if (held_ms >= RESTART_HOLD_MS) {
+                /* Unmistakable confirm flash, then reboot. esp_restart()
+                 * does not return. */
+                led_write(255, 255, 255);
+                vTaskDelay(pdMS_TO_TICKS(400));
+                ESP_LOGW(TAG, "restart: %lldms button hold, rebooting", held_ms);
+                esp_restart();
+            }
         } else {
             if (press_started != 0 && !long_fired) {
-                int64_t held_ms = (now - press_started) / 1000;
-                if (held_ms >= SHORT_CLICK_MIN_MS) {
+                int64_t rel_ms = (now - press_started) / 1000;
+                if (rel_ms >= SHORT_CLICK_MIN_MS) {
                     if (s_cb) s_cb(UI_EVENT_SHORT_CLICK);
                 }
             }
@@ -186,6 +206,20 @@ static void ui_task(void *arg)
         if (cur == UI_STATE_BOOT && in_state_ms > 2200)     s_state = UI_STATE_IDLE;
         if (cur == UI_STATE_CAPTURED && in_state_ms > 1200) s_state = UI_STATE_IDLE;
         if (cur == UI_STATE_ERROR && in_state_ms > 1500)    s_state = UI_STATE_IDLE;
+
+        /* Hold-to-restart countdown: once the button's been held past
+         * RESTART_WARN_MS, override whatever the state machine would draw
+         * with a red blink that speeds up (500ms -> 100ms period) as it
+         * approaches RESTART_HOLD_MS, so the pending reboot is visible. */
+        if (pressed && held_ms >= RESTART_WARN_MS) {
+            int64_t into = held_ms - RESTART_WARN_MS;
+            int period_ms = 500 - (int)(into * 400 / (RESTART_HOLD_MS - RESTART_WARN_MS));
+            if (period_ms < 100) period_ms = 100;
+            if (((now / 1000) / period_ms) % 2) led_write(220, 0, 0);
+            else                                 led_write(40, 0, 0);
+            vTaskDelay(pdMS_TO_TICKS(20));
+            continue;
+        }
 
         render(cur, in_state_ms);
         vTaskDelay(pdMS_TO_TICKS(20));
