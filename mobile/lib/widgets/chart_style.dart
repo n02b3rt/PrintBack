@@ -54,6 +54,17 @@ FlTitlesData revolutTitles(
 const revolutGrid = FlGridData(show: false);
 final revolutBorder = FlBorderData(show: false);
 
+/// Disable fl_chart's built-in value tooltip. The app shows a
+/// tap-to-detail sheet instead, so the default raw-number bubble
+/// ("154.0", "0.0") is redundant and reads as a glitch when it pops up
+/// under a finger. Touch callbacks still fire; only the bubble is gone.
+final noLineTooltip = LineTouchTooltipData(
+  getTooltipItems: (spots) => spots.map((_) => null).toList(),
+);
+final noBarTooltip = BarTouchTooltipData(
+  getTooltipItem: (group, groupIndex, rod, rodIndex) => null,
+);
+
 /// No axis labels at all, on any side - for charts with too many x
 /// values to label without crowding (e.g. 24 hourly bars), where a
 /// thinned interval still reads as clutter. The tap-to-detail sheet is

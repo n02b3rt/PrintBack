@@ -317,6 +317,7 @@ class _HourlyBarChart extends StatelessWidget {
         gridData: revolutGrid,
         borderData: revolutBorder,
         barTouchData: BarTouchData(
+          touchTooltipData: noBarTooltip,
           touchCallback: (event, response) {
             // fl_chart fires both FlPanDownEvent and FlTapDownEvent for a
             // single tap on Android (isInterestedForInteractions is true
@@ -398,6 +399,7 @@ class _DailyBarChart extends StatelessWidget {
         gridData: revolutGrid,
         borderData: revolutBorder,
         barTouchData: BarTouchData(
+          touchTooltipData: noBarTooltip,
           touchCallback: (event, response) {
             // See the hourly chart's touchCallback above for why this
             // checks FlTapUpEvent specifically instead of
@@ -410,9 +412,11 @@ class _DailyBarChart extends StatelessWidget {
         ),
         titlesData: revolutTitles(
           context,
+          bottomInterval: 1,
           bottomBuilder: (value, meta) {
             final index = value.toInt();
             if (index < 0 || index >= data.length) return const SizedBox.shrink();
+            if (value != index.toDouble()) return const SizedBox.shrink();
             if (!showDayLabelAt(index, data.length)) {
               return const SizedBox.shrink();
             }

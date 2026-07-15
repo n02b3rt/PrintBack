@@ -438,6 +438,7 @@ class _WeekdayChart extends StatelessWidget {
         gridData: revolutGrid,
         borderData: revolutBorder,
         barTouchData: BarTouchData(
+          touchTooltipData: noBarTooltip,
           touchCallback: (event, response) {
             // fl_chart fires both FlPanDownEvent and FlTapDownEvent for a
             // single tap on Android (isInterestedForInteractions is true
@@ -523,6 +524,7 @@ class _DailyTrendChart extends StatelessWidget {
         gridData: revolutGrid,
         borderData: revolutBorder,
         lineTouchData: LineTouchData(
+          touchTooltipData: noLineTooltip,
           touchCallback: (event, response) {
             if (event is! FlTapUpEvent) return;
             final spot = response?.lineBarSpots?.firstOrNull;
@@ -532,9 +534,14 @@ class _DailyTrendChart extends StatelessWidget {
         ),
         titlesData: revolutTitles(
           context,
+          // Integer step: without this fl_chart auto-picks a fractional
+          // interval and renders the same date at several sub-integer x
+          // positions, smearing the axis (the "12.0712.07..." bug).
+          bottomInterval: 1,
           bottomBuilder: (value, meta) {
             final index = value.toInt();
             if (index < 0 || index >= data.length) return const SizedBox.shrink();
+            if (value != index.toDouble()) return const SizedBox.shrink();
             if (!showDayLabelAt(index, data.length)) {
               return const SizedBox.shrink();
             }
@@ -606,6 +613,7 @@ class _HourlyTrendChart extends StatelessWidget {
         gridData: revolutGrid,
         borderData: revolutBorder,
         lineTouchData: LineTouchData(
+          touchTooltipData: noLineTooltip,
           touchCallback: (event, response) {
             if (event is! FlTapUpEvent) return;
             final spot = response?.lineBarSpots?.firstOrNull;
