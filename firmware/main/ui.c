@@ -29,6 +29,13 @@
 #define RESTART_WARN_MS  5000
 #define RESTART_HOLD_MS  10000
 
+/* After the white confirm flash, hold the LED dark for this long before
+ * actually rebooting, so the restart reads like a power-cycle: bright
+ * confirm -> goes fully dark ("powering off") -> comes back with the boot
+ * self-test. esp_restart() itself is near-instant, so the visible "off"
+ * gap has to be produced here, before the reset. */
+#define RESTART_DARK_MS  3000
+
 /* Release debounce: a press is only considered ended once the pin has read
  * released continuously for this long. A shorter high blip (marginal switch
  * contact, e.g. a breadboard tact switch) is ignored, so the hold counter
@@ -200,11 +207,13 @@ static void ui_task(void *arg)
                 if (s_cb) s_cb(UI_EVENT_LONG_PRESS);
             }
             if (held_ms >= RESTART_HOLD_MS) {
-                /* Unmistakable confirm flash, then reboot. esp_restart()
-                 * does not return. */
+                /* Confirm flash, then a dark gap so it reads like a
+                 * power-cycle, then reboot. esp_restart() does not return. */
                 led_write(255, 255, 255);
                 vTaskDelay(pdMS_TO_TICKS(400));
+                led_write(0, 0, 0);
                 ESP_LOGW(TAG, "restart: %lldms button hold, rebooting", held_ms);
+                vTaskDelay(pdMS_TO_TICKS(RESTART_DARK_MS));
                 esp_restart();
             }
         } else {
