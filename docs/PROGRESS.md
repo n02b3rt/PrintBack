@@ -335,10 +335,33 @@
       show "connected" once the device is verified (not mid-attempt on a
       wrong device). Verified end to end on hardware.
 
+- [x] Phase 11: in-app onboarding (done 2026-07-12, `feature/onboarding`
+      off `main`, board-free except the final wizard test). Five commits,
+      each `flutter analyze`/`test` green: (11a) a first-run gate
+      (`onboarding/root_gate.dart` on the `onboarding_done` pref) into a
+      3-card welcome carousel, with `widgets/device_illustration.dart` - a
+      CustomPaint device whose RGB LED animates 1:1 with firmware
+      `ui.c`'s boot/pairing/syncing/idle states; (11b) Bluetooth
+      permission priming before the system prompt, with a settings-redirect
+      screen on denial (`onboarding/permission_priming.dart`, wired into
+      PairingScreen too); (11c) the 4-step pairing wizard
+      (`onboarding/pairing_wizard.dart`) - plug-in / press-button with a
+      60s countdown and the on-screen LED mirroring the physical cyan
+      blink / auto-scan reusing `BleService.scan`+`connect` / first-sync
+      day counter, plus a rescue checklist on timeout
+      (`onboarding/wizard_rescue.dart`); (11d) first-dashboard coach marks
+      (`onboarding/coach_marks.dart`, a dependency-free spotlight overlay
+      over 4 GlobalKey targets, replayable from Settings); (11e)
+      context-specific empty states, one-time drip tips (k-anonymity badge,
+      returning-rate) and a plain-language how-it-works FAQ
+      (`screens/faq_screen.dart`). All board-free parts verified; the wizard
+      steps 3-4 (scan -> connect -> first-sync) still need one on-device
+      end-to-end run on a clean phone (removed bond), target under 3 min.
+
 Note: the current code in `firmware/` and `app/` is still the old
 architecture (USB-CDC → Python desktop dashboard, SQLite). Don't remove /
 change it until the new path (BLE+SD) is ready and tested in parallel.
 
-Last updated: 2026-07-12 (Phase 10 mobile offline mode + fixes done and
-merged to `main`; firmware stays frozen for the 30-day soak. Next: Etap 3
-onboarding, then the mobile parts of Etap 4).
+Last updated: 2026-07-12 (Phase 11 onboarding done and merged to `main`;
+board-free parts verified, wizard end-to-end pending one clean-phone run.
+Firmware stays frozen for the 30-day soak).
