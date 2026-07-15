@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/aggregate.dart';
 import '../models/device_config.dart';
+import '../models/device_status.dart';
 
 const _activeDeviceIdKey = 'active_device_id';
 const _knownDevicesKey = 'known_printback_devices';
@@ -26,6 +27,7 @@ class PrintBackUuids {
   static final config = Guid('c5468eed-52a8-434b-bc6f-0d60c323f07f');
   static final timeSync = Guid('5ebb01c3-8110-4ace-b139-436c1fa0b81f');
   static final sync = Guid('8f2c1e40-7bb5-4b9f-9e11-3c6b9d5a2f77');
+  static final status = Guid('cf2c77c3-71e7-4121-a695-e22fdbcbe4ba');
 }
 
 /// Talks to exactly one PrintBack device's BLE GATT server. Pairing itself
@@ -43,6 +45,7 @@ class BleService extends ChangeNotifier with WidgetsBindingObserver {
   BluetoothCharacteristic? _configChr;
   BluetoothCharacteristic? _timeSyncChr;
   BluetoothCharacteristic? _syncChr;
+  BluetoothCharacteristic? _statusChr;
   StreamSubscription<List<int>>? _statsSub;
   StreamSubscription<BluetoothConnectionState>? _connSub;
 
@@ -413,6 +416,13 @@ class BleService extends ChangeNotifier with WidgetsBindingObserver {
         (c) => c.characteristicUuid == PrintBackUuids.sync,
         orElse: () => throw StateError('SYNC characteristic not found'),
       );
+      // STATUS is optional - a slightly older firmware without it must
+      // still connect (unlike the four above, whose absence means "not our
+      // device"). Nullable firstWhere, never throws.
+      _statusChr = service.characteristics
+          .cast<BluetoothCharacteristic?>()
+          .firstWhere((c) => c!.characteristicUuid == PrintBackUuids.status,
+              orElse: () => null);
 
       // TIME_SYNC requires an encrypted link (BLE_GATT_CHR_F_WRITE_ENC,
       // firmware/main/ble_gatt.c) and is the first write issued right after
@@ -599,6 +609,22 @@ class BleService extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
+  /// Reads the device's STATUS snapshot (firmware version, SD state,
+  /// uptime, heap, reset reason) - a plain characteristic read, like
+  /// readCurrentStats(). Null if the device doesn't expose STATUS (older
+  /// firmware) or the read fails, so the UI can just hide the section.
+  Future<DeviceStatus?> readStatus() async {
+    if (_statusChr == null) return null;
+    try {
+      final value = await _statusChr!.read();
+      if (value.isEmpty) return null;
+      final map = jsonDecode(utf8.decode(value)) as Map<String, dynamic>;
+      return DeviceStatus.fromJson(map);
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<DeviceConfig> readConfig() async {
     final value = await _configChr!.read();
     final map = jsonDecode(utf8.decode(value)) as Map<String, dynamic>;
@@ -637,6 +663,7 @@ class BleService extends ChangeNotifier with WidgetsBindingObserver {
     _configChr = null;
     _timeSyncChr = null;
     _syncChr = null;
+    _statusChr = null;
     _device = null;
     _isSyncing = false;
     _connectionState = BluetoothConnectionState.disconnected;
