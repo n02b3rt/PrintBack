@@ -16,6 +16,11 @@
 typedef struct {
     uint8_t  window_hours;        /* rolling window length, in clock-hours */
     uint8_t  min_distinct_hours;  /* qualify at >= this many distinct hours */
+    uint16_t min_observations;    /* AND at >= this many total observations
+                                   * (0 = gate disabled). Distinguishes a
+                                   * device that actually sits here generating
+                                   * traffic from one merely glimpsed once in
+                                   * each of several hours. */
     uint16_t max_candidates;      /* LRU cap on simultaneously tracked fp */
 } wl_auto_config_t;
 
@@ -30,8 +35,9 @@ typedef struct {
 void wl_auto_init(const wl_auto_config_t *cfg);
 
 /* Feeds one observation. Returns true exactly once per fingerprint: on the
- * observation that first pushes it to >= min_distinct_hours distinct hours
- * within the window. Returns false otherwise, including every later
- * observation of an already-qualified fingerprint. Designed for
- * time-ordered (monotonic unix_s) input, as real capture produces. */
+ * observation that first satisfies BOTH gates - >= min_distinct_hours
+ * distinct in-window hours AND >= min_observations total observations.
+ * Returns false otherwise, including every later observation of an
+ * already-qualified fingerprint. Designed for time-ordered (monotonic
+ * unix_s) input, as real capture produces. */
 bool wl_auto_observe(const uint8_t *fp, uint32_t unix_s);

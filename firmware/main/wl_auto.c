@@ -11,6 +11,7 @@ typedef struct {
     uint8_t  fp[FINGERPRINT_HASH_BYTES];
     uint32_t hours[WL_AUTO_MAX_WINDOW];  /* distinct in-window hour buckets */
     uint8_t  num_hours;
+    uint16_t obs_count;                  /* total observations, saturating */
     uint32_t last_hour;                  /* newest hour bucket seen (LRU key) */
 } candidate_t;
 
@@ -30,6 +31,7 @@ void wl_auto_init(const wl_auto_config_t *cfg)
     s_cfg.window_hours = clamp_u8(cfg->window_hours, 1, WL_AUTO_MAX_WINDOW);
     s_cfg.min_distinct_hours =
         clamp_u8(cfg->min_distinct_hours, 1, s_cfg.window_hours);
+    s_cfg.min_observations = cfg->min_observations;
     s_cfg.max_candidates = cfg->max_candidates;
     if (s_cfg.max_candidates == 0 || s_cfg.max_candidates > WL_AUTO_MAX_CANDIDATES) {
         s_cfg.max_candidates = WL_AUTO_MAX_CANDIDATES;
@@ -89,8 +91,11 @@ bool wl_auto_observe(const uint8_t *fp, uint32_t unix_s)
         c->qualified = false;
         memcpy(c->fp, fp, FINGERPRINT_HASH_BYTES);
         c->num_hours = 0;
+        c->obs_count = 0;
         c->last_hour = hour;
     }
+
+    if (c->obs_count < UINT16_MAX) c->obs_count++;
 
     bool contains = prune_and_contains(c, hour);
     if (!contains && c->num_hours < WL_AUTO_MAX_WINDOW) {
@@ -98,7 +103,9 @@ bool wl_auto_observe(const uint8_t *fp, uint32_t unix_s)
     }
     if (hour > c->last_hour) c->last_hour = hour;
 
-    if (!c->qualified && c->num_hours >= s_cfg.min_distinct_hours) {
+    if (!c->qualified &&
+        c->num_hours >= s_cfg.min_distinct_hours &&
+        c->obs_count >= s_cfg.min_observations) {
         c->qualified = true;
         return true;
     }

@@ -26,6 +26,17 @@ static bool observe_hour(const uint8_t *fp, uint32_t hour)
     return fired;
 }
 
+/* Same, but with an explicit count of observations within the hour - to
+ * exercise the total-observation gate independently of distinct hours. */
+static bool observe_n(const uint8_t *fp, uint32_t hour, int n)
+{
+    bool fired = false;
+    for (int i = 0; i < n; i++) {
+        if (wl_auto_observe(fp, hour * 3600u + i * 60u)) fired = true;
+    }
+    return fired;
+}
+
 int main(void)
 {
     wl_auto_config_t cfg = {
@@ -88,6 +99,52 @@ int main(void)
     /* A comes back but its history is gone; one hour only, no qualify. */
     bool a_back = observe_hour(A, 13);
     CHECK(a_back == false, "lru: evicted fingerprint restarts from zero");
+
+    /* Observation-count gate. Same config as above but requiring >= 30
+     * total observations on top of the 6-distinct-hour rule. */
+    wl_auto_config_t gated = {
+        .window_hours = 8,
+        .min_distinct_hours = 6,
+        .min_observations = 30,
+        .max_candidates = 64,
+    };
+
+    /* 6 distinct hours at 3 probes each = 18 observations. Under the old
+     * rule this qualified on the 6th hour; the gate now holds it back. */
+    wl_auto_init(&gated);
+    bool mid_fired = false;
+    for (uint32_t h = 800; h <= 805; h++) mid_fired |= observe_n(FP_WORKER, h, 3);
+    CHECK(mid_fired == false,
+          "gate: 6 distinct hours but only 18 observations stays blocked");
+
+    /* 8 distinct hours but a single probe each = 8 observations: plenty of
+     * hours, nowhere near the observation floor. */
+    wl_auto_init(&gated);
+    bool sparse_fired = false;
+    for (uint32_t h = 600; h < 608; h++) sparse_fired |= observe_n(FP_WORKER, h, 1);
+    CHECK(sparse_fired == false,
+          "gate: 8 distinct hours but only 8 observations stays blocked");
+
+    /* 6 distinct hours at 5 probes each = 30 observations: both gates met,
+     * qualifies (exactly once). */
+    wl_auto_init(&gated);
+    int dense_fires = 0;
+    for (uint32_t h = 700; h <= 705; h++) {
+        if (observe_n(FP_WORKER, h, 5)) dense_fires++;
+    }
+    CHECK(dense_fires == 1,
+          "gate: 6 distinct hours with 30 observations qualifies once");
+
+    /* min_observations = 0 disables the gate: back to hours-only. */
+    wl_auto_config_t nogate = {
+        .window_hours = 8, .min_distinct_hours = 6,
+        .min_observations = 0, .max_candidates = 64,
+    };
+    wl_auto_init(&nogate);
+    bool nogate_fired = false;
+    for (uint32_t h = 900; h <= 905; h++) nogate_fired |= observe_n(FP_WORKER, h, 1);
+    CHECK(nogate_fired == true,
+          "gate disabled (0): 6 distinct hours qualifies regardless of count");
 
     if (failures) {
         printf("%d test(s) FAILED\n", failures);

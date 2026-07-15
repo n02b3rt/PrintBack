@@ -153,6 +153,17 @@ config PRINTBACK_AUTO_WL_MIN_DISTINCT_HOURS
         How many distinct hours within the window a fingerprint must
         appear in before it is auto-whitelisted. Must be <= the window.
 
+config PRINTBACK_AUTO_WL_MIN_OBSERVATIONS
+    int "Auto-whitelist threshold (total observations)"
+    range 0 65535
+    default 30
+    help
+        In addition to the distinct-hours threshold, a fingerprint must be
+        observed at least this many times total before it is
+        auto-whitelisted (docs/compliance/README.md names 30). Stops a
+        device merely glimpsed once in each of several hours from being
+        excluded as if it were fixed infrastructure. 0 disables this gate.
+
 config PRINTBACK_AUTO_WL_MAX_CANDIDATES
     int "Max fingerprints tracked for auto-whitelisting"
     range 8 256

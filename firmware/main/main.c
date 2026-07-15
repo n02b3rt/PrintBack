@@ -160,9 +160,10 @@ static void on_probe(const probe_observation_t *obs)
         wl_auto_observe(obs->fp.hash, sd_storage_current_unix_s())) {
         if (whitelist_add(obs->fp.hash)) {
             whitelisted = true;
-            ESP_LOGI(TAG, "auto-whitelist: fp=%s seen across %d+ distinct hours, "
-                     "excluded (whitelist now=%u)", obs->fp.hex,
-                     CONFIG_PRINTBACK_AUTO_WL_MIN_DISTINCT_HOURS, whitelist_count());
+            ESP_LOGI(TAG, "auto-whitelist: fp=%s seen across %d+ distinct hours "
+                     "and %d+ observations, excluded (whitelist now=%u)",
+                     obs->fp.hex, CONFIG_PRINTBACK_AUTO_WL_MIN_DISTINCT_HOURS,
+                     CONFIG_PRINTBACK_AUTO_WL_MIN_OBSERVATIONS, whitelist_count());
         }
     }
 
@@ -318,6 +319,7 @@ void app_main(void)
     wl_auto_init(&(wl_auto_config_t){
         .window_hours       = CONFIG_PRINTBACK_AUTO_WL_WINDOW_HOURS,
         .min_distinct_hours = CONFIG_PRINTBACK_AUTO_WL_MIN_DISTINCT_HOURS,
+        .min_observations   = CONFIG_PRINTBACK_AUTO_WL_MIN_OBSERVATIONS,
         .max_candidates     = CONFIG_PRINTBACK_AUTO_WL_MAX_CANDIDATES,
     });
     tracker_init();

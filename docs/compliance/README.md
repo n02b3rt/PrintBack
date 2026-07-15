@@ -86,11 +86,14 @@ Everything local, on one operator screen. Nothing leaves that computer.
 ## Auto-whitelist
 
 The system spots "obviously-not-a-customer" devices: if a fingerprint appears
-in 6+ distinct hours within an 8-hour rolling window (i.e., something is sitting
-on premises for most of a shift), it's auto-added to the whitelist and stops
-counting toward statistics. The operator sees this in the Debug tab and can
-un-flag false positives. This is data minimisation: we don't process the data
-of devices that obviously aren't part of the use case.
+in 6+ distinct hours within an 8-hour rolling window AND has been observed at
+least `auto_wl_min_observations` times (i.e., something is sitting on premises
+for most of a shift and actually generating traffic, not just glimpsed once an
+hour), it's auto-added to the whitelist and stops counting toward statistics.
+Both thresholds are enforced in firmware (`wl_auto.c`). The operator sees this
+in the Debug tab and can un-flag false positives. This is data minimisation:
+we don't process the data of devices that obviously aren't part of the use
+case.
 
 ## What the system doesn't do (architecture-enforced)
 
