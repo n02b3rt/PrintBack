@@ -218,3 +218,33 @@ Acceptance criteria: app reopens and reconnects without a manual scan,
 multiple bonded devices can be listed and switched between, Statystyki
 shows real multi-day numbers after a sync, no raw/per-client data
 anywhere in the local db or on the wire.
+
+---
+
+## Post-soak backlog: auto-whitelist refinements
+
+Two improvements to the staff/fixed-device auto-whitelist, both deferred
+because they change the frozen firmware and a reflash would reset the
+30-day soak. Do them once the soak finishes, together with the next flash.
+
+1. **Firmware: add an observation-count gate.** Today `wl_auto.c`
+   qualifies a fingerprint purely on ">= 6 distinct hours in an 8h rolling
+   window". `docs/compliance/README.md`'s config already names
+   `auto_wl_min_observations: 30`, but the firmware doesn't enforce it.
+   Require ">= 6 distinct hours AND >= N observations" so a device is only
+   excluded once it's clearly fixed infrastructure/staff, not a visitor
+   who happened to linger across several hours. Keep the host test
+   (`test_wl_auto.c`) and add cases for the new gate.
+
+2. **App: surface an auto-whitelist count (a count, never a list).** The
+   phone must never receive a per-client identifier (docs/DECISIONS.md
+   D3 - even a hashed MAC is personal data and stays on the device), so
+   this is strictly an aggregate count ("N devices auto-excluded as
+   staff/fixed"), carried via a new read-only STATUS field on the device
+   and shown in the app. Gives the operator visibility and trust without
+   exposing any device identity.
+
+The lawfulness of the auto-whitelist itself is data-minimisation-positive
+per `docs/compliance/README.md`, but the definitive read stays with the
+lawyer / operator DPIA - not decided here. This belongs in the Phase 7
+compliance/legal pass before a pilot.
