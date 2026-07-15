@@ -18,6 +18,7 @@ import '../widgets/detail_sheet.dart';
 import '../widgets/glass_card.dart';
 import '../widgets/gradient_background.dart';
 import '../widgets/sync_status_banner.dart';
+import 'device_screen.dart';
 
 /// Today's date as `YYYY-MM-DD`, matching docs/DATA_MODEL.md's STATS
 /// `date` field format.
@@ -78,14 +79,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (initial == null) return;
     await _localDb.upsert(_deviceId, initial);
     await _reload();
-  }
-
-  /// Garmin-Connect-style explicit "get me everything right now", as
-  /// opposed to HomeShell's automatic sync-since-last-time on connect.
-  /// Results still arrive over statsUpdates, not a return value here.
-  Future<void> _syncNow() async {
-    final ble = context.read<BleService>();
-    await ble.requestSync(0);
   }
 
   Future<void> _reload() async {
@@ -160,9 +153,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
         title: BrandMark(label: l10n.dashboardTitle),
         actions: [
           IconButton(
-            icon: const Icon(Icons.sync),
-            tooltip: l10n.syncNowButton,
-            onPressed: connected ? _syncNow : null,
+            icon: const Icon(Icons.developer_board),
+            tooltip: l10n.deviceScreenTitle,
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const DeviceScreen()),
+            ),
           ),
         ],
       ),

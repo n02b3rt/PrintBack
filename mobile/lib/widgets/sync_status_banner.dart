@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../ble/ble_service.dart';
 import '../l10n/app_localizations.dart';
+import '../screens/device_screen.dart';
 
 /// Persistent, visible connection/sync status - explicit confirmation
 /// the device is paired and connected (not just silently assumed), and
@@ -68,7 +69,11 @@ class _SyncStatusBannerState extends State<SyncStatusBanner> {
         ? Theme.of(context).colorScheme.primary
         : Theme.of(context).colorScheme.error;
 
-    return Container(
+    return GestureDetector(
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const DeviceScreen()),
+      ),
+      child: Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
         color: accent.withValues(alpha: 0.12),
@@ -129,8 +134,12 @@ class _SyncStatusBannerState extends State<SyncStatusBanner> {
                 child: Text(l10n.connectButton),
               ),
           ],
+          const SizedBox(width: 4),
+          Icon(Icons.chevron_right,
+              size: 20, color: Theme.of(context).colorScheme.onSurfaceVariant),
         ],
       ),
+    ),
     );
   }
 
