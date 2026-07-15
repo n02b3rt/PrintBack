@@ -10,6 +10,7 @@ import '../models/device_status.dart';
 import '../widgets/device_illustration.dart';
 import '../widgets/glass_card.dart';
 import '../widgets/gradient_background.dart';
+import 'forget_device.dart';
 
 /// A Garmin-Connect-style device page: instead of a cryptic sync icon that
 /// gives no feedback (and is dead when Bluetooth is off), the user opens
@@ -161,6 +162,20 @@ class _DeviceScreenState extends State<DeviceScreen> {
                   const SizedBox(width: 12),
                   Expanded(child: Text(l10n.restartBody)),
                 ],
+              ),
+            ),
+            const SizedBox(height: 24),
+
+            // Forget device (shared with Settings).
+            GlassCard(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: ListTile(
+                leading: Icon(Icons.link_off, color: scheme.error),
+                title: Text(l10n.forgetDevice,
+                    style: TextStyle(color: scheme.error)),
+                onTap: ble.activeDeviceId == null
+                    ? null
+                    : () => forgetDevice(context),
               ),
             ),
           ],
