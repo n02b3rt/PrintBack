@@ -424,6 +424,24 @@ class BleService extends ChangeNotifier with WidgetsBindingObserver {
           .firstWhere((c) => c!.characteristicUuid == PrintBackUuids.status,
               orElse: () => null);
 
+      // First-time bonding: do it explicitly (Android only) before the first
+      // encrypted write, rather than letting that write trigger it. Letting
+      // the encrypted TIME_SYNC write kick off bonding makes Android show its
+      // pairing dialog twice (a documented flutter_blue_plus quirk); an
+      // explicit createBond() does it once. Skipped when already bonded so a
+      // routine auto-reconnect isn't touched. Best-effort: any failure falls
+      // through to the old implicit-bond path below.
+      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+        try {
+          final bond = await device.bondState.first.timeout(
+              const Duration(seconds: 2),
+              onTimeout: () => BluetoothBondState.none);
+          if (bond != BluetoothBondState.bonded) {
+            await device.createBond();
+          }
+        } catch (_) {}
+      }
+
       // TIME_SYNC requires an encrypted link (BLE_GATT_CHR_F_WRITE_ENC,
       // firmware/main/ble_gatt.c) and is the first write issued right after
       // reconnecting to an already-bonded device. Android reports the link
