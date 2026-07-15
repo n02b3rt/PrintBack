@@ -223,9 +223,7 @@ anywhere in the local db or on the wire.
 
 ## Post-soak backlog: auto-whitelist refinements
 
-Two improvements to the staff/fixed-device auto-whitelist, both deferred
-because they change the frozen firmware and a reflash would reset the
-30-day soak. Do them once the soak finishes, together with the next flash.
+Improvements to the staff/fixed-device auto-whitelist.
 
 1. **Firmware: add an observation-count gate.** Today `wl_auto.c`
    qualifies a fingerprint purely on ">= 6 distinct hours in an 8h rolling
@@ -234,15 +232,17 @@ because they change the frozen firmware and a reflash would reset the
    Require ">= 6 distinct hours AND >= N observations" so a device is only
    excluded once it's clearly fixed infrastructure/staff, not a visitor
    who happened to linger across several hours. Keep the host test
-   (`test_wl_auto.c`) and add cases for the new gate.
+   (`test_wl_auto.c`) and add cases for the new gate. Still pending, tied
+   to a reflash (resets the soak).
 
-2. **App: surface an auto-whitelist count (a count, never a list).** The
-   phone must never receive a per-client identifier (docs/DECISIONS.md
-   D3 - even a hashed MAC is personal data and stays on the device), so
-   this is strictly an aggregate count ("N devices auto-excluded as
-   staff/fixed"), carried via a new read-only STATUS field on the device
-   and shown in the app. Gives the operator visibility and trust without
-   exposing any device identity.
+2. **App: surface an auto-whitelist count (a count, never a list).** DONE
+   (2026-07-15). The device's STATUS payload now carries `wl` =
+   `whitelist_count()` (an aggregate count, never a fingerprint -
+   docs/DECISIONS.md D3), and the app's device screen shows it as
+   "background devices excluded from the visitor count". Note it is the
+   total whitelist size (auto + any manual arm), not an auto-only count;
+   splitting the two would need a separate counter in the firmware and can
+   ride the item-1 reflash if we ever want it.
 
 The lawfulness of the auto-whitelist itself is data-minimisation-positive
 per `docs/compliance/README.md`, but the definitive read stays with the
