@@ -230,5 +230,8 @@
   "insightDown": "Ostatni dzień: o {percent}% mniej odwiedzających niż zwykle w ten dzień tygodnia.",
   "@insightDown": { "placeholders": { "percent": { "type": "int" } } },
   "insightQuiet": "Ostatni dzień spokojniejszy niż zwykle.",
+  "weeklyNotifTitle": "Podsumowanie tygodnia",
+  "weeklyNotifBody": "{visitors} odwiedzających w ostatnim tygodniu. Zajrzyj do statystyk.",
+  "@weeklyNotifBody": { "placeholders": { "visitors": { "type": "int" } } },
   "requiresConnection": "wymaga połączenia z urządzeniem"
 }

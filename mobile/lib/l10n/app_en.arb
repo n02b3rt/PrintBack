@@ -230,5 +230,8 @@
   "insightDown": "Latest day: {percent}% fewer visitors than usual for this weekday.",
   "@insightDown": { "placeholders": { "percent": { "type": "int" } } },
   "insightQuiet": "Your latest day was quieter than usual.",
+  "weeklyNotifTitle": "Weekly summary",
+  "weeklyNotifBody": "{visitors} visitors this past week. Check your stats.",
+  "@weeklyNotifBody": { "placeholders": { "visitors": { "type": "int" } } },
   "requiresConnection": "requires a device connection"
 }

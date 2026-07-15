@@ -47,6 +47,10 @@ dependencies:
   provider: ^6.1.2
   intl: ^0.20.2
   shared_preferences: ^2.3.2
+  # Weekly summary local notification (Etap 5.2); timezone is required by
+  # flutter_local_notifications' zonedSchedule.
+  flutter_local_notifications: ^18.0.1
+  timezone: ^0.9.4
 
 dev_dependencies:
   flutter_test:

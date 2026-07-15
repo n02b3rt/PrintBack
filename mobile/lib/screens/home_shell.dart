@@ -6,6 +6,7 @@ import '../l10n/app_localizations.dart';
 import '../onboarding/coach_marks.dart';
 import '../onboarding/onboarding_flags.dart';
 import '../onboarding/one_time_tip.dart';
+import '../services/weekly_notification.dart';
 import '../storage/local_db.dart';
 import 'dashboard_screen.dart';
 import 'settings_screen.dart';
@@ -35,8 +36,38 @@ class _HomeShellState extends State<HomeShell> {
   void initState() {
     super.initState();
     _triggerSync();
+    _scheduleWeeklySummary();
     WidgetsBinding.instance.addPostFrameCallback((_) => _maybeShowCoachMarks());
   }
+
+  /// Recomputes last week's footfall from the local db and (re)schedules
+  /// the Monday-morning summary notification. Runs every launch (no
+  /// background worker in v1); a snapshot at scheduling time is fine for a
+  /// weekly nudge. Skipped when there's nothing to report or notifications
+  /// aren't permitted.
+  Future<void> _scheduleWeeklySummary() async {
+    final deviceId = context.read<BleService>().activeDeviceId;
+    if (deviceId == null) return;
+    final now = DateTime.now();
+    final rows = await LocalDb().dailyInRange(
+      deviceId,
+      _dateString(now.subtract(const Duration(days: 7))),
+      _dateString(now),
+    );
+    final visitors = rows.fold<int>(0, (s, a) => s + a.unique);
+    if (visitors <= 0 || !mounted) return;
+    final l10n = AppLocalizations.of(context)!;
+    if (!await WeeklyNotification.instance.requestPermission()) return;
+    await WeeklyNotification.instance.scheduleWeekly(
+      title: l10n.weeklyNotifTitle,
+      body: l10n.weeklyNotifBody(visitors),
+    );
+  }
+
+  static String _dateString(DateTime d) =>
+      '${d.year.toString().padLeft(4, '0')}-'
+      '${d.month.toString().padLeft(2, '0')}-'
+      '${d.day.toString().padLeft(2, '0')}';
 
   /// First time the dashboard is reached, run the coach-mark tour once the
   /// screen has settled a moment. Skipped for returning users (flag set)

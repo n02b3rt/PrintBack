@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'ble/ble_service.dart';
 import 'l10n/app_localizations.dart';
 import 'onboarding/root_gate.dart';
+import 'services/weekly_notification.dart';
 import 'theme/app_theme.dart';
 import 'theme/theme_controller.dart';
 
@@ -14,6 +15,7 @@ Future<void> main() async {
   // (and any other supported locale's) weekday/month names, used by
   // lib/logic/format.dart.
   await initializeDateFormatting();
+  await WeeklyNotification.instance.init();
   runApp(const PrintBackApp());
 }
 
