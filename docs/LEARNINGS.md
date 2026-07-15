@@ -1213,3 +1213,35 @@ of boot - the phone auto-reconnected and TIME_SYNC'd on its own after the
 reset, confirming the 2026-07-11 reconnect-on-drop fix also covers a
 reflash.
 Status: RESOLVED (2026-07-15)
+
+## [FIRMWARE] hold-to-restart never reached 10s on a marginal button contact
+Date: 2026-07-15
+Problem: after flashing the hold-to-restart gesture, holding the button
+did nothing for 20s+ (no reboot, no LED countdown). A short click also
+did nothing (no cyan pairing blink). Then, after reseating the breadboard
+wiring, holding produced a "police" red/blue flicker but still never
+rebooted.
+Root cause: two compounding issues. (1) Hardware - the tact switch on the
+breadboard (GPIO2, active-low, internal pull-up) had a marginal/intermittent
+contact after a USB replug, so `gpio_get_level(PIN_BTN)` flickered between
+pressed and released while held. (2) Firmware - `ui_task`'s button handler
+zeroed `press_started` on ANY single "released" tick, so each flicker
+restarted the hold counter from 0. The counter therefore bounced up past
+`RESTART_WARN_MS` (5s, red LED override) then reset to idle (blue) over and
+over - exactly the "red/blue police blink" the user saw - and never
+accumulated a continuous 10s, so `esp_restart()` never fired. The 3s arm
+and short click had survived on this same imperfect contact before only
+because their windows are short enough to occasionally clear without a
+flicker; 10s never did.
+Fix: added release debouncing in `ui_task` (`RELEASE_DEBOUNCE_MS` = 100ms).
+The press is only considered ended once the raw pin reads high continuously
+for the debounce window; a briefer high blip is ignored and the hold
+counter keeps accumulating through it. Short-click length is measured to
+the first release edge (`release_since - press_started`), not to the
+debounced end, so click timing is unaffected. This makes the arm/restart
+gestures robust to a bouncy contact instead of silently never completing.
+The user still needs to firm up / replace the physical switch for a clean
+contact - the debounce buys margin against brief bounce, not against a
+switch that's open for >100ms at a time.
+Status: OPEN - firmware fix built and flashed (2026-07-15); pending
+hands-on confirmation that a 10s hold now reboots with the reseated switch.

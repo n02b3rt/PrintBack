@@ -29,6 +29,14 @@
 #define RESTART_WARN_MS  5000
 #define RESTART_HOLD_MS  10000
 
+/* Release debounce: a press is only considered ended once the pin has read
+ * released continuously for this long. A shorter high blip (marginal switch
+ * contact, e.g. a breadboard tact switch) is ignored, so the hold counter
+ * keeps accumulating through it. Without this, a single flickery "released"
+ * tick zeroed press_started, so a 10 s hold could never build up on an
+ * imperfect switch - it just bounced the red countdown against idle. */
+#define RELEASE_DEBOUNCE_MS 100
+
 static const char *TAG = "ui";
 
 static volatile ui_state_t s_state          = UI_STATE_BOOT;
@@ -160,14 +168,29 @@ static void ui_task(void *arg)
 {
     int64_t press_started = 0;
     bool    long_fired    = false;
+    int64_t release_since = 0;   /* when the raw pin first read high mid-press */
     ui_state_t last       = (ui_state_t)-1;
     int64_t state_entered = esp_timer_get_time();
 
     for (;;) {
         int64_t now = esp_timer_get_time();
 
-        /* Button, polling debounce. The 20 ms tick is the debounce. */
-        bool pressed = (gpio_get_level(PIN_BTN) == 0);
+        /* Button. The raw pin is active-low; the release edge is debounced
+         * (RELEASE_DEBOUNCE_MS) so a marginal contact's brief high blips
+         * don't reset the hold counter - only a sustained release ends the
+         * press. The 20 ms tick debounces the press edge. */
+        bool raw = (gpio_get_level(PIN_BTN) == 0);
+        bool pressed;
+        if (raw) {
+            release_since = 0;
+            pressed = true;
+        } else if (press_started != 0) {
+            if (release_since == 0) release_since = now;
+            pressed = (now - release_since) < (int64_t)RELEASE_DEBOUNCE_MS * 1000;
+        } else {
+            pressed = false;
+        }
+
         int64_t held_ms = 0;
         if (pressed) {
             if (press_started == 0) press_started = now;
@@ -186,13 +209,16 @@ static void ui_task(void *arg)
             }
         } else {
             if (press_started != 0 && !long_fired) {
-                int64_t rel_ms = (now - press_started) / 1000;
+                /* True press length ends at the first release, not now (now
+                 * includes the debounce wait). */
+                int64_t rel_ms = (release_since - press_started) / 1000;
                 if (rel_ms >= SHORT_CLICK_MIN_MS) {
                     if (s_cb) s_cb(UI_EVENT_SHORT_CLICK);
                 }
             }
             press_started = 0;
             long_fired    = false;
+            release_since = 0;
         }
 
         /* LED state machine */
