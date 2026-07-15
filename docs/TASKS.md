@@ -259,7 +259,9 @@ recovery (the app's restart instruction now describes the hold). Flashed
 and verified booting clean on 2026-07-15 - this reflash intentionally
 interrupted the 30-day soak (user-approved), so the soak observation
 window (multi-hour capture stability, LEARNINGS 2026-07-11 SD/USB I/O
-entry) restarts from this date. The physical 10s-hold reboot itself
-still needs a hands-on confirmation on the button; boot after flash is
-confirmed. The auto-whitelist refinements above remain unbuilt and can
+entry) restarts from this date. The physical 10s-hold reboot is confirmed
+on hardware (2026-07-15) after a follow-up fix: the first flash's hold
+never completed because a marginal breadboard switch contact kept zeroing
+the hold counter, fixed by release debouncing in ui.c (LEARNINGS
+2026-07-15). The auto-whitelist refinements above remain unbuilt and can
 ride the next reflash.

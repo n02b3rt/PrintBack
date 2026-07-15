@@ -1243,5 +1243,10 @@ gestures robust to a bouncy contact instead of silently never completing.
 The user still needs to firm up / replace the physical switch for a clean
 contact - the debounce buys margin against brief bounce, not against a
 switch that's open for >100ms at a time.
-Status: OPEN - firmware fix built and flashed (2026-07-15); pending
-hands-on confirmation that a 10s hold now reboots with the reseated switch.
+Status: RESOLVED (2026-07-15) - confirmed on hardware after the debounce
+flash: a ~10s hold now reaches the white confirm flash and reboots (the
+board runs its R->G->B->W boot self-test on the way back up, which the
+user described as the LED "party"). The 100ms release debounce was enough
+margin for the reseated breadboard switch. Note for a real hold: release
+the button after the white flash - holding through the reboot restarts the
+counter and reboots again in another 10s.
