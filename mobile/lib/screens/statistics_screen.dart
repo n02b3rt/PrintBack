@@ -14,6 +14,7 @@ import '../widgets/chart_style.dart';
 import '../widgets/detail_sheet.dart';
 import '../widgets/glass_card.dart';
 import '../widgets/gradient_background.dart';
+import 'report_preview.dart';
 
 enum _Period { today, week, month, custom }
 
@@ -116,6 +117,38 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     await ble.requestSync(0);
   }
 
+  String _periodLabel(AppLocalizations l10n) {
+    switch (_period) {
+      case _Period.today:
+        return l10n.periodToday;
+      case _Period.week:
+        return l10n.periodWeek;
+      case _Period.month:
+        return l10n.periodMonth;
+      case _Period.custom:
+        return l10n.periodCustom;
+    }
+  }
+
+  void _openReport(AppLocalizations l10n, int unique, int returning) {
+    final range = _rangeFor(_period);
+    final rangeText = _period == _Period.today
+        ? _fmtHuman(range.start)
+        : '${_fmtHuman(range.start)} - ${_fmtHuman(range.end)}';
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => ReportPreview(
+        periodLabel: _periodLabel(l10n),
+        dateRange: rangeText,
+        unique: unique,
+        newVisitors: (unique - returning).clamp(0, unique),
+        returning: returning,
+      ),
+    ));
+  }
+
+  static String _fmtHuman(DateTime d) =>
+      '${d.day.toString().padLeft(2, '0')}.${d.month.toString().padLeft(2, '0')}.${d.year}';
+
   Future<void> _pickCustomRange() async {
     final now = DateTime.now();
     final picked = await showDateRangePicker(
@@ -199,6 +232,11 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
       appBar: AppBar(
         title: Text(l10n.statisticsTitle),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.ios_share),
+            tooltip: l10n.shareButton,
+            onPressed: () => _openReport(l10n, totalUnique, totalReturning),
+          ),
           IconButton(
             icon: const Icon(Icons.sync),
             tooltip: l10n.syncNowButton,

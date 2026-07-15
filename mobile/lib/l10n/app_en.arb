@@ -222,7 +222,7 @@
   "@syncDownloading": { "placeholders": { "days": { "type": "int" } } },
   "syncDone": "Synced",
   "restartTitle": "Restart the device",
-  "restartBody": "Unplug the device from power (USB), wait about 5 seconds and plug it back in. It starts fresh and connects on its own.",
+  "restartBody": "Press and hold the button on the device for about 10 seconds. The LED blinks red faster and faster, and once it flashes white the device restarts and reconnects on its own.",
   "insightsTitle": "Insights",
   "insightRecord": "Your latest day was a record for this period.",
   "insightUp": "Latest day: {percent}% more visitors than usual for this weekday.",
@@ -233,5 +233,8 @@
   "weeklyNotifTitle": "Weekly summary",
   "weeklyNotifBody": "{visitors} visitors this past week. Check your stats.",
   "@weeklyNotifBody": { "placeholders": { "visitors": { "type": "int" } } },
+  "shareButton": "Share",
+  "reportPreviewTitle": "Share report",
+  "reportShareText": "Footfall summary from PrintBack",
   "requiresConnection": "requires a device connection"
 }

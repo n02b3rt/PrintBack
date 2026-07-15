@@ -150,15 +150,18 @@ class _DeviceScreenState extends State<DeviceScreen> {
             _syncSection(context, l10n, ble, connected),
             const SizedBox(height: 24),
 
-            // Restart help (no BLE restart command exists; power-cycle is
-            // the real recovery, docs/LEARNINGS.md 2026-07-12).
+            // Restart help: a 10s button hold reboots the device in the
+            // field (firmware ui.c hold-to-restart), no PC/power-unplug
+            // needed - the LED counts the hold down (red) and confirms
+            // (white flash). Requires the firmware build carrying that
+            // gesture to be flashed.
             Text(l10n.restartTitle,
                 style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 8),
             GlassCard(
               child: Row(
                 children: [
-                  const Icon(Icons.power_settings_new),
+                  const Icon(Icons.restart_alt),
                   const SizedBox(width: 12),
                   Expanded(child: Text(l10n.restartBody)),
                 ],

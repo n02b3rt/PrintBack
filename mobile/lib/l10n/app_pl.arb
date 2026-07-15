@@ -222,7 +222,7 @@
   "@syncDownloading": { "placeholders": { "days": { "type": "int" } } },
   "syncDone": "Zsynchronizowano",
   "restartTitle": "Uruchom ponownie urządzenie",
-  "restartBody": "Odłącz urządzenie od zasilania (USB), odczekaj około 5 sekund i podłącz ponownie. Zacznie od nowa i połączy się samo.",
+  "restartBody": "Przytrzymaj przycisk na urządzeniu przez około 10 sekund. Po chwili dioda zacznie migać na czerwono coraz szybciej, a gdy błyśnie na biało, urządzenie uruchomi się ponownie i połączy samo.",
   "insightsTitle": "Wnioski",
   "insightRecord": "Ostatni dzień to rekord odwiedzin w tym okresie.",
   "insightUp": "Ostatni dzień: o {percent}% więcej odwiedzających niż zwykle w ten dzień tygodnia.",
@@ -233,5 +233,8 @@
   "weeklyNotifTitle": "Podsumowanie tygodnia",
   "weeklyNotifBody": "{visitors} odwiedzających w ostatnim tygodniu. Zajrzyj do statystyk.",
   "@weeklyNotifBody": { "placeholders": { "visitors": { "type": "int" } } },
+  "shareButton": "Udostępnij",
+  "reportPreviewTitle": "Udostępnij raport",
+  "reportShareText": "Podsumowanie ruchu z PrintBack",
   "requiresConnection": "wymaga połączenia z urządzeniem"
 }
