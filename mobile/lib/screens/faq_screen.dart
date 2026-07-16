@@ -3,12 +3,20 @@ import 'package:flutter/material.dart';
 import '../l10n/app_localizations.dart';
 import '../widgets/gradient_background.dart';
 
-/// Plain-language "how it works" FAQ, reachable from Settings. Five
-/// questions from the report (3.6) covering where the numbers come from,
-/// why it's a trend not an exact count, what the device sees, what is not
-/// collected, and what to do when numbers look off - the honesty that
-/// builds trust with a non-technical owner, kept in the app not just the
-/// README.
+/// Plain-language "how it works" FAQ, reachable from Settings - the honesty
+/// that builds trust with a non-technical owner, kept in the app and not
+/// just in the README.
+///
+/// The first five cover where the numbers come from, why it's a trend and
+/// not an exact count, what the device sees, what isn't collected, and what
+/// to do when numbers look off. The rest answer the questions that actually
+/// come up once it's running: retention, the "<5" badge, gaps in the hourly
+/// chart, power loss, how many phones fit, recovering a broken pairing, the
+/// button/LED cheat sheet, MAC randomisation, moving premises, and staff
+/// skewing the counts. Every number quoted here is checked against the
+/// firmware rather than assumed - e.g. three phones, not eight: the bond
+/// store is capped at CONFIG_BT_NIMBLE_MAX_BONDS=3, whatever the size of
+/// the whitelist array in ble_gatt.c suggests.
 class FaqScreen extends StatelessWidget {
   const FaqScreen({super.key});
 
@@ -21,6 +29,16 @@ class FaqScreen extends StatelessWidget {
       (l10n.faqQ3, l10n.faqA3),
       (l10n.faqQ4, l10n.faqA4),
       (l10n.faqQ5, l10n.faqA5),
+      (l10n.faqQ6, l10n.faqA6),
+      (l10n.faqQ7, l10n.faqA7),
+      (l10n.faqQ8, l10n.faqA8),
+      (l10n.faqQ9, l10n.faqA9),
+      (l10n.faqQ10, l10n.faqA10),
+      (l10n.faqQ11, l10n.faqA11),
+      (l10n.faqQ12, l10n.faqA12),
+      (l10n.faqQ13, l10n.faqA13),
+      (l10n.faqQ14, l10n.faqA14),
+      (l10n.faqQ15, l10n.faqA15),
     ];
     return Scaffold(
       appBar: AppBar(title: Text(l10n.howItWorksTitle)),
