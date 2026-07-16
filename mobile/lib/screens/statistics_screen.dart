@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import '../ble/ble_service.dart';
 import '../l10n/app_localizations.dart';
 import '../logic/format.dart';
+import '../logic/narrative.dart';
 import '../logic/stats_math.dart';
 import '../models/aggregate.dart';
 import '../storage/local_db.dart';
@@ -123,6 +124,53 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
   Future<void> _syncNow() async {
     final ble = context.read<BleService>();
     await ble.requestSync(0);
+  }
+
+  /// The period in two or three plain sentences, above the numbers. Skipped
+  /// for "today": a single in-progress day has no best day and nothing
+  /// meaningful to compare against.
+  List<Widget> _narrativeSection(BuildContext context, AppLocalizations l10n,
+      List<String> weekdayLabelsFull) {
+    if (_period == _Period.today) return const [];
+    final n = buildPeriodNarrative(_daily, _prevDaily);
+    if (n == null) return const [];
+
+    final sentences = <String>[l10n.narrativeTotal(n.total)];
+    if (n.bestDayWeekday != null && n.bestDayCount != null) {
+      sentences.add(l10n.narrativeBestDay(
+          weekdayLabelsFull[n.bestDayWeekday!], n.bestDayCount!));
+    }
+    final d = n.deltaPercent;
+    if (d != null) {
+      if (d >= 10) {
+        sentences.add(l10n.narrativeUp(d));
+      } else if (d <= -10) {
+        sentences.add(l10n.narrativeDown(-d));
+      } else {
+        sentences.add(l10n.narrativeSteady);
+      }
+    }
+    final rd = n.returningDeltaPoints;
+    if (rd == null || rd.abs() < 3) {
+      sentences.add(l10n.narrativeReturning(n.returningPct));
+    } else if (rd > 0) {
+      sentences.add(l10n.narrativeReturningUp(n.returningPct, rd));
+    } else {
+      sentences.add(l10n.narrativeReturningDown(n.returningPct, -rd));
+    }
+
+    return [
+      Text(l10n.narrativeTitle,
+          style: Theme.of(context).textTheme.titleMedium),
+      const SizedBox(height: 8),
+      GlassCard(
+        child: Text(
+          sentences.join(' '),
+          style: Theme.of(context).textTheme.bodyLarge?.copyWith(height: 1.45),
+        ),
+      ),
+      const SizedBox(height: 24),
+    ];
   }
 
   String _periodLabel(AppLocalizations l10n) {
@@ -282,6 +330,9 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                 ),
               ),
               const SizedBox(height: 8),
+              // The period in words, before the numbers - most owners want
+              // the takeaway, not the table.
+              ..._narrativeSection(context, l10n, weekdayLabelsFull),
               GlassCard(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
