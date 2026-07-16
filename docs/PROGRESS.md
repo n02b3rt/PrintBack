@@ -358,10 +358,66 @@
       steps 3-4 (scan -> connect -> first-sync) still need one on-device
       end-to-end run on a clean phone (removed bond), target under 3 min.
 
+- [x] Phase 12: value, trust and field-recovery pass (done 2026-07-15/16,
+      committed straight to `main` in small steps - no branch, since Phases
+      9-11 had already merged and each change here is independent).
+      **Firmware** (flashed and confirmed on hardware, then frozen again for
+      the soak): a 10s button hold reboots the device with an LED countdown -
+      red from 5s, white confirm, then 3s dark so it reads like a
+      power-cycle - replacing "unplug it" as the field recovery a shop owner
+      can actually perform; holding the button from boot for 3s wipes every
+      BLE bond (magenta LED), so a phone that lost its half of a bond can be
+      recovered without a PC and esptool; the auto-whitelist now needs
+      `>= min_observations` (default 30) on top of the distinct-hours rule,
+      so a customer who merely lingers isn't excluded as staff; and STATUS
+      gained `wl`, the whitelist size, surfaced in the app as "background
+      devices" (a count, never an identifier). Two real bugs found and fixed
+      along the way, both in docs/LEARNINGS.md: the hold never completed on a
+      marginal breadboard switch (any single flickery "released" tick zeroed
+      the counter - fixed with release debouncing), and the ESP-IDF 5.3.2
+      toolchain on this machine needed a documented reinstall recipe.
+      **Mobile**: aggregates are now cached by `BleService` at the moment
+      they arrive rather than by whichever screen happened to be listening -
+      the broadcast stream silently dropped records that landed before
+      `HomeShell` mounted, which is why the numbers changed after an app
+      restart (docs/LEARNINGS.md 2026-07-16). Plus: explicit `createBond()`
+      (no more double Android pairing dialog) and `removeBond()` on forget,
+      so the factory-reset story is PC-free end to end; shake-to-report with
+      an in-memory, MAC-scrubbed log buffer and a previewed, opt-in consent
+      sheet (`BugReportSink` is the seam for a real backend later); the app
+      opts out of Android Auto Backup and device-transfer, so "nothing leaves
+      the phone" is literally true (the release manifest declares no INTERNET
+      permission - verified on the merged manifest); a dashboard hero
+      answering "how is today going vs a normal Tuesday at this hour";
+      streak/percentile insights with a daily-rotating secondary slot; a
+      plain-sentence period narrative; .xlsx export (Days/Hours/Metadata);
+      a quick-actions row; ten more FAQ entries including the button/LED
+      cheat sheet; a demo mode whose synthetic data reproduces the real
+      backfill limit and k-anonymity gaps; and opening hours, which grey out
+      closed hours, keep them out of the peak, and call out after-hours
+      traffic separately. iOS notifications were initialised for the first
+      time (previously Android-only init, and the permission ask returned
+      true without asking) - code-only, untestable until there's an iPhone.
+      101 tests green.
+      Two claims from the review were checked against the code and turned out
+      wrong, so they were not built: the app supports **3** paired phones, not
+      8 (`CONFIG_BT_NIMBLE_MAX_BONDS=3`; the `MAX_BONDED_PEERS 8` array is
+      just oversized) - the FAQ says 3; and a monthly report card already
+      exists, since the shareable card is driven by the period selector.
+
 Note: the current code in `firmware/` and `app/` is still the old
 architecture (USB-CDC → Python desktop dashboard, SQLite). Don't remove /
 change it until the new path (BLE+SD) is ready and tested in parallel.
 
-Last updated: 2026-07-12 (Phase 11 onboarding done and merged to `main`;
-board-free parts verified, wizard end-to-end pending one clean-phone run.
-Firmware stays frozen for the 30-day soak).
+Last updated: 2026-07-16 (Phase 12 done). The plan in Etapy 1-5 is now
+complete except iOS (needs a Mac + iPhone, neither available) and Phase 7
+documentation. What's left is either time (the 30-day soak, which every
+reflash restarts - the board should now be left alone), hardware (a second
+unit, an enclosure with a soldered switch instead of the breadboard that
+cost an hour of debugging on 2026-07-15, the SD card's ~460MB partition,
+the RTC deferred to a PCB), or one batched firmware reflash after the soak:
+`wl_auto` state to NVS (it is RAM-only today, so any reboot wipes the
+staff-whitelist progress - the most user-visible of the four), a watchdog
+for the "board wedges after an unclean power cut" failure, a way to clear
+the whitelist (`whitelist_clear()` exists but nothing calls it), and a
+longer hourly backfill to enable a week x hour heatmap.
