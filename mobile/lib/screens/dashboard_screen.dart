@@ -20,6 +20,8 @@ import '../widgets/glass_card.dart';
 import '../widgets/gradient_background.dart';
 import '../widgets/sync_status_banner.dart';
 import 'device_screen.dart';
+import 'pairing_screen.dart';
+import 'report_preview.dart';
 
 /// Today's date as `YYYY-MM-DD`, matching docs/DATA_MODEL.md's STATS
 /// `date` field format.
@@ -38,11 +40,18 @@ class DashboardScreen extends StatefulWidget {
   final GlobalKey? hourlyKey;
   final GlobalKey? bannerKey;
 
+  /// Switches the shell to the Statistics tab. The export lives there
+  /// because it needs a period to export, which is that screen's whole job -
+  /// the dashboard's quick action is a shortcut to it, not a second
+  /// implementation of it.
+  final VoidCallback? onOpenStatistics;
+
   const DashboardScreen({
     super.key,
     this.kpiKey,
     this.hourlyKey,
     this.bannerKey,
+    this.onOpenStatistics,
   });
 
   @override
@@ -159,6 +168,49 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _reloadDebounce?.cancel();
     _statsSub?.cancel();
     super.dispose();
+  }
+
+  /// The four things an owner actually reaches for, one tap from the panel
+  /// instead of buried in tabs and app bars.
+  Widget _quickActions(BuildContext context, AppLocalizations l10n) {
+    final today = _todayDaily;
+    final unique = today?.unique ?? 0;
+    final returning = today?.returning ?? 0;
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        _QuickAction(
+          icon: Icons.ios_share,
+          label: l10n.quickReport,
+          onTap: () => Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => ReportPreview(
+              periodLabel: l10n.periodToday,
+              dateRange: formatDayTitle(_todayString(), l10n.localeName),
+              unique: unique,
+              newVisitors: (unique - returning).clamp(0, unique),
+              returning: returning,
+            ),
+          )),
+        ),
+        _QuickAction(
+          icon: Icons.table_view,
+          label: l10n.quickExport,
+          onTap: widget.onOpenStatistics,
+        ),
+        _QuickAction(
+          icon: Icons.developer_board,
+          label: l10n.quickDevice,
+          onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const DeviceScreen())),
+        ),
+        _QuickAction(
+          icon: Icons.bluetooth_searching,
+          label: l10n.quickPairing,
+          onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const PairingScreen())),
+        ),
+      ],
+    );
   }
 
   /// "Do 14:00 typowy wtorek ma około 40" + today's running total, with a
@@ -330,6 +382,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
             padding: const EdgeInsets.all(16),
             children: [
               SyncStatusBanner(key: widget.bannerKey),
+              const SizedBox(height: 8),
+              _quickActions(context, l10n),
               const SizedBox(height: 16),
               // Hero: how today is going against a normal same-weekday at
               // this hour - the one question an owner has mid-shift. Hidden
@@ -400,6 +454,46 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       : _DailyBarChart(data: _recentDaily.reversed.toList()),
                 ),
               ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _QuickAction extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback? onTap;
+
+  const _QuickAction({required this.icon, required this.label, this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Expanded(
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Column(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: scheme.primary.withValues(alpha: 0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, size: 21, color: scheme.primary),
+              ),
+              const SizedBox(height: 6),
+              Text(label,
+                  style: Theme.of(context).textTheme.labelSmall,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis),
             ],
           ),
         ),

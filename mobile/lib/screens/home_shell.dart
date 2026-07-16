@@ -156,6 +156,7 @@ class _HomeShellState extends State<HomeShell> {
             kpiKey: _kpiKey,
             hourlyKey: _hourlyKey,
             bannerKey: _bannerKey,
+            onOpenStatistics: () => setState(() => _index = 1),
           ),
           const StatisticsScreen(),
           const SettingsScreen(),
