@@ -539,23 +539,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// Demo mode fabricates a device's worth of cached aggregates and points
   /// the app at them; the ordinary offline path renders it, so nothing on the
   /// other screens knows or cares that it's a demo. Leaving drops the rows
-  /// and returns to pairing.
+  /// and restores whichever device was active before.
   Future<void> _toggleDemo() async {
     final ble = context.read<BleService>();
-    final wasDemo = DemoData.isDemo(ble.activeDeviceId);
-    if (wasDemo) {
+    if (DemoData.isDemo(ble.activeDeviceId)) {
       await DemoData.disable(ble);
     } else {
       await DemoData.enable(ble);
     }
     if (!mounted) return;
     // Rebuild from the root so every screen re-reads the (now different)
-    // active device instead of rendering the previous one's cache. Leaving
-    // demo mode leaves no active device at all, so that goes back through
-    // ConnectingScreen - HomeShell would dereference a null device id.
+    // active device instead of rendering the previous one's cache. Route on
+    // what we actually ended up with, not on which way we just toggled:
+    // leaving demo restores the previous device when there was one, and only
+    // lands on ConnectingScreen when there wasn't - HomeShell would
+    // dereference a null device id.
+    final hasDevice = ble.activeDeviceId != null;
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(
-          builder: (_) => wasDemo ? const ConnectingScreen() : const HomeShell()),
+          builder: (_) => hasDevice ? const HomeShell() : const ConnectingScreen()),
       (r) => false,
     );
   }

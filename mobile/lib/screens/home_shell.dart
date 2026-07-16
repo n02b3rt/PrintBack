@@ -6,6 +6,7 @@ import '../l10n/app_localizations.dart';
 import '../onboarding/coach_marks.dart';
 import '../onboarding/onboarding_flags.dart';
 import '../onboarding/one_time_tip.dart';
+import '../services/demo_data.dart';
 import '../services/shake_detector.dart';
 import '../services/weekly_notification.dart';
 import '../storage/local_db.dart';
@@ -94,10 +95,59 @@ class _HomeShellState extends State<HomeShell> {
   /// First time the dashboard is reached, run the coach-mark tour once the
   /// screen has settled a moment. Skipped for returning users (flag set)
   /// or if the user has already navigated away.
+  /// A tour that points at the KPI cards and says "these are today's
+  /// visitors" is useless when every card reads 0 - which is exactly the
+  /// state a brand new user is in, since the device has had no time to see
+  /// anyone yet. Offer the demo data first, so the tour explains something
+  /// the operator can actually see. Declining is a first-class option: the
+  /// tour still runs, just over the real (empty) panel.
+  ///
+  /// Returns once the user has decided; the tour starts afterwards either way.
+  Future<void> _offerDemoForTutorial() async {
+    final ble = context.read<BleService>();
+    final deviceId = ble.activeDeviceId;
+    if (deviceId == null || DemoData.isDemo(deviceId)) return;
+    if (await LocalDb().hasAnyData(deviceId)) return; // real data: no need
+    if (!mounted) return;
+
+    final l10n = AppLocalizations.of(context)!;
+    final wantsDemo = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(l10n.tutorialDemoTitle),
+        content: Text(l10n.tutorialDemoBody),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(l10n.tutorialDemoSkip),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text(l10n.tutorialDemoAccept),
+          ),
+        ],
+      ),
+    );
+    if (wantsDemo != true || !mounted) return;
+    await DemoData.enable(ble);
+    if (!mounted) return;
+    // Every screen caches its own rows, so send them back through the shell
+    // to re-read against the demo device.
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const HomeShell()),
+      (r) => false,
+    );
+  }
+
   Future<void> _maybeShowCoachMarks() async {
     if (await OnboardingFlags.coachMarksDone()) return;
     await Future.delayed(const Duration(milliseconds: 600));
     if (!mounted || _index != 0) return;
+    await _offerDemoForTutorial();
+    // Accepting the demo rebuilds the shell, and the fresh one runs its own
+    // _maybeShowCoachMarks - this instance is gone, so stop here rather than
+    // spotlighting keys that no longer belong to a live tree.
+    if (!mounted) return;
     final l10n = AppLocalizations.of(context)!;
     CoachMarks.show(
       context,

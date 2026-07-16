@@ -1,3 +1,5 @@
+import 'package:shared_preferences/shared_preferences.dart';
+
 import '../ble/ble_service.dart';
 import '../models/aggregate.dart';
 import '../storage/local_db.dart';
@@ -97,9 +99,20 @@ class DemoData {
     return out;
   }
 
+  /// Remembers which real device was active before demo mode took over, so
+  /// leaving demo puts the operator back where they were instead of dumping
+  /// them at the pairing screen with their device apparently gone.
+  static const _previousDeviceKey = 'demo_previous_device_id';
+
   /// Fills the cache with demo rows and points the app at them. The app then
   /// runs in its ordinary offline mode - no special-casing in the screens.
   static Future<void> enable(BleService ble, {DateTime? today}) async {
+    final previous = ble.activeDeviceId;
+    final prefs = await SharedPreferences.getInstance();
+    if (previous != null && previous != deviceId) {
+      await prefs.setString(_previousDeviceKey, previous);
+    }
+
     final db = LocalDb();
     await db.deleteDevice(deviceId);
     for (final a in generate(today: today ?? DateTime.now())) {
@@ -108,11 +121,16 @@ class DemoData {
     await ble.setActiveDeviceId(deviceId);
   }
 
-  /// Drops the demo rows and leaves the app with no active device, i.e. back
-  /// at pairing.
+  /// Drops the demo rows and restores whatever device was active before -
+  /// or, if there wasn't one, leaves the app at pairing. The real device was
+  /// never unpaired (demo only ever swapped the active id), so this is just
+  /// putting the pointer back.
   static Future<void> disable(BleService ble) async {
     await LocalDb().deleteDevice(deviceId);
-    await ble.setActiveDeviceId(null);
+    final prefs = await SharedPreferences.getInstance();
+    final previous = prefs.getString(_previousDeviceKey);
+    await prefs.remove(_previousDeviceKey);
+    await ble.setActiveDeviceId(previous);
   }
 
   static bool isDemo(String? deviceId) => deviceId == DemoData.deviceId;
