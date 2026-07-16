@@ -109,7 +109,19 @@ class _CoachOverlayState extends State<_CoachOverlay> {
             right: 24,
             top: below ? spotlight.bottom + 16 : null,
             bottom: below ? null : size.height - spotlight.top + 16,
+            // Opaque on purpose, overriding the app's card theme. That theme
+            // makes cards 5%-white translucent (the glass look), which works
+            // over the page gradient but disappears almost completely here,
+            // where the card sits on top of a 0.72-black scrim - the tutorial
+            // text was barely legible against its own dimmer.
             child: Card(
+              elevation: 8,
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+                side: BorderSide(
+                    color: Theme.of(context).colorScheme.outlineVariant),
+              ),
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
@@ -117,7 +129,8 @@ class _CoachOverlayState extends State<_CoachOverlay> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(target.text,
-                        style: Theme.of(context).textTheme.bodyLarge),
+                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                            color: Theme.of(context).colorScheme.onSurface)),
                     const SizedBox(height: 12),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
