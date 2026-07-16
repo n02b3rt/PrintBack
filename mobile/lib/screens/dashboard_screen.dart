@@ -489,6 +489,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ..._insightsSection(context, l10n),
               Row(
                 key: widget.kpiKey,
+                // Equal-height cards regardless of how the labels lay out.
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Expanded(
                     child: _KpiCard(label: l10n.uniqueLabel, value: todayUnique),
@@ -619,10 +621,24 @@ class _KpiCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return GlassCard(
       child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Text('$value', style: Theme.of(context).textTheme.headlineMedium),
           const SizedBox(height: 4),
-          Text(label, style: Theme.of(context).textTheme.bodySmall),
+          // Always one line. "Odwiedzający" is wider than a third of a phone
+          // screen, and Flutter breaks an over-long single word mid-word
+          // ("Odwiedzając" / "y") rather than hyphenating - which looked
+          // broken and, because only this card wrapped, also made it taller
+          // than its two neighbours. Scaling the label down keeps all three
+          // identical and readable.
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              label,
+              maxLines: 1,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
         ],
       ),
     );
