@@ -14,6 +14,12 @@ import '../widgets/gradient_background.dart';
 
 enum _Range { d7, d30, max }
 
+/// Which series the whole screen is about. Switching it re-points the
+/// headline, the line, the scrub readout and the stats at once - the numbers
+/// on screen always describe the same thing, rather than a chart of one
+/// metric sitting under a total of another.
+enum _Metric { unique, newVisitors, returning }
+
 /// Full-screen drill-down for the daily trend: the period's headline number
 /// and how it compares, a scrubbable line, optional overlays, the same
 /// plain-language interpretation the statistics screen uses, and the stats
@@ -37,12 +43,37 @@ class _ChartDetailState extends State<ChartDetail> {
   final _localDb = LocalDb();
 
   _Range _range = _Range.d30;
+  _Metric _metric = _Metric.unique;
   bool _showPrevious = false;
   bool _showAverage = true;
+
+  /// "New" is unique minus returning, clamped - the same definition the KPI
+  /// cards use, kept in one place so the two can't drift.
+  int _valueOf(Aggregate a) => switch (_metric) {
+        _Metric.unique => a.unique,
+        _Metric.returning => a.returning,
+        _Metric.newVisitors => (a.unique - a.returning).clamp(0, a.unique),
+      };
+
+  int _sumOf(List<Aggregate> rows) =>
+      rows.fold<int>(0, (s, a) => s + _valueOf(a));
+
+  String _metricLabel(AppLocalizations l10n) => switch (_metric) {
+        _Metric.unique => l10n.uniqueLabel,
+        _Metric.returning => l10n.returningLabel,
+        _Metric.newVisitors => l10n.newVisitorsLabel,
+      };
 
   List<Aggregate> _rows = [];
   List<Aggregate> _previous = [];
   bool _loading = true;
+
+  /// Which point the finger is on, or null when nobody's touching the chart.
+  /// Dragging rewrites the header instead of popping a tooltip over the line:
+  /// the number is already the biggest thing on the screen, so putting the
+  /// scrubbed value there means the eye never leaves it, and nothing covers
+  /// the chart you're reading.
+  int? _scrub;
 
   @override
   void initState() {
@@ -78,6 +109,7 @@ class _ChartDetailState extends State<ChartDetail> {
       _rows = rows.reversed.toList();
       _previous = previous;
       _loading = false;
+      _scrub = null; // the old index means nothing against new rows
     });
   }
 
@@ -90,16 +122,56 @@ class _ChartDetailState extends State<ChartDetail> {
   String _deltaSentence(AppLocalizations l10n) {
     final days = _rangeDays;
     if (days == null || _previous.isEmpty) return l10n.deltaNoBaseline;
-    final diff = sumUnique(_rows) - sumUnique(_previous);
+    final diff = _sumOf(_rows) - _sumOf(_previous);
     if (diff == 0) return l10n.deltaSame(days);
     return diff > 0 ? l10n.deltaMore(diff, days) : l10n.deltaFewer(-diff, days);
+  }
+
+  /// The period summary, or - while a finger is on the chart - that day.
+  ///
+  /// Fixed height so the layout doesn't jump between the two states while
+  /// scrubbing, which would make the chart shift under the finger.
+  Widget _header(BuildContext context, AppLocalizations l10n, int total) {
+    final theme = Theme.of(context);
+    final i = _scrub;
+    final scrubbed = (i != null && i >= 0 && i < _rows.length) ? _rows[i] : null;
+
+    // A floor, not a fixed height: the two states must not make the layout
+    // jump (the chart would shift under a scrubbing finger), but a hard
+    // SizedBox silently clipped the number when the delta sentence wrapped
+    // to two lines. Reserve the taller state's height and let it grow.
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 116),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            '${scrubbed == null ? total : _valueOf(scrubbed)}',
+            style: theme.textTheme.displayMedium
+                ?.copyWith(fontWeight: FontWeight.w700),
+          ),
+          Text(
+            _metricLabel(l10n),
+            style: theme.textTheme.bodySmall
+                ?.copyWith(color: theme.colorScheme.outline),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            scrubbed == null
+                ? _deltaSentence(l10n)
+                : formatDayTitle(scrubbed.date, l10n.localeName),
+            style: theme.textTheme.bodyMedium,
+          ),
+        ],
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
-    final theme = Theme.of(context);
-    final total = sumUnique(_rows);
+    final total = _sumOf(_rows);
 
     return Scaffold(
       appBar: AppBar(title: Text(widget.title)),
@@ -109,16 +181,27 @@ class _ChartDetailState extends State<ChartDetail> {
             : ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
-                  Text('$total',
-                      style: theme.textTheme.displayMedium
-                          ?.copyWith(fontWeight: FontWeight.w700)),
-                  Text(l10n.totalUniqueLabel,
-                      style: theme.textTheme.bodySmall
-                          ?.copyWith(color: theme.colorScheme.outline)),
-                  const SizedBox(height: 4),
-                  Text(_deltaSentence(l10n),
-                      style: theme.textTheme.bodyMedium),
+                  _header(context, l10n, total),
                   const SizedBox(height: 16),
+                  SegmentedButton<_Metric>(
+                    segments: [
+                      ButtonSegment(
+                          value: _Metric.unique, label: Text(l10n.uniqueLabel)),
+                      ButtonSegment(
+                          value: _Metric.newVisitors,
+                          label: Text(l10n.newVisitorsLabel)),
+                      ButtonSegment(
+                          value: _Metric.returning,
+                          label: Text(l10n.returningLabel)),
+                    ],
+                    selected: {_metric},
+                    showSelectedIcon: false,
+                    onSelectionChanged: (s) => setState(() {
+                      _metric = s.first;
+                      _scrub = null; // stale readout for the new series
+                    }),
+                  ),
+                  const SizedBox(height: 8),
                   SegmentedButton<_Range>(
                     segments: [
                       ButtonSegment(value: _Range.d7, label: Text(l10n.range7d)),
@@ -143,7 +226,10 @@ class _ChartDetailState extends State<ChartDetail> {
                               rows: _rows,
                               previous: _showPrevious ? _previous : const [],
                               showAverage: _showAverage,
-                              locale: l10n.localeName,
+                              value: _valueOf,
+                              onScrub: (i) {
+                                if (i != _scrub) setState(() => _scrub = i);
+                              },
                             ),
                     ),
                   ),
@@ -233,16 +319,18 @@ class _ChartDetailState extends State<ChartDetail> {
 
   List<Widget> _statsGrid(BuildContext context, AppLocalizations l10n) {
     if (_rows.isEmpty) return const [];
-    final total = sumUnique(_rows);
-    final best = bestDay(_rows);
+    final total = _sumOf(_rows);
+    // The record is the best day *of the selected metric* - the busiest day
+    // for returning visitors isn't necessarily the busiest day overall.
+    final peak = _rows.map(_valueOf).fold<int>(0, (m, v) => v > m ? v : m);
     return [
       GlassCard(
         child: ChartStatStrip(stats: [
           (l10n.statAvgDay, '${averagePerDay(total, _rows.length)}'),
-          (l10n.statRecord, best == null ? '-' : '${best.unique}'),
+          (l10n.statRecord, '$peak'),
           (
             l10n.statReturningPct,
-            '${returningRate(total, sumReturning(_rows))}%'
+            '${returningRate(sumUnique(_rows), sumReturning(_rows))}%'
           ),
         ]),
       ),
@@ -250,22 +338,35 @@ class _ChartDetailState extends State<ChartDetail> {
   }
 }
 
-/// The scrubbable trend. fl_chart's built-in touch handling gives
-/// drag-along-the-line for free (a vertical indicator plus a tooltip that
-/// follows the finger), which is the whole point of this screen - so unlike
-/// the panel's charts, this one keeps its tooltip instead of pushing exact
-/// values into a sheet.
+/// The scrubbable trend.
+///
+/// Two things make this readable that the panel's charts don't do:
+///
+/// The y-axis is scaled to the data, not to zero. Footfall never drops near
+/// zero on a working device, so a zero-based axis spends most of its height
+/// on empty space and squashes the variation the operator actually came to
+/// look at (490 visitors across four days rendered as a flat line hugging
+/// the top). Cropping the axis is only honest if you say where you cropped
+/// it, which is why the min and max are printed on the right - the two go
+/// together and neither ships without the other.
+///
+/// Touch drives [onScrub] instead of a tooltip: the parent puts the value in
+/// the header, so nothing covers the line under your finger.
 class _TrendChart extends StatelessWidget {
   final List<Aggregate> rows;
   final List<Aggregate> previous;
   final bool showAverage;
-  final String locale;
+
+  /// Which number to plot out of each row - the screen's selected metric.
+  final int Function(Aggregate) value;
+  final void Function(int?) onScrub;
 
   const _TrendChart({
     required this.rows,
     required this.previous,
     required this.showAverage,
-    required this.locale,
+    required this.value,
+    required this.onScrub,
   });
 
   @override
@@ -273,8 +374,24 @@ class _TrendChart extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final spots = [
       for (var i = 0; i < rows.length; i++)
-        FlSpot(i.toDouble(), rows[i].unique.toDouble())
+        FlSpot(i.toDouble(), value(rows[i]).toDouble())
     ];
+
+    // Everything drawn decides the window, overlays included - a ghost line
+    // running off the top would be worse than a slightly looser axis.
+    final plotted = <double>[
+      ...rows.map((r) => value(r).toDouble()),
+      if (previous.isNotEmpty) ...previous.map((r) => value(r).toDouble()),
+    ];
+    var dataMin = plotted.reduce((a, b) => a < b ? a : b);
+    var dataMax = plotted.reduce((a, b) => a > b ? a : b);
+    // A flat series has no range to scale to; give it air instead of a
+    // zero-height window (which fl_chart would render as a divide-by-zero
+    // mess).
+    final span = dataMax - dataMin;
+    final pad = span == 0 ? (dataMax == 0 ? 1.0 : dataMax * 0.2) : span * 0.15;
+    final minY = (dataMin - pad).clamp(0.0, double.infinity);
+    final maxY = dataMax + pad;
 
     final bars = <LineChartBarData>[];
 
@@ -286,7 +403,7 @@ class _TrendChart extends StatelessWidget {
         // period before", laid over today's, not a second calendar axis.
         spots: [
           for (var i = 0; i < prev.length && i < rows.length; i++)
-            FlSpot(i.toDouble(), prev[i].unique.toDouble())
+            FlSpot(i.toDouble(), value(prev[i]).toDouble())
         ],
         isCurved: prev.length > 6,
         barWidth: 2,
@@ -302,7 +419,7 @@ class _TrendChart extends StatelessWidget {
     // Guarded by the same rule the chip uses: under a full window every
     // point is null and this would add an empty, invisible series.
     if (showAverage && rows.length >= 7) {
-      final avg = movingAverage(rows.map((r) => r.unique).toList(), 7);
+      final avg = movingAverage(rows.map(value).toList(), 7);
       bars.add(LineChartBarData(
         spots: [
           for (var i = 0; i < avg.length; i++)
@@ -316,42 +433,88 @@ class _TrendChart extends StatelessWidget {
       ));
     }
 
+    final labelStyle = Theme.of(context)
+        .textTheme
+        .labelSmall
+        ?.copyWith(color: scheme.outline);
+
     return LineChart(
       LineChartData(
+        minY: minY,
+        maxY: maxY,
         lineBarsData: bars,
         gridData: revolutGrid,
         borderData: revolutBorder,
-        titlesData: revolutTitles(
-          context,
-          bottomInterval: 1,
-          bottomBuilder: (value, meta) {
-            final i = value.toInt();
-            if (value != i.toDouble() || i < 0 || i >= rows.length) {
-              return const SizedBox.shrink();
-            }
-            if (!showDayLabelAt(i, rows.length)) return const SizedBox.shrink();
-            return Padding(
-              padding: const EdgeInsets.only(top: 6),
-              child: Text(formatAxisDay(rows[i].date),
-                  style: Theme.of(context).textTheme.labelSmall),
-            );
-          },
+        titlesData: FlTitlesData(
+          show: true,
+          topTitles: const AxisTitles(),
+          leftTitles: const AxisTitles(),
+          // Exactly two labels - the window's floor and ceiling - by asking
+          // for an interval as wide as the window itself. That's the whole
+          // job: say where the axis was cropped, without turning into a
+          // ruler.
+          rightTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              reservedSize: 48,
+              interval: (maxY - minY).abs() < 0.001 ? 1 : maxY - minY,
+              getTitlesWidget: (value, meta) => Padding(
+                padding: const EdgeInsets.only(left: 6),
+                child: Text('${value.round()}', style: labelStyle),
+              ),
+            ),
+          ),
+          bottomTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              reservedSize: 28,
+              interval: 1,
+              getTitlesWidget: (value, meta) {
+                final i = value.toInt();
+                if (value != i.toDouble() || i < 0 || i >= rows.length) {
+                  return const SizedBox.shrink();
+                }
+                if (!showDayLabelAt(i, rows.length)) {
+                  return const SizedBox.shrink();
+                }
+                return Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(formatAxisDay(rows[i].date), style: labelStyle),
+                );
+              },
+            ),
+          ),
         ),
         lineTouchData: LineTouchData(
-          touchTooltipData: LineTouchTooltipData(
-            getTooltipItems: (spots) => [
-              for (final s in spots)
-                if (s.barIndex == (previous.isNotEmpty ? 1 : 0))
-                  LineTooltipItem(
-                    '${formatDayTitle(rows[s.x.toInt()].date, locale)}\n'
-                    '${s.y.toInt()}',
-                    TextStyle(
-                        color: scheme.onSurface, fontWeight: FontWeight.w600),
-                  )
-                else
-                  null,
-            ],
-          ),
+          // The header is the readout, so the tooltip would only duplicate it
+          // while hiding the line.
+          touchTooltipData: noLineTooltip,
+          getTouchedSpotIndicator: (bar, indexes) => [
+            for (final _ in indexes)
+              TouchedSpotIndicatorData(
+                FlLine(color: scheme.primary.withValues(alpha: 0.5), strokeWidth: 1),
+                FlDotData(
+                  getDotPainter: (s, p, b, i) => FlDotCirclePainter(
+                    radius: 5,
+                    color: scheme.primary,
+                    strokeWidth: 2,
+                    strokeColor: scheme.surface,
+                  ),
+                ),
+              ),
+          ],
+          touchCallback: (event, response) {
+            final spot = response?.lineBarSpots?.firstOrNull;
+            // Only report while a finger is actually down; releasing hands
+            // back null so the header returns to the period summary.
+            if (spot == null || event is FlPointerExitEvent ||
+                event is FlLongPressEnd || event is FlPanEndEvent ||
+                event is FlTapUpEvent) {
+              onScrub(null);
+              return;
+            }
+            onScrub(spot.x.toInt());
+          },
         ),
       ),
     );
