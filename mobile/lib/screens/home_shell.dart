@@ -6,8 +6,10 @@ import '../l10n/app_localizations.dart';
 import '../onboarding/coach_marks.dart';
 import '../onboarding/onboarding_flags.dart';
 import '../onboarding/one_time_tip.dart';
+import '../services/shake_detector.dart';
 import '../services/weekly_notification.dart';
 import '../storage/local_db.dart';
+import 'bug_report_sheet.dart';
 import 'dashboard_screen.dart';
 import 'settings_screen.dart';
 import 'statistics_screen.dart';
@@ -32,12 +34,32 @@ class _HomeShellState extends State<HomeShell> {
   final _bannerKey = GlobalKey();
   final _navKey = GlobalKey();
 
+  /// Shake 3x anywhere in the app to report a problem. The gesture only
+  /// opens the consent sheet - nothing is collected or sent until the
+  /// operator acts on it (services/bug_report.dart).
+  late final ShakeDetector _shake;
+  bool _bugSheetOpen = false;
+
   @override
   void initState() {
     super.initState();
     _triggerSync();
     _scheduleWeeklySummary();
+    _shake = ShakeDetector(onShake: _onShake)..start();
     WidgetsBinding.instance.addPostFrameCallback((_) => _maybeShowCoachMarks());
+  }
+
+  @override
+  void dispose() {
+    _shake.stop();
+    super.dispose();
+  }
+
+  Future<void> _onShake() async {
+    if (_bugSheetOpen || !mounted) return;
+    _bugSheetOpen = true;
+    await showBugReportSheet(context);
+    _bugSheetOpen = false;
   }
 
   /// Recomputes last week's footfall from the local db and (re)schedules

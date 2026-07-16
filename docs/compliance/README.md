@@ -95,6 +95,36 @@ in the Debug tab and can un-flag false positives. This is data minimisation:
 we don't process the data of devices that obviously aren't part of the use
 case.
 
+## Diagnostic reports ("shake to report a problem")
+
+Shaking the phone three times opens a bug-report sheet in the mobile app. It
+is deliberately built so that no personal data of a data subject can be in
+play:
+
+- **No visitor data can be included, by construction.** The phone only ever
+  receives aggregate counts, never a per-client identifier (see D3 in
+  docs/DECISIONS.md) - so there is simply no visitor data on the device for a
+  report to pick up. What a report carries is the *operator's own* technical
+  data about their own device: app version, OS, connection/sync state, cached
+  row counts, and the device's own STATUS (firmware, uptime, free space).
+- **Consent is explicit and informed.** The gesture only *opens* the sheet.
+  Nothing is submitted until the operator taps "send", and the sheet shows a
+  verbatim preview of the exact outgoing text first. Technical logs can be
+  switched off entirely and the report still sends.
+- **Logs are ephemeral and scrubbed.** They live in a capped in-memory ring
+  buffer (`mobile/lib/services/log_buffer.dart`), are never written to disk,
+  and vanish when the app closes. Anything shaped like a Bluetooth/MAC
+  address is masked on the way in (unit-tested in
+  `mobile/test/log_buffer_test.dart`), so a full hardware address can't ride
+  along even by accident.
+- **We transmit nothing.** There is no backend and the app still makes no
+  outbound calls of its own; submitting hands the text to the OS share sheet
+  and the operator chooses the channel. `BugReportSink`
+  (`mobile/lib/services/bug_report.dart`) is the seam where a real support
+  backend would later plug in - at which point this section and the consent
+  copy must be revisited, because that *would* introduce a processor and a
+  transmission.
+
 ## What the system doesn't do (architecture-enforced)
 
 These constraints are baked into the code, not just declared:
