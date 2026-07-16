@@ -328,6 +328,7 @@
   "demoEnterHint": "Sample data to show off, no device needed",
   "demoExit": "Leave demo mode",
   "demoExitHint": "Deletes the sample data and returns to pairing",
+  "pickPeriodTitle": "Which period?",
   "quickReport": "Report",
   "quickExport": "Export",
   "quickDevice": "Device",

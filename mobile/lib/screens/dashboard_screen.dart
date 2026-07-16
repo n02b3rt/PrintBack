@@ -25,7 +25,7 @@ import '../widgets/sync_status_banner.dart';
 import 'chart_detail.dart';
 import 'device_screen.dart';
 import 'pairing_screen.dart';
-import 'report_preview.dart';
+import 'report_actions.dart';
 
 /// Today's date as `YYYY-MM-DD`, matching docs/DATA_MODEL.md's STATS
 /// `date` field format.
@@ -272,32 +272,42 @@ class _DashboardScreenState extends State<DashboardScreen> {
     ];
   }
 
+  /// Asks which period, then runs [action] with it. Both the report and the
+  /// export cover a period, and which one is the operator's call - the panel
+  /// has no business assuming "today".
+  Future<void> _pickThen(BuildContext context, AppLocalizations l10n,
+      Future<void> Function(QuickPeriod, DateTimeRange) action) async {
+    final period = await pickQuickPeriod(context);
+    if (period == null || !context.mounted) return;
+    await action(period, quickRange(period));
+  }
+
   /// The four things an owner actually reaches for, one tap from the panel
   /// instead of buried in tabs and app bars.
   Widget _quickActions(BuildContext context, AppLocalizations l10n) {
-    final today = _todayDaily;
-    final unique = today?.unique ?? 0;
-    final returning = today?.returning ?? 0;
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         _QuickAction(
           icon: Icons.ios_share,
           label: l10n.quickReport,
-          onTap: () => Navigator.of(context).push(MaterialPageRoute(
-            builder: (_) => ReportPreview(
-              periodLabel: l10n.periodToday,
-              dateRange: formatDayTitle(_todayString(), l10n.localeName),
-              unique: unique,
-              newVisitors: (unique - returning).clamp(0, unique),
-              returning: returning,
-            ),
-          )),
+          onTap: () => _pickThen(context, l10n, (period, range) =>
+              openReportForRange(context,
+                  deviceId: _deviceId,
+                  range: range,
+                  periodLabel: quickPeriodLabel(l10n, period))),
         ),
         _QuickAction(
           icon: Icons.table_view,
           label: l10n.quickExport,
-          onTap: widget.onOpenStatistics,
+          // Actually exports. It used to just navigate to Statistics and
+          // leave the operator to find the export button - the button dodging
+          // the one question it needed to ask.
+          onTap: () => _pickThen(context, l10n, (_, range) =>
+              exportRangeToExcel(context,
+                  deviceId: _deviceId,
+                  range: range,
+                  weekdaysFull: _weekdayLabelsFull(l10n))),
         ),
         _QuickAction(
           icon: Icons.developer_board,

@@ -328,6 +328,7 @@
   "demoEnterHint": "Przykładowe dane do pokazania, bez urządzenia",
   "demoExit": "Wyjdź z trybu demo",
   "demoExitHint": "Usuwa przykładowe dane i wraca do parowania",
+  "pickPeriodTitle": "Za jaki okres?",
   "quickReport": "Raport",
   "quickExport": "Eksport",
   "quickDevice": "Urządzenie",

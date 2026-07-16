@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
-import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 
 import '../ble/ble_service.dart';
@@ -12,14 +11,13 @@ import '../logic/narrative.dart';
 import '../logic/opening_hours.dart';
 import '../logic/stats_math.dart';
 import '../models/aggregate.dart';
-import '../services/excel_export.dart';
 import '../storage/local_db.dart';
 import '../storage/opening_hours_store.dart';
 import '../widgets/chart_style.dart';
 import '../widgets/detail_sheet.dart';
 import '../widgets/glass_card.dart';
 import '../widgets/gradient_background.dart';
-import 'report_preview.dart';
+import 'report_actions.dart';
 
 enum _Period { today, week, month, custom }
 
@@ -199,99 +197,28 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
 
   bool _exporting = false;
 
-  /// Exports the selected period to .xlsx and hands it to the share sheet.
-  /// Aggregates only - the same rows the screen is already drawing.
-  Future<void> _exportExcel(
-      AppLocalizations l10n, List<String> weekdaysFull) async {
+  /// The period is already chosen on this screen, so no picker here - unlike
+  /// the panel's quick action, which has to ask. Both end up in the same
+  /// implementation (screens/report_actions.dart).
+  Future<void> _exportExcel(List<String> weekdaysFull) async {
     if (_exporting) return;
     setState(() => _exporting = true);
     try {
-      final ble = context.read<BleService>();
-
-      String appVersion = '?';
-      try {
-        final info = await PackageInfo.fromPlatform();
-        appVersion = '${info.version}+${info.buildNumber}';
-      } catch (_) {}
-
-      // Nice to have in the metadata, never worth hanging the export for.
-      String? fw;
-      if (ble.isConnectedReady) {
-        try {
-          fw = (await ble.readStatus().timeout(const Duration(seconds: 3)))?.fw;
-        } catch (_) {}
-      }
-
-      final range = _rangeFor(_period);
-      final from = _fmt(range.start);
-      final to = _fmt(range.end);
-      // _hourly is fetched with a day of padding on each side (see _reload);
-      // the export should carry the period the operator actually picked.
-      final hourlyInPeriod = _hourly
-          .where((a) => a.localDate.compareTo(from) >= 0 && a.localDate.compareTo(to) <= 0)
-          .toList();
-
-      final bytes = buildWorkbook(
-        daily: _daily,
-        hourly: hourlyInPeriod,
-        labels: ExcelLabels(
-          sheetDays: l10n.excelSheetDays,
-          sheetHours: l10n.excelSheetHours,
-          sheetMeta: l10n.excelSheetMeta,
-          colDate: l10n.excelColDate,
-          colWeekday: l10n.excelColWeekday,
-          colHour: l10n.excelColHour,
-          colUnique: l10n.excelColUnique,
-          colReturning: l10n.excelColReturning,
-          colNew: l10n.excelColNew,
-          colReturningPct: l10n.excelColReturningPct,
-          colKanon: l10n.excelColKanon,
-          metaKey: l10n.excelMetaKey,
-          metaValue: l10n.excelMetaValue,
-          metaGenerated: l10n.excelMetaGenerated,
-          metaRange: l10n.excelMetaRange,
-          metaApp: l10n.excelMetaApp,
-          metaFirmware: l10n.excelMetaFirmware,
-          metaNote: l10n.excelMetaNote,
-          noteText: l10n.excelNote,
-          yes: l10n.excelYes,
-          no: l10n.excelNo,
-          weekdays: weekdaysFull,
-        ),
-        rangeText: '${_fmtHuman(range.start)} - ${_fmtHuman(range.end)}',
-        generatedAt: _fmtHuman(DateTime.now()),
-        appVersion: appVersion,
-        firmwareVersion: fw,
-      );
-      if (bytes == null) return;
-
-      // The printback_export_ prefix is what shareWorkbook sweeps on the next
-      // run - keep it.
-      await shareWorkbook(bytes, 'printback_export_${from}_$to.xlsx',
-          text: l10n.exportShareText);
+      await exportRangeToExcel(context,
+          deviceId: _deviceId,
+          range: _rangeFor(_period),
+          weekdaysFull: weekdaysFull);
     } finally {
       if (mounted) setState(() => _exporting = false);
     }
   }
 
-  void _openReport(AppLocalizations l10n, int unique, int returning) {
-    final range = _rangeFor(_period);
-    final rangeText = _period == _Period.today
-        ? _fmtHuman(range.start)
-        : '${_fmtHuman(range.start)} - ${_fmtHuman(range.end)}';
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => ReportPreview(
-        periodLabel: _periodLabel(l10n),
-        dateRange: rangeText,
-        unique: unique,
-        newVisitors: (unique - returning).clamp(0, unique),
-        returning: returning,
-      ),
-    ));
+  void _openReport(AppLocalizations l10n) {
+    openReportForRange(context,
+        deviceId: _deviceId,
+        range: _rangeFor(_period),
+        periodLabel: _periodLabel(l10n));
   }
-
-  static String _fmtHuman(DateTime d) =>
-      '${d.day.toString().padLeft(2, '0')}.${d.month.toString().padLeft(2, '0')}.${d.year}';
 
   Future<void> _pickCustomRange() async {
     final now = DateTime.now();
@@ -387,12 +314,12 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                 : const Icon(Icons.table_view),
             tooltip: l10n.exportButton,
             onPressed:
-                _exporting ? null : () => _exportExcel(l10n, weekdayLabelsFull),
+                _exporting ? null : () => _exportExcel(weekdayLabelsFull),
           ),
           IconButton(
             icon: const Icon(Icons.ios_share),
             tooltip: l10n.shareButton,
-            onPressed: () => _openReport(l10n, totalUnique, totalReturning),
+            onPressed: () => _openReport(l10n),
           ),
           IconButton(
             icon: const Icon(Icons.sync),
