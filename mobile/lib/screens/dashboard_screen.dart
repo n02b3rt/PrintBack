@@ -16,6 +16,7 @@ import '../onboarding/one_time_tip.dart';
 import '../storage/local_db.dart';
 import '../storage/opening_hours_store.dart';
 import '../widgets/brand_mark.dart';
+import '../widgets/chart_stats.dart';
 import '../widgets/chart_style.dart';
 import '../widgets/detail_sheet.dart';
 import '../widgets/glass_card.dart';
@@ -181,6 +182,62 @@ class _DashboardScreenState extends State<DashboardScreen> {
     super.dispose();
   }
 
+  List<String> _weekdayLabelsFull(AppLocalizations l10n) => [
+        l10n.weekdayMonFull,
+        l10n.weekdayTueFull,
+        l10n.weekdayWedFull,
+        l10n.weekdayThuFull,
+        l10n.weekdayFriFull,
+        l10n.weekdaySatFull,
+        l10n.weekdaySunFull,
+      ];
+
+  /// Numbers for the hourly chart. Deliberately not the day's total - that's
+  /// already the KPI right above, and repeating it would be filler. These say
+  /// what the chart itself can't: when the rush was, how big a normal hour
+  /// is, and how much of the day actually has data (which is what the gaps in
+  /// the bars are, so the number explains them instead of leaving the
+  /// operator to wonder).
+  List<Widget> _hourlyStats(BuildContext context, AppLocalizations l10n) {
+    final open = splitByOpening(_hourlyToday, _hours).open;
+    if (open.isEmpty) return const [];
+
+    final peak = open.reduce((a, b) => b.unique > a.unique ? b : a);
+    final total = open.fold<int>(0, (s, a) => s + a.unique);
+    final avg = (total / open.length).round();
+
+    return [
+      const Divider(height: 20),
+      ChartStatStrip(stats: [
+        (l10n.statPeak, '${peak.localHour}:00 · ${peak.unique}'),
+        (l10n.statAvgHour, '$avg'),
+        (l10n.statHoursWithData, '${open.length}/${_hours.openHourCount}'),
+      ]),
+    ];
+  }
+
+  /// Numbers for the daily chart: the span's total, its best day and a
+  /// typical day. Same rule as above - nothing here is already on screen.
+  List<Widget> _dailyStats(BuildContext context, AppLocalizations l10n,
+      List<String> weekdaysFull) {
+    if (_recentDaily.isEmpty) return const [];
+    final total = sumUnique(_recentDaily);
+    final best = bestDay(_recentDaily);
+    return [
+      const Divider(height: 20),
+      ChartStatStrip(stats: [
+        (l10n.statSum, '$total'),
+        (
+          l10n.statBest,
+          best == null
+              ? '-'
+              : '${weekdaysFull[weekdayIndex(best.date)]} · ${best.unique}'
+        ),
+        (l10n.statAvgDay, '${averagePerDay(total, _recentDaily.length)}'),
+      ]),
+    ];
+  }
+
   /// Traffic outside opening hours, called out rather than hidden: it's real
   /// (deliveries, passers-by, the neighbour's flat) and quietly folding it
   /// into the day's total is what makes owners distrust the numbers. Only
@@ -284,15 +341,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
     };
 
-    final weekdays = [
-      l10n.weekdayMonFull,
-      l10n.weekdayTueFull,
-      l10n.weekdayWedFull,
-      l10n.weekdayThuFull,
-      l10n.weekdayFriFull,
-      l10n.weekdaySatFull,
-      l10n.weekdaySunFull,
-    ];
+    final weekdays = _weekdayLabelsFull(l10n);
 
     return [
       GlassCard(
@@ -392,6 +441,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
+    final weekdayLabelsFull = _weekdayLabelsFull(l10n);
     // The sync icon needs a fully-ready connection; offline (or mid-attempt
     // on a wrong device) it's disabled - the status banner carries the
     // [Connect] affordance instead.
@@ -465,17 +515,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
               const SizedBox(height: 8),
               GlassCard(
                 key: widget.hourlyKey,
-                child: SizedBox(
-                  height: 200,
-                  child: _hourlyToday.isEmpty
-                      ? Center(
-                          child: Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Text(l10n.emptyHourlyHint,
-                                textAlign: TextAlign.center),
-                          ),
-                        )
-                      : _HourlyBarChart(data: _hourlyToday, hours: _hours),
+                child: Column(
+                  children: [
+                    SizedBox(
+                      height: 200,
+                      child: _hourlyToday.isEmpty
+                          ? Center(
+                              child: Padding(
+                                padding: const EdgeInsets.all(16),
+                                child: Text(l10n.emptyHourlyHint,
+                                    textAlign: TextAlign.center),
+                              ),
+                            )
+                          : _HourlyBarChart(data: _hourlyToday, hours: _hours),
+                    ),
+                    ..._hourlyStats(context, l10n),
+                  ],
                 ),
               ),
               ..._afterHoursNote(context, l10n),
@@ -484,19 +539,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   style: Theme.of(context).textTheme.titleMedium),
               const SizedBox(height: 8),
               GlassCard(
-                child: SizedBox(
-                  height: 200,
-                  child: _recentDaily.isEmpty
-                      ? Center(
-                          child: Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Text(
-                              connected ? l10n.emptyNoData : l10n.emptyOffline,
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
-                        )
-                      : _DailyBarChart(data: _recentDaily.reversed.toList()),
+                child: Column(
+                  children: [
+                    SizedBox(
+                      height: 200,
+                      child: _recentDaily.isEmpty
+                          ? Center(
+                              child: Padding(
+                                padding: const EdgeInsets.all(16),
+                                child: Text(
+                                  connected
+                                      ? l10n.emptyNoData
+                                      : l10n.emptyOffline,
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                            )
+                          : _DailyBarChart(data: _recentDaily.reversed.toList()),
+                    ),
+                    ..._dailyStats(context, l10n, weekdayLabelsFull),
+                  ],
                 ),
               ),
             ],
