@@ -7,6 +7,7 @@ import '../l10n/app_localizations.dart';
 import '../models/device_config.dart';
 import '../logic/opening_hours.dart';
 import '../onboarding/onboarding_flags.dart';
+import '../onboarding/tutorials_hub.dart';
 import '../services/demo_data.dart';
 import '../storage/opening_hours_store.dart';
 import '../theme/theme_controller.dart';
@@ -421,6 +422,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           onTap: () => Navigator.of(context).push(
                             MaterialPageRoute(
                                 builder: (_) => const FaqScreen()),
+                          ),
+                        ),
+                        const Divider(height: 1),
+                        ListTile(
+                          leading: const Icon(Icons.menu_book_outlined),
+                          title: Text(l10n.tutorialsTitle),
+                          subtitle: Text(l10n.tutorialsSubtitle),
+                          onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                                builder: (_) => const TutorialsHub()),
                           ),
                         ),
                         const Divider(height: 1),
