@@ -6,9 +6,11 @@ import '../ble/ble_service.dart';
 import '../l10n/app_localizations.dart';
 import '../models/device_config.dart';
 import '../onboarding/onboarding_flags.dart';
+import '../services/demo_data.dart';
 import '../theme/theme_controller.dart';
 import '../widgets/glass_card.dart';
 import '../widgets/gradient_background.dart';
+import 'connecting_screen.dart';
 import 'faq_screen.dart';
 import 'forget_device.dart';
 import 'home_shell.dart';
@@ -422,12 +424,51 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           title: Text(l10n.replayTutorial),
                           onTap: _replayTutorial,
                         ),
+                        const Divider(height: 1),
+                        ListTile(
+                          leading: Icon(
+                            DemoData.isDemo(ble.activeDeviceId)
+                                ? Icons.exit_to_app
+                                : Icons.play_circle_outline,
+                          ),
+                          title: Text(DemoData.isDemo(ble.activeDeviceId)
+                              ? l10n.demoExit
+                              : l10n.demoEnter),
+                          subtitle: Text(DemoData.isDemo(ble.activeDeviceId)
+                              ? l10n.demoExitHint
+                              : l10n.demoEnterHint),
+                          onTap: _toggleDemo,
+                        ),
                       ],
                     ),
                   ),
                 ],
               ),
       ),
+    );
+  }
+
+  /// Demo mode fabricates a device's worth of cached aggregates and points
+  /// the app at them; the ordinary offline path renders it, so nothing on the
+  /// other screens knows or cares that it's a demo. Leaving drops the rows
+  /// and returns to pairing.
+  Future<void> _toggleDemo() async {
+    final ble = context.read<BleService>();
+    final wasDemo = DemoData.isDemo(ble.activeDeviceId);
+    if (wasDemo) {
+      await DemoData.disable(ble);
+    } else {
+      await DemoData.enable(ble);
+    }
+    if (!mounted) return;
+    // Rebuild from the root so every screen re-reads the (now different)
+    // active device instead of rendering the previous one's cache. Leaving
+    // demo mode leaves no active device at all, so that goes back through
+    // ConnectingScreen - HomeShell would dereference a null device id.
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(
+          builder: (_) => wasDemo ? const ConnectingScreen() : const HomeShell()),
+      (r) => false,
     );
   }
 

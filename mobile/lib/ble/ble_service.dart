@@ -690,6 +690,24 @@ class BleService extends ChangeNotifier with WidgetsBindingObserver {
   /// state. Does NOT remove the OS-level Bluetooth bond (an app can't -
   /// the user does that in system settings); the UI shows that instruction
   /// separately.
+  /// Points the app at a device id (or nothing) without a BLE connection.
+  /// Demo mode uses this: it fabricates a device's worth of cached
+  /// aggregates, then hands the app the id, and the ordinary offline path
+  /// takes over from there - no demo special-casing in the screens.
+  /// Unlike [forgetActiveDevice] this touches no OS bond: the demo id isn't
+  /// a Bluetooth address and never was paired.
+  Future<void> setActiveDeviceId(String? id) async {
+    await disconnect();
+    _activeDeviceId = id;
+    final prefs = await SharedPreferences.getInstance();
+    if (id == null) {
+      await prefs.remove(_activeDeviceIdKey);
+    } else {
+      await prefs.setString(_activeDeviceIdKey, id);
+    }
+    notifyListeners();
+  }
+
   Future<void> forgetActiveDevice() async {
     // Grab the id before disconnect() clears _device. Removing the OS-level
     // bond (Android), not just the app's pref, is what lets a later re-pair
