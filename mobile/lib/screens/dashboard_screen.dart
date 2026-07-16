@@ -22,6 +22,7 @@ import '../widgets/detail_sheet.dart';
 import '../widgets/glass_card.dart';
 import '../widgets/gradient_background.dart';
 import '../widgets/sync_status_banner.dart';
+import 'chart_detail.dart';
 import 'device_screen.dart';
 import 'pairing_screen.dart';
 import 'report_preview.dart';
@@ -548,8 +549,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
               ..._afterHoursNote(context, l10n),
               const SizedBox(height: 24),
-              Text(l10n.dailyChartTitle,
-                  style: Theme.of(context).textTheme.titleMedium),
+              // A separate affordance rather than a tap on the chart: tapping
+              // a bar already opens that day's detail sheet, and stealing
+              // that gesture for the drill-down would cost the more common
+              // action to serve the rarer one.
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(l10n.dailyChartTitle,
+                        style: Theme.of(context).textTheme.titleMedium),
+                  ),
+                  TextButton.icon(
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => ChartDetail(
+                            deviceId: _deviceId, title: l10n.dailyChartTitle),
+                      ),
+                    ),
+                    icon: const Icon(Icons.open_in_full, size: 16),
+                    label: Text(l10n.expandChart),
+                  ),
+                ],
+              ),
               const SizedBox(height: 8),
               GlassCard(
                 child: Column(
