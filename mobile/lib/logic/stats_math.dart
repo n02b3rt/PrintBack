@@ -115,6 +115,25 @@ TrendResult classifyTrend(num value, double average, {required bool isExtreme}) 
   return const TrendResult(TrendClass.around, 0);
 }
 
+/// Trailing moving average of [values] over [window] points.
+///
+/// Positions without a full window are null rather than a partial average:
+/// a "7-day average" computed from two days is not a 7-day average, and on a
+/// chart it would draw a confident line through the noisiest part of the
+/// history. The caller skips the nulls, so the smoothed line simply starts
+/// once it means something.
+List<double?> movingAverage(List<int> values, int window) {
+  if (window <= 0) return List.filled(values.length, null);
+  final out = <double?>[];
+  var sum = 0;
+  for (var i = 0; i < values.length; i++) {
+    sum += values[i];
+    if (i >= window) sum -= values[i - window];
+    out.add(i >= window - 1 ? sum / window : null);
+  }
+  return out;
+}
+
 /// Average share of a day's visitors that has already arrived by the end of
 /// local [hour], derived from past days' hourly rows.
 ///

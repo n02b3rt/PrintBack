@@ -122,6 +122,35 @@ void main() {
     });
   });
 
+  group('movingAverage', () {
+    test('is null until a full window is available', () {
+      final avg = movingAverage([1, 2, 3, 4], 3);
+      expect(avg[0], isNull);
+      expect(avg[1], isNull);
+      expect(avg[2], closeTo(2, 0.001)); // (1+2+3)/3
+      expect(avg[3], closeTo(3, 0.001)); // (2+3+4)/3
+    });
+
+    test('trails, so it never uses points from the future', () {
+      final avg = movingAverage([10, 10, 10, 100], 3);
+      expect(avg[2], closeTo(10, 0.001)); // the spike hasn't happened yet
+      expect(avg[3], closeTo(40, 0.001));
+    });
+
+    test('a window of one is the series itself', () {
+      expect(movingAverage([5, 7], 1), [5.0, 7.0]);
+    });
+
+    test('a window longer than the series is all null', () {
+      expect(movingAverage([1, 2], 5), [null, null]);
+    });
+
+    test('handles empty input and a nonsense window', () {
+      expect(movingAverage([], 3), isEmpty);
+      expect(movingAverage([1, 2], 0), [null, null]);
+    });
+  });
+
   // These read the cut hour back off the data (`rows.first.localHour`) and
   // the weekday off the date, rather than hardcoding either: localHour is a
   // UTC->local conversion, so a hardcoded number would pass on this machine
