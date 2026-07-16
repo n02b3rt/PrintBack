@@ -5,8 +5,10 @@ import 'package:provider/provider.dart';
 import '../ble/ble_service.dart';
 import '../l10n/app_localizations.dart';
 import '../models/device_config.dart';
+import '../logic/opening_hours.dart';
 import '../onboarding/onboarding_flags.dart';
 import '../services/demo_data.dart';
+import '../storage/opening_hours_store.dart';
 import '../theme/theme_controller.dart';
 import '../widgets/glass_card.dart';
 import '../widgets/gradient_background.dart';
@@ -72,6 +74,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.initState();
     _load();
     _loadOtherDevices();
+    _loadHours();
   }
 
   Future<void> _load() async {
@@ -324,6 +327,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     onSelectionChanged: (s) => themeController.setMode(s.first),
                   ),
                   const SizedBox(height: 24),
+                  _openingHoursCard(context, l10n),
+                  const SizedBox(height: 24),
                   Text(l10n.deviceSectionTitle,
                       style: Theme.of(context).textTheme.titleMedium),
                   const SizedBox(height: 8),
@@ -445,6 +450,89 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ],
               ),
       ),
+    );
+  }
+
+  OpeningHours _hours = OpeningHours.disabled;
+
+  Future<void> _loadHours() async {
+    final h = await OpeningHoursStore.load();
+    if (mounted) setState(() => _hours = h);
+  }
+
+  Future<void> _saveHours(OpeningHours h) async {
+    setState(() => _hours = h);
+    await OpeningHoursStore.save(h);
+  }
+
+  /// Opening hours affect charts and averages everywhere, so this is a plain
+  /// local setting - nothing is written to the device, and no reconnect or
+  /// CONFIG round-trip is involved (unlike the range/returning-window
+  /// settings above, which are device state).
+  Widget _openingHoursCard(BuildContext context, AppLocalizations l10n) {
+    final theme = Theme.of(context);
+    return GlassCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(l10n.openingHoursTitle, style: theme.textTheme.titleMedium),
+          const SizedBox(height: 4),
+          Text(l10n.openingHoursHint,
+              style: theme.textTheme.bodySmall
+                  ?.copyWith(color: theme.colorScheme.outline)),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            value: _hours.enabled,
+            title: Text(l10n.openingHoursEnable),
+            onChanged: (v) => _saveHours(_hours.copyWith(enabled: v)),
+          ),
+          if (_hours.enabled) ...[
+            Row(
+              children: [
+                Expanded(
+                  child: _hourDropdown(
+                    label: l10n.openingHoursOpen,
+                    value: _hours.openHour,
+                    onChanged: (v) => _saveHours(_hours.copyWith(openHour: v)),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _hourDropdown(
+                    label: l10n.openingHoursClose,
+                    value: _hours.closeHour,
+                    onChanged: (v) => _saveHours(_hours.copyWith(closeHour: v)),
+                  ),
+                ),
+              ],
+            ),
+            if (_hours.openHour == _hours.closeHour)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(l10n.openingHoursAllDay,
+                    style: theme.textTheme.bodySmall
+                        ?.copyWith(color: theme.colorScheme.outline)),
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _hourDropdown({
+    required String label,
+    required int value,
+    required ValueChanged<int> onChanged,
+  }) {
+    return DropdownButtonFormField<int>(
+      initialValue: value,
+      decoration: InputDecoration(labelText: label, isDense: true),
+      items: [
+        for (var h = 0; h < 24; h++)
+          DropdownMenuItem(
+              value: h, child: Text('${h.toString().padLeft(2, '0')}:00')),
+      ],
+      onChanged: (v) => v == null ? null : onChanged(v),
     );
   }
 

@@ -6,16 +6,22 @@ import 'package:flutter/material.dart';
 /// Revolut/Robinhood-style finance apps render bars (the bar itself
 /// carries the visual weight, exact numbers live in the tap-to-detail
 /// sheet, not in axis clutter) than fl_chart's flat-color defaults.
+/// [muted] draws the bar in the outline colour instead of the brand one -
+/// used for hours the shop is closed, so after-hours traffic is still
+/// visible (it's real, and sometimes interesting) without competing with
+/// the hours the operator actually cares about.
 BarChartRodData revolutRod(
   BuildContext context,
   double value, {
   bool highlight = false,
+  bool muted = false,
 }) {
   final scheme = Theme.of(context).colorScheme;
-  final top = highlight ? scheme.primary : scheme.primary.withValues(alpha: 0.55);
-  final bottom = highlight
-      ? scheme.primary.withValues(alpha: 0.65)
-      : scheme.primary.withValues(alpha: 0.15);
+  final base = muted ? scheme.outline : scheme.primary;
+  final top = highlight && !muted ? base : base.withValues(alpha: 0.55);
+  final bottom = highlight && !muted
+      ? base.withValues(alpha: 0.65)
+      : base.withValues(alpha: 0.15);
   return BarChartRodData(
     toY: value,
     width: 14,

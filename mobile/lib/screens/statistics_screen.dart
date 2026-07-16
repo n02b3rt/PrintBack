@@ -9,10 +9,12 @@ import '../ble/ble_service.dart';
 import '../l10n/app_localizations.dart';
 import '../logic/format.dart';
 import '../logic/narrative.dart';
+import '../logic/opening_hours.dart';
 import '../logic/stats_math.dart';
 import '../models/aggregate.dart';
 import '../services/excel_export.dart';
 import '../storage/local_db.dart';
+import '../storage/opening_hours_store.dart';
 import '../widgets/chart_style.dart';
 import '../widgets/detail_sheet.dart';
 import '../widgets/glass_card.dart';
@@ -41,6 +43,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
   DateTimeRange? _customRange;
   StreamSubscription<Aggregate>? _statsSub;
   Timer? _reloadDebounce;
+  OpeningHours _hours = OpeningHours.disabled;
 
   List<Aggregate> _daily = [];
   List<Aggregate> _hourly = [];
@@ -53,7 +56,13 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     // BleService caches every incoming aggregate itself before emitting, so
     // this is purely a "something landed, redraw" signal.
     _statsSub = ble.statsUpdates.listen((_) => _scheduleReload());
+    _loadHours();
     _reload();
+  }
+
+  Future<void> _loadHours() async {
+    final h = await OpeningHoursStore.load();
+    if (mounted) setState(() => _hours = h);
   }
 
   /// A SYNC backlog replay arrives as a burst of notifications; collapse it
@@ -355,7 +364,9 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     final todayLocal = _fmt(DateTime.now());
     final hourlyToday =
         _hourly.where((a) => a.localDate == todayLocal).toList();
-    final peakHourValue = peakHour(_hourly);
+    // Peak hour among open hours only: with the shop shut, "your busiest hour
+    // is 4am" is a fact about the neighbourhood, not about the business.
+    final peakHourValue = peakHour(splitByOpening(_hourly, _hours).open);
 
     final weekdayLabels = _weekdayLabels(l10n);
     final weekdayLabelsFull = _weekdayLabelsFull(l10n);

@@ -8,11 +8,13 @@ import '../ble/ble_service.dart';
 import '../l10n/app_localizations.dart';
 import '../logic/format.dart';
 import '../logic/insights.dart';
+import '../logic/opening_hours.dart';
 import '../logic/stats_math.dart';
 import '../models/aggregate.dart';
 import '../onboarding/onboarding_flags.dart';
 import '../onboarding/one_time_tip.dart';
 import '../storage/local_db.dart';
+import '../storage/opening_hours_store.dart';
 import '../widgets/brand_mark.dart';
 import '../widgets/chart_style.dart';
 import '../widgets/detail_sheet.dart';
@@ -66,6 +68,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   List<Aggregate> _recentDaily = [];
   Aggregate? _todayDaily;
   DayPace? _pace;
+  OpeningHours _hours = OpeningHours.disabled;
   late final String _deviceId;
 
   @override
@@ -82,7 +85,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
     // this is purely a "something landed, redraw" signal.
     _statsSub = ble.statsUpdates.listen((_) => _scheduleReload());
     _loadInitialStats(ble);
+    _loadHours();
     _reload();
+  }
+
+  /// Re-read on every mount rather than cached once: the operator can change
+  /// the hours in Settings and come straight back to this tab.
+  Future<void> _loadHours() async {
+    final h = await OpeningHoursStore.load();
+    if (mounted) setState(() => _hours = h);
   }
 
   /// A SYNC backlog replay arrives as a burst of notifications; collapse it
@@ -168,6 +179,39 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _reloadDebounce?.cancel();
     _statsSub?.cancel();
     super.dispose();
+  }
+
+  /// Traffic outside opening hours, called out rather than hidden: it's real
+  /// (deliveries, passers-by, the neighbour's flat) and quietly folding it
+  /// into the day's total is what makes owners distrust the numbers. Only
+  /// shown once the hours are configured and there's actually something out
+  /// there.
+  List<Widget> _afterHoursNote(BuildContext context, AppLocalizations l10n) {
+    if (!_hours.enabled) return const [];
+    final closed = splitByOpening(_hourlyToday, _hours).closed;
+    final count = closed.fold<int>(0, (s, a) => s + a.unique);
+    if (count <= 0) return const [];
+    return [
+      Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: Row(
+          children: [
+            Icon(Icons.nightlight_outlined,
+                size: 16, color: Theme.of(context).colorScheme.outline),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                l10n.afterHoursNote(count),
+                style: Theme.of(context)
+                    .textTheme
+                    .bodySmall
+                    ?.copyWith(color: Theme.of(context).colorScheme.outline),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ];
   }
 
   /// The four things an owner actually reaches for, one tap from the panel
@@ -431,9 +475,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 textAlign: TextAlign.center),
                           ),
                         )
-                      : _HourlyBarChart(data: _hourlyToday),
+                      : _HourlyBarChart(data: _hourlyToday, hours: _hours),
                 ),
               ),
+              ..._afterHoursNote(context, l10n),
               const SizedBox(height: 24),
               Text(l10n.dailyChartTitle,
                   style: Theme.of(context).textTheme.titleMedium),
@@ -524,8 +569,9 @@ class _KpiCard extends StatelessWidget {
 
 class _HourlyBarChart extends StatelessWidget {
   final List<Aggregate> data;
+  final OpeningHours hours;
 
-  const _HourlyBarChart({required this.data});
+  const _HourlyBarChart({required this.data, required this.hours});
 
   void _showDetail(BuildContext context, AppLocalizations l10n, Aggregate agg) {
     final hour = agg.localHour;
@@ -568,7 +614,12 @@ class _HourlyBarChart extends StatelessWidget {
         .fold<int>(1, (m, v) => v > m ? v : m)
         .toDouble();
 
-    final peak = data.map((a) => a.unique).fold<int>(0, (m, v) => v > m ? v : m);
+    // Peak among open hours only - a spike at 3am is not the shop's "busiest
+    // hour" in any sense the operator means by the word.
+    final peak = data
+        .where((a) => hours.isOpen(a.localHour))
+        .map((a) => a.unique)
+        .fold<int>(0, (m, v) => v > m ? v : m);
 
     return BarChart(
       BarChartData(
@@ -596,10 +647,16 @@ class _HourlyBarChart extends StatelessWidget {
         barGroups: List.generate(24, (hour) {
           final agg = byHour[hour];
           final value = (agg?.unique ?? 0).toDouble();
+          final closed = !hours.isOpen(hour);
           return BarChartGroupData(
             x: hour,
             barRods: [
-              revolutRod(context, value, highlight: agg != null && agg.unique == peak && peak > 0),
+              revolutRod(context, value,
+                  // Never crown a closed hour the peak - "your busiest hour
+                  // is 3am" is noise, not an insight.
+                  highlight:
+                      !closed && agg != null && agg.unique == peak && peak > 0,
+                  muted: closed),
             ],
           );
         }),
