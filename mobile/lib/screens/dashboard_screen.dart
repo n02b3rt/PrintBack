@@ -487,29 +487,40 @@ class _DashboardScreenState extends State<DashboardScreen> {
               // latest complete day (today's partial running total is
               // excluded so a half-day never reads as a "quiet" drop).
               ..._insightsSection(context, l10n),
-              Row(
-                key: widget.kpiKey,
-                // Equal-height cards regardless of how the labels lay out.
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Expanded(
-                    child: _KpiCard(label: l10n.uniqueLabel, value: todayUnique),
-                  ),
-                  const SizedBox(width: 12),
-                  // "New" is unique minus returning, clamped at 0 - a real
-                  // count of first-seen visitors, not the whole visitor
-                  // total mislabelled as new (see docs/LEARNINGS.md 10k).
-                  Expanded(
-                    child: _KpiCard(
-                        label: l10n.newVisitorsLabel,
-                        value: (todayUnique - todayReturning).clamp(0, todayUnique)),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _KpiCard(
-                        label: l10n.returningLabel, value: todayReturning),
-                  ),
-                ],
+              // IntrinsicHeight is what makes CrossAxisAlignment.stretch legal
+              // here: this Row sits in a ListView, so its height is
+              // unbounded, and stretch would hand the cards a tight infinite
+              // height ("BoxConstraints forces an infinite height") and fail
+              // to lay the panel out at all. IntrinsicHeight measures the
+              // tallest card first and bounds the Row to it; the cost is one
+              // extra layout pass over three cards.
+              IntrinsicHeight(
+                child: Row(
+                  key: widget.kpiKey,
+                  // Equal-height cards regardless of how the labels lay out.
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(
+                      child:
+                          _KpiCard(label: l10n.uniqueLabel, value: todayUnique),
+                    ),
+                    const SizedBox(width: 12),
+                    // "New" is unique minus returning, clamped at 0 - a real
+                    // count of first-seen visitors, not the whole visitor
+                    // total mislabelled as new (see docs/LEARNINGS.md 10k).
+                    Expanded(
+                      child: _KpiCard(
+                          label: l10n.newVisitorsLabel,
+                          value:
+                              (todayUnique - todayReturning).clamp(0, todayUnique)),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _KpiCard(
+                          label: l10n.returningLabel, value: todayReturning),
+                    ),
+                  ],
+                ),
               ),
               const SizedBox(height: 24),
               Text(l10n.hourlyChartTitle,

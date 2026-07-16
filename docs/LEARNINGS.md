@@ -1287,3 +1287,35 @@ of one per row.
 Status: RESOLVED (2026-07-16) - `flutter analyze` clean, 50 tests green.
 Not yet re-verified on hardware that the restart-changes-the-numbers
 symptom is gone; that needs a connect/sync cycle on the user's phone.
+
+## [MOBILE] CrossAxisAlignment.stretch in a ListView blanked the whole panel
+Date: 2026-07-16
+Problem: the KPI cards on the dashboard had unequal heights (only the
+"Odwiedzający" card wrapped its label, so only it grew). The fix looked
+trivial - `crossAxisAlignment: CrossAxisAlignment.stretch` on the Row - and
+`flutter analyze` plus the whole test suite stayed green. Shipped it, and the
+user reported the dashboard rendered *nothing at all*.
+Root cause: that Row lives in a `ListView`, which gives its children
+unbounded height. `CrossAxisAlignment.stretch` makes a Row pass its incoming
+cross-axis extent to the children as a *tight* constraint - which is
+infinity here, so the children were asked to be infinitely tall
+("BoxConstraints forces an infinite height") and the subtree failed to lay
+out. Nothing catches this: it's a layout-time assertion, not a compile error,
+and no test in this project renders the dashboard, so analyze and 101 green
+tests said everything was fine.
+Fix: wrap the Row in `IntrinsicHeight`, which measures the tallest child and
+bounds the Row to it - after which `stretch` is both legal and does what was
+wanted. Applied to the dashboard KPI row and to both `_StatCard` rows on the
+statistics screen (which had the same ragged-height problem, for the same
+reason: "Godzina szczytu" carries a two-line coverage subtitle its neighbour
+doesn't). Also stopped the label wrapping in the first place: "Odwiedzający"
+is wider than a third of a phone screen and Flutter breaks an over-long
+single word mid-word rather than hyphenating, so the label now sits in a
+`FittedBox` and scales down to one line.
+Lesson worth keeping: green tests here prove nothing about layout. This was
+caught only because the user opened the app. Verify UI changes by actually
+rendering them - `adb shell screencap` + pull is enough, and is how both
+screens were confirmed after the fix.
+Status: RESOLVED (2026-07-16) - verified visually on the device: the panel
+renders again, all three KPI cards are the same height with the label on one
+line, and both statistics rows line up.

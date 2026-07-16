@@ -457,38 +457,51 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                 ),
               ),
               const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: _StatCard(
-                        label: l10n.returningRateLabel,
-                        value: '$returningRatePct%'),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _StatCard(
-                        label: l10n.averageDailyLabel, value: '$avgDaily'),
-                  ),
-                ],
+              // Both rows are IntrinsicHeight + stretch so the two cards in a
+              // row always match. Without it each card is only as tall as its
+              // own text, and "Godzina szczytu" carries a two-line coverage
+              // subtitle its neighbour doesn't - which left the grid visibly
+              // ragged. (IntrinsicHeight is also what makes stretch legal at
+              // all inside this ListView: unbounded height + stretch is a
+              // layout error, not just ugly.)
+              IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(
+                      child: _StatCard(
+                          label: l10n.returningRateLabel,
+                          value: '$returningRatePct%'),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _StatCard(
+                          label: l10n.averageDailyLabel, value: '$avgDaily'),
+                    ),
+                  ],
+                ),
               ),
               const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child:
-                        _StatCard(label: l10n.bestDayLabel, value: bestDayLabel),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _StatCard(
-                      label: l10n.peakHourLabel,
-                      value: peakHourValue != null ? '$peakHourValue:00' : '-',
-                      subtitle: peakHourValue != null
-                          ? l10n.peakHourCoverage(hourlyCoverageDays)
-                          : null,
+              IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(
+                      child: _StatCard(
+                          label: l10n.bestDayLabel, value: bestDayLabel),
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _StatCard(
+                        label: l10n.peakHourLabel,
+                        value: peakHourValue != null ? '$peakHourValue:00' : '-',
+                        subtitle: peakHourValue != null
+                            ? l10n.peakHourCoverage(hourlyCoverageDays)
+                            : null,
+                      ),
+                    ),
+                  ],
+                ),
               ),
               // A day-over-day trend needs more than one day, but "Dziś"
               // still has a real trend to show - just hourly instead of
