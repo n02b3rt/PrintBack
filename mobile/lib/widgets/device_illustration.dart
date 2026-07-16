@@ -3,7 +3,18 @@ import 'package:flutter/material.dart';
 /// Which LED animation the on-screen device is showing. Mirrors the
 /// firmware's own UI states so the onboarding wizard can render a device
 /// whose light behaves exactly like the real one in the user's hand.
-enum LedState { off, boot, idle, pairing, syncing }
+enum LedState {
+  off,
+  boot,
+  idle,
+  pairing,
+  syncing,
+
+  /// The 3-second hold that arms the device to add the next phone held right
+  /// next to it to the background list (`UI_STATE_ARMED` in ui.c). The
+  /// whitelist walkthrough shows this one.
+  armed,
+}
 
 /// A drawn PrintBack device (rounded body + button + RGB LED) whose LED
 /// animates in lock-step with the real firmware. The colour/timing for
@@ -80,6 +91,10 @@ class _DeviceIllustrationState extends State<DeviceIllustration>
       case LedState.pairing:
         // Cyan blink ~2Hz (250ms on/off).
         return (ms ~/ 250) % 2 == 1 ? const Color(0xFF00C8C8) : _off;
+      case LedState.armed:
+        // Fast amber blink, 125ms on/off - deliberately more urgent than
+        // pairing's cyan, because the window is only 30 seconds.
+        return (ms ~/ 125) % 2 == 1 ? const Color(0xFFDC4600) : _off;
       case LedState.syncing:
         // Breathing blue, 1200ms triangle, never fully off (20..220).
         final t = ms % 1200;
