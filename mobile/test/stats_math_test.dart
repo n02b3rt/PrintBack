@@ -121,4 +121,110 @@ void main() {
       expect(classifyTrend(60, 100, isExtreme: false).percent, 40);
     });
   });
+
+  // These read the cut hour back off the data (`rows.first.localHour`) and
+  // the weekday off the date, rather than hardcoding either: localHour is a
+  // UTC->local conversion, so a hardcoded number would pass on this machine
+  // (UTC+2) and fail in CI (UTC). Midday UTC hours keep every row on one
+  // local calendar date for any realistic offset.
+  group('typicalDayFraction', () {
+    List<Aggregate> twoDaysHalfByNoon() => [
+          hourly('2026-07-13', 10, 25),
+          hourly('2026-07-13', 14, 25),
+          hourly('2026-07-14', 10, 25),
+          hourly('2026-07-14', 14, 25),
+        ];
+
+    test('null with fewer than minDays of hourly history', () {
+      expect(typicalDayFraction([hourly('2026-07-14', 12, 10)], 23), isNull);
+    });
+
+    test('averages each day share of its own total up to the hour', () {
+      final rows = [
+        hourly('2026-07-13', 10, 10),
+        hourly('2026-07-13', 14, 30),
+        hourly('2026-07-14', 10, 10),
+        hourly('2026-07-14', 14, 30),
+      ];
+      expect(typicalDayFraction(rows, rows.first.localHour),
+          closeTo(0.25, 0.001));
+    });
+
+    test('is the whole day once the last hour is included', () {
+      expect(typicalDayFraction(twoDaysHalfByNoon(), 23), closeTo(1.0, 0.001));
+    });
+
+    // The point of normalising within the hourly rows: these two days only
+    // ever published a couple of hours (the rest fell under the k-anonymity
+    // gate and never left the device), so their hourly totals are far below
+    // the real day. The shape - half by the cut - must survive that.
+    test('normalises within the hourly rows, so k-anonymity gaps do not skew it',
+        () {
+      final rows = [
+        hourly('2026-07-13', 10, 5),
+        hourly('2026-07-13', 14, 5),
+        hourly('2026-07-14', 10, 5),
+        hourly('2026-07-14', 14, 5),
+      ];
+      expect(
+          typicalDayFraction(rows, rows.first.localHour), closeTo(0.5, 0.001));
+    });
+  });
+
+  group('computeDayPace', () {
+    // Shape: half the day's visitors have arrived by the cut hour.
+    List<Aggregate> halfByCut() => [
+          hourly('2026-07-13', 10, 25),
+          hourly('2026-07-13', 14, 25),
+          hourly('2026-07-14', 10, 25),
+          hourly('2026-07-14', 14, 25),
+        ];
+    // Two same-weekday days (7 apart), 100 visitors each.
+    const tueA = '2026-06-30';
+    const tueB = '2026-07-07';
+
+    DayPace? pace(int todaySoFar,
+        {List<Aggregate>? past, List<Aggregate>? hours}) {
+      final rows = hours ?? halfByCut();
+      return computeDayPace(
+        pastDaily: past ?? [daily(tueA, 100), daily(tueB, 100)],
+        pastHourly: rows,
+        todaySoFar: todaySoFar,
+        todayWeekday: weekdayIndex(tueA),
+        hour: halfByCut().first.localHour,
+      );
+    }
+
+    test('null without enough same-weekday history', () {
+      expect(pace(60, past: [daily(tueA, 100)]), isNull);
+    });
+
+    test('null without enough hourly shape to place the hour', () {
+      expect(pace(60, hours: []), isNull);
+    });
+
+    test('scales a typical weekday total by the share of the day elapsed', () {
+      final p = pace(50)!;
+      expect(p.typicalFullDay, 100);
+      expect(p.typicalByNow, 50); // 100 * 0.5
+      expect(p.soFar, 50);
+    });
+
+    test('flags a busier-than-usual day', () {
+      final p = pace(60)!;
+      expect(p.deltaPercent, 20);
+      expect(p.verdict, PaceVerdict.above);
+    });
+
+    test('flags a quieter-than-usual day', () {
+      final p = pace(40)!;
+      expect(p.deltaPercent, -20);
+      expect(p.verdict, PaceVerdict.below);
+    });
+
+    test('calls a small difference typical rather than crying trend', () {
+      expect(pace(53)!.verdict, PaceVerdict.typical); // +6%
+      expect(pace(47)!.verdict, PaceVerdict.typical); // -6%
+    });
+  });
 }

@@ -56,6 +56,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   List<Aggregate> _hourlyToday = [];
   List<Aggregate> _recentDaily = [];
   Aggregate? _todayDaily;
+  DayPace? _pace;
   late final String _deviceId;
 
   @override
@@ -105,11 +106,33 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final hourly = hourlyPadded.where((a) => a.localDate == today).toList();
     final daily = await _localDb.recentDaily(_deviceId, limit: 14);
     final todayDaily = await _localDb.dailyForDate(_deviceId, today);
+
+    // "Today vs a typical <weekday>" needs a longer baseline than the 14-day
+    // chart above: 14 days only ever holds two same-weekdays. Ask for ~9
+    // weeks so the average is over a handful of them, and take the intraday
+    // shape from the last few days of hourly rows (that's as far back as the
+    // device backfills hourly anyway, docs/DATA_MODEL.md). Both exclude
+    // today - today can't be part of its own baseline.
+    final paceDaily = await _localDb.recentDaily(_deviceId, limit: 63);
+    final paceHourly = await _localDb.hourlyInRange(
+      _deviceId,
+      _dateString(now.subtract(const Duration(days: 9))),
+      _dateString(now),
+    );
+    final pace = computeDayPace(
+      pastDaily: paceDaily.where((a) => a.date != today).toList(),
+      pastHourly: paceHourly.where((a) => a.localDate != today).toList(),
+      todaySoFar: todayDaily?.unique ?? 0,
+      todayWeekday: weekdayIndex(today),
+      hour: now.hour,
+    );
+
     if (!mounted) return;
     setState(() {
       _hourlyToday = hourly;
       _recentDaily = daily;
       _todayDaily = todayDaily;
+      _pace = pace;
     });
     _maybeShowKanonTip();
   }
@@ -136,6 +159,82 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _reloadDebounce?.cancel();
     _statsSub?.cancel();
     super.dispose();
+  }
+
+  /// "Do 14:00 typowy wtorek ma około 40" + today's running total, with a
+  /// verdict. Empty until [computeDayPace] has enough same-weekday history
+  /// and enough hourly shape to place the current hour in the day - a guess
+  /// dressed as a headline would be worse than no headline.
+  List<Widget> _paceHero(BuildContext context, AppLocalizations l10n) {
+    final pace = _pace;
+    if (pace == null) return const [];
+    final theme = Theme.of(context);
+
+    final (String verdict, IconData icon, Color color) = switch (pace.verdict) {
+      PaceVerdict.above => (
+          l10n.paceAbove,
+          Icons.trending_up,
+          theme.colorScheme.primary
+        ),
+      PaceVerdict.below => (
+          l10n.paceBelow,
+          Icons.trending_down,
+          theme.colorScheme.tertiary
+        ),
+      PaceVerdict.typical => (
+          l10n.paceTypical,
+          Icons.trending_flat,
+          theme.colorScheme.outline
+        ),
+    };
+
+    final weekdays = [
+      l10n.weekdayMonFull,
+      l10n.weekdayTueFull,
+      l10n.weekdayWedFull,
+      l10n.weekdayThuFull,
+      l10n.weekdayFriFull,
+      l10n.weekdaySatFull,
+      l10n.weekdaySunFull,
+    ];
+
+    return [
+      GlassCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon, color: color, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    verdict,
+                    style: theme.textTheme.titleMedium
+                        ?.copyWith(color: color, fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text('${pace.soFar}',
+                style: theme.textTheme.displaySmall
+                    ?.copyWith(fontWeight: FontWeight.w700)),
+            const SizedBox(height: 2),
+            Text(
+              l10n.paceCaption(
+                DateTime.now().hour,
+                weekdays[weekdayIndex(_todayString())],
+                pace.typicalByNow,
+              ),
+              style: theme.textTheme.bodySmall
+                  ?.copyWith(color: theme.colorScheme.outline),
+            ),
+          ],
+        ),
+      ),
+      const SizedBox(height: 16),
+    ];
   }
 
   List<Widget> _insightsSection(BuildContext context, AppLocalizations l10n) {
@@ -221,6 +320,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
             children: [
               SyncStatusBanner(key: widget.bannerKey),
               const SizedBox(height: 16),
+              // Hero: how today is going against a normal same-weekday at
+              // this hour - the one question an owner has mid-shift. Hidden
+              // until there's enough history to answer it honestly.
+              ..._paceHero(context, l10n),
               // Insights: at most two plain-language takeaways about the
               // latest complete day (today's partial running total is
               // excluded so a half-day never reads as a "quiet" drop).

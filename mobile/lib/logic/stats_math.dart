@@ -114,3 +114,119 @@ TrendResult classifyTrend(num value, double average, {required bool isExtreme}) 
   }
   return const TrendResult(TrendClass.around, 0);
 }
+
+/// Average share of a day's visitors that has already arrived by the end of
+/// local [hour], derived from past days' hourly rows.
+///
+/// Each day contributes `cumulative(0..hour) / that same day's hourly total`,
+/// deliberately normalised against its *own* hourly total rather than against
+/// its daily row. Hourly aggregates are k-anonymity gated - an hour under the
+/// threshold is never published at all (docs/DATA_MODEL.md) - so the hourly
+/// rows systematically under-count the day. Dividing by the daily total would
+/// bake that shortfall into the curve and make "typical by now" far too low,
+/// which would cheerfully report "busier than usual" on a perfectly ordinary
+/// day. Normalising within the hourly data cancels the gap between numerator
+/// and denominator, leaving the *shape* of the day, which is what's wanted.
+///
+/// Shape is taken across all weekdays, not just the matching one: there are
+/// only ever a handful of same-weekday days in the hourly window, and when a
+/// shop fills up over the day barely depends on which day it is - unlike the
+/// daily *total*, which very much does.
+///
+/// Null when fewer than [minDays] usable days are present; the curve would be
+/// noise.
+double? typicalDayFraction(List<Aggregate> hourly, int hour,
+    {int minDays = 2}) {
+  final byDay = <String, List<Aggregate>>{};
+  for (final a in hourly) {
+    byDay.putIfAbsent(a.localDate, () => []).add(a);
+  }
+  final fractions = <double>[];
+  for (final rows in byDay.values) {
+    final total = rows.fold<int>(0, (s, a) => s + a.unique);
+    if (total <= 0) continue;
+    final upTo = rows
+        .where((a) => a.localHour <= hour)
+        .fold<int>(0, (s, a) => s + a.unique);
+    fractions.add(upTo / total);
+  }
+  if (fractions.length < minDays) return null;
+  return fractions.reduce((a, b) => a + b) / fractions.length;
+}
+
+enum PaceVerdict { above, typical, below }
+
+/// "How is today going, compared to a normal `<weekday>` at this hour" - the
+/// one thing an owner actually wants mid-shift.
+class DayPace {
+  /// Today's running total so far.
+  final int soFar;
+
+  /// What a typical same-weekday has usually delivered by this hour.
+  final int typicalByNow;
+
+  /// What a typical same-weekday delivers by closing time.
+  final int typicalFullDay;
+
+  final PaceVerdict verdict;
+
+  /// Percent difference of [soFar] vs [typicalByNow], null if no baseline.
+  final int? deltaPercent;
+
+  const DayPace({
+    required this.soFar,
+    required this.typicalByNow,
+    required this.typicalFullDay,
+    required this.verdict,
+    required this.deltaPercent,
+  });
+}
+
+/// Builds the "today vs a typical `<weekday>`" comparison, or null when there
+/// isn't enough history to say anything honest.
+///
+/// [pastDaily] and [pastHourly] must exclude today (today's own numbers can't
+/// be part of its own baseline). [todaySoFar] is today's running unique total
+/// - the daily row, which the device always writes, not a sum of the gated
+/// hourly ones. [hour] is the current local hour.
+DayPace? computeDayPace({
+  required List<Aggregate> pastDaily,
+  required List<Aggregate> pastHourly,
+  required int todaySoFar,
+  required int todayWeekday,
+  required int hour,
+  int minSameWeekdays = 2,
+  int thresholdPct = 15,
+}) {
+  final sameWeekday =
+      pastDaily.where((a) => weekdayIndex(a.date) == todayWeekday).toList();
+  if (sameWeekday.length < minSameWeekdays) return null;
+
+  final typicalFull =
+      sameWeekday.fold<int>(0, (s, a) => s + a.unique) / sameWeekday.length;
+  final fraction = typicalDayFraction(pastHourly, hour);
+  if (fraction == null || fraction <= 0) return null;
+
+  final byNow = (typicalFull * fraction).round();
+  if (byNow <= 0) return null;
+
+  final delta = deltaPercent(todaySoFar, byNow);
+  final PaceVerdict verdict;
+  if (delta == null) {
+    verdict = PaceVerdict.typical;
+  } else if (delta >= thresholdPct) {
+    verdict = PaceVerdict.above;
+  } else if (delta <= -thresholdPct) {
+    verdict = PaceVerdict.below;
+  } else {
+    verdict = PaceVerdict.typical;
+  }
+
+  return DayPace(
+    soFar: todaySoFar,
+    typicalByNow: byNow,
+    typicalFullDay: typicalFull.round(),
+    verdict: verdict,
+    deltaPercent: delta,
+  );
+}
