@@ -53,6 +53,13 @@ class _CoachOverlay extends StatefulWidget {
 class _CoachOverlayState extends State<_CoachOverlay> {
   int _index = 0;
 
+  @override
+  void initState() {
+    super.initState();
+    // Even the first target may be below the fold.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _reveal(0));
+  }
+
   Rect? _rectFor(GlobalKey key) {
     final ctx = key.currentContext;
     if (ctx == null) return null;
@@ -61,16 +68,41 @@ class _CoachOverlayState extends State<_CoachOverlay> {
     return box.localToGlobal(Offset.zero) & box.size;
   }
 
+  /// Scrolls [i]'s target into view before spotlighting it.
+  ///
+  /// Without this the tour cheerfully pointed at things the operator could
+  /// not see: the panel is a long scrolling list, so a target below the fold
+  /// got a spotlight drawn off-screen (or, in the lazy list, no render box at
+  /// all and the step was silently dropped). Telling someone "this is your
+  /// hourly chart" while showing them a dimmed screen with a hole somewhere
+  /// past the bottom edge is worse than not telling them.
+  Future<void> _reveal(int i) async {
+    final ctx = widget.targets[i].key.currentContext;
+    if (ctx != null) {
+      await Scrollable.ensureVisible(
+        ctx,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+        alignment: 0.5, // centre it, so the caption has room either side
+      );
+      // One more frame so localToGlobal reads the settled position rather
+      // than where the target was mid-scroll.
+      await Future.delayed(const Duration(milliseconds: 60));
+    }
+    if (mounted) setState(() => _index = i);
+  }
+
   void _next() {
-    // Advance to the next target that actually has an on-screen rect.
+    // Advance to the next target that actually exists in the tree.
     var i = _index + 1;
-    while (i < widget.targets.length && _rectFor(widget.targets[i].key) == null) {
+    while (i < widget.targets.length &&
+        widget.targets[i].key.currentContext == null) {
       i++;
     }
     if (i >= widget.targets.length) {
       widget.onFinish();
     } else {
-      setState(() => _index = i);
+      _reveal(i);
     }
   }
 
