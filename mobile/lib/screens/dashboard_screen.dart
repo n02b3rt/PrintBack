@@ -241,7 +241,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
     // Exclude today's partial running total - insights compare complete days.
     final completeDays =
         _recentDaily.where((a) => a.date != _todayString()).toList();
-    final insights = buildInsights(completeDays);
+    // Rotate on the day-of-year: more rules fire than fit on the card, so
+    // the secondary slot cycles day to day instead of showing the same two
+    // forever. Stable within a day, so the card doesn't reshuffle on every
+    // rebuild/notification.
+    final now = DateTime.now();
+    final dayOfYear = now.difference(DateTime(now.year)).inDays;
+    final insights = buildInsights(completeDays, rotationSeed: dayOfYear);
     if (insights.isEmpty) return const [];
     final scheme = Theme.of(context).colorScheme;
     return [
@@ -271,6 +277,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         InsightKind.record => Icons.emoji_events,
         InsightKind.up => Icons.trending_up,
         InsightKind.down => Icons.trending_down,
+        InsightKind.streak => Icons.local_fire_department,
+        InsightKind.percentile => Icons.leaderboard,
         InsightKind.quiet => Icons.bedtime,
       };
 
@@ -279,6 +287,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
         InsightKind.record => l10n.insightRecord,
         InsightKind.up => l10n.insightUp(insight.percent),
         InsightKind.down => l10n.insightDown(insight.percent),
+        InsightKind.streak => l10n.insightStreak(insight.count),
+        InsightKind.percentile =>
+          l10n.insightPercentile(insight.count, insight.total),
         InsightKind.quiet => l10n.insightQuiet,
       };
 
