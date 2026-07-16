@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/aggregate.dart';
 import '../models/device_config.dart';
 import '../models/device_status.dart';
+import '../storage/local_db.dart';
 
 const _activeDeviceIdKey = 'active_device_id';
 const _knownDevicesKey = 'known_printback_devices';
@@ -51,6 +52,27 @@ class BleService extends ChangeNotifier with WidgetsBindingObserver {
 
   final _statsController = StreamController<Aggregate>.broadcast();
   Stream<Aggregate> get statsUpdates => _statsController.stream;
+
+  final _localDb = LocalDb();
+
+  /// Writes an incoming aggregate to the local cache. This lives in the
+  /// service, not in a screen's `statsUpdates` listener, because
+  /// [statsUpdates] is a broadcast stream: anything emitted while no screen
+  /// happens to be subscribed (during connect(), before HomeShell mounts,
+  /// mid-reconnect) is dropped on the floor and would never reach the db.
+  /// That showed up as the numbers quietly changing after an app restart -
+  /// the next SYNC replayed exactly the rows that had been lost. Persisting
+  /// at the point of arrival makes the cache independent of whatever UI is
+  /// on screen; the stream is then only a "something changed, redraw" hint.
+  Future<void> _persist(Aggregate agg) async {
+    final deviceId = _activeDeviceId;
+    if (deviceId == null) return;
+    try {
+      await _localDb.upsert(deviceId, agg);
+    } catch (e) {
+      debugPrint('local cache write failed: $e');
+    }
+  }
 
   BluetoothConnectionState _connectionState =
       BluetoothConnectionState.disconnected;
@@ -461,13 +483,17 @@ class BleService extends ChangeNotifier with WidgetsBindingObserver {
         await _writeTimeSync();
       }
 
+      // Set before subscribing, not after: _persist() keys the cache on
+      // this, and a notification landing in the gap would be silently
+      // dropped for want of a device id.
+      _activeDeviceId = device.remoteId.str;
+
       await _statsChr!.setNotifyValue(true);
       await _statsSub?.cancel();
       _statsSub = _statsChr!.lastValueStream.listen(_onStatsNotification);
 
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_activeDeviceIdKey, device.remoteId.str);
-      _activeDeviceId = device.remoteId.str;
       // Reaching here means every PrintBack characteristic was found -
       // proof this is really our device, so add it to the verified
       // registry the Settings switcher shows.
@@ -515,7 +541,9 @@ class BleService extends ChangeNotifier with WidgetsBindingObserver {
       final value = await _statsChr!.read();
       if (value.isEmpty) return null;
       final map = jsonDecode(utf8.decode(value)) as Map<String, dynamic>;
-      return Aggregate.fromJson(map);
+      final agg = Aggregate.fromJson(map);
+      await _persist(agg); // same ownership rule as the notification path
+      return agg;
     } catch (_) {
       return null;
     }
@@ -591,7 +619,7 @@ class BleService extends ChangeNotifier with WidgetsBindingObserver {
     await _timeSyncChr!.write(bytes.buffer.asUint8List());
   }
 
-  void _onStatsNotification(List<int> value) {
+  Future<void> _onStatsNotification(List<int> value) async {
     if (value.isEmpty) return;
     final Aggregate agg;
     try {
@@ -615,7 +643,10 @@ class BleService extends ChangeNotifier with WidgetsBindingObserver {
     // "done" deadline back - a big backlog replay is many notifications in
     // a row, not one.
     if (_isSyncing) _armSyncIdleTimer();
-    _statsController.add(agg);
+    // Cache first, announce second: a listener's reload() then always finds
+    // the row already in the db.
+    await _persist(agg);
+    if (!_statsController.isClosed) _statsController.add(agg);
   }
 
   void _completeSyncNow() {

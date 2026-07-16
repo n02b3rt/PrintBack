@@ -52,6 +52,7 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   final _localDb = LocalDb();
   StreamSubscription<Aggregate>? _statsSub;
+  Timer? _reloadDebounce;
   List<Aggregate> _hourlyToday = [];
   List<Aggregate> _recentDaily = [];
   Aggregate? _todayDaily;
@@ -67,18 +68,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
     // activeDeviceId is always set by the time this screen mounts, but
     // ble.device may be null (offline).
     _deviceId = ble.activeDeviceId!;
-    _statsSub = ble.statsUpdates.listen((agg) async {
-      await _localDb.upsert(_deviceId, agg);
-      await _reload();
-    });
+    // BleService caches every incoming aggregate itself before emitting, so
+    // this is purely a "something landed, redraw" signal.
+    _statsSub = ble.statsUpdates.listen((_) => _scheduleReload());
     _loadInitialStats(ble);
     _reload();
   }
 
+  /// A SYNC backlog replay arrives as a burst of notifications; collapse it
+  /// into one reload instead of re-querying the db once per row.
+  void _scheduleReload() {
+    _reloadDebounce?.cancel();
+    _reloadDebounce = Timer(const Duration(milliseconds: 250), _reload);
+  }
+
   Future<void> _loadInitialStats(BleService ble) async {
-    final initial = await ble.readCurrentStats();
-    if (initial == null) return;
-    await _localDb.upsert(_deviceId, initial);
+    if (await ble.readCurrentStats() == null) return;
     await _reload();
   }
 
@@ -128,6 +133,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   void dispose() {
+    _reloadDebounce?.cancel();
     _statsSub?.cancel();
     super.dispose();
   }

@@ -37,6 +37,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
   _Period _period = _Period.week;
   DateTimeRange? _customRange;
   StreamSubscription<Aggregate>? _statsSub;
+  Timer? _reloadDebounce;
 
   List<Aggregate> _daily = [];
   List<Aggregate> _hourly = [];
@@ -46,15 +47,22 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
   void initState() {
     super.initState();
     final ble = context.read<BleService>();
-    _statsSub = ble.statsUpdates.listen((agg) async {
-      await _localDb.upsert(_deviceId, agg);
-      await _reload();
-    });
+    // BleService caches every incoming aggregate itself before emitting, so
+    // this is purely a "something landed, redraw" signal.
+    _statsSub = ble.statsUpdates.listen((_) => _scheduleReload());
     _reload();
+  }
+
+  /// A SYNC backlog replay arrives as a burst of notifications; collapse it
+  /// into one reload instead of re-querying the db once per row.
+  void _scheduleReload() {
+    _reloadDebounce?.cancel();
+    _reloadDebounce = Timer(const Duration(milliseconds: 250), _reload);
   }
 
   @override
   void dispose() {
+    _reloadDebounce?.cancel();
     _statsSub?.cancel();
     super.dispose();
   }

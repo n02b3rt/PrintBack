@@ -1250,3 +1250,40 @@ user described as the LED "party"). The 100ms release debounce was enough
 margin for the reseated breadboard switch. Note for a real hold: release
 the button after the white flash - holding through the reboot restarts the
 counter and reboots again in another 10s.
+
+## [MOBILE] aggregates were only cached if a screen happened to be listening
+Date: 2026-07-16
+Problem: user noticed the statistics showed one set of numbers, and after
+closing and reopening the app they were "a bit different" - correctly read
+as suspicious rather than as a refresh quirk.
+Root cause: persistence was owned by the UI, not by the service.
+`BleService._onStatsNotification()` parsed each incoming STATS record and
+did nothing but `_statsController.add(agg)`; the actual
+`LocalDb.upsert()` lived in `dashboard_screen.dart`'s and
+`statistics_screen.dart`'s `statsUpdates` listeners. `statsUpdates` is a
+*broadcast* stream, so any record emitted while no screen was subscribed
+was dropped on the floor and never reached the db at all. The window is
+real: `connect()` subscribes to STATS and can receive records well before
+`HomeShell` (and therefore either screen) mounts, and the same applies to
+every auto-reconnect. Because the device keeps no per-bond sync cursor
+(docs/DECISIONS.md D10) and the phone asks for a replay from its own
+`newestDailyDate()`, the *next* launch's SYNC simply replayed the rows
+that had been lost - which is exactly why the numbers changed after a
+restart rather than staying wrong forever. A second, narrower instance of
+the same class of bug sat in `connect()` itself: the STATS listener was
+attached a few lines *before* `_activeDeviceId` was assigned (with an
+`await` in between), so even once the service owned the write, a record
+landing in that gap would have had no device id to file under.
+Fix: moved the write into the service. `BleService._persist()` upserts
+into `LocalDb` keyed by `_activeDeviceId`, and both the notification path
+and `readCurrentStats()` call it at the point of arrival, before emitting.
+`statsUpdates` is now purely a "something landed, redraw" hint, and the
+screens' listeners just reload - they no longer upsert. Cache-then-announce
+ordering also means a listener's reload always finds the row already
+present. `_activeDeviceId` is now assigned before the subscribe, closing
+the gap above. Both screens additionally debounce their reload by 250ms,
+so a backlog replay (a burst of notifications) triggers one reload instead
+of one per row.
+Status: RESOLVED (2026-07-16) - `flutter analyze` clean, 50 tests green.
+Not yet re-verified on hardware that the restart-changes-the-numbers
+symptom is gone; that needs a connect/sync cycle on the user's phone.
