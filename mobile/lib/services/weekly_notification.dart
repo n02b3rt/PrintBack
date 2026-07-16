@@ -22,18 +22,38 @@ class WeeklyNotification {
   Future<void> init() async {
     tzdata.initializeTimeZones();
     const android = AndroidInitializationSettings('@mipmap/ic_launcher');
-    await _plugin.initialize(const InitializationSettings(android: android));
+    // iOS needs its own init settings or the plugin never registers there and
+    // nothing is ever delivered. Permissions are all requested later, from
+    // requestPermission(), rather than here: the app primes its permission
+    // asks (onboarding/permission_priming.dart) instead of firing a system
+    // dialog at a cold launch before the user knows what we want.
+    const ios = DarwinInitializationSettings(
+      requestAlertPermission: false,
+      requestBadgePermission: false,
+      requestSoundPermission: false,
+    );
+    await _plugin.initialize(
+        const InitializationSettings(android: android, iOS: ios));
     _ready = true;
   }
 
-  /// Android 13+ requires a runtime notification permission. Returns
-  /// whether notifications are allowed (true on older Android / other
-  /// platforms where it's implicit).
+  /// Asks for the notification permission on the platforms that have one:
+  /// Android 13+ (runtime permission) and iOS (always). Returns whether
+  /// notifications are allowed - true on older Android, where it's implicit.
   Future<bool> requestPermission() async {
-    if (defaultTargetPlatform != TargetPlatform.android) return true;
-    final android = _plugin.resolvePlatformSpecificImplementation<
-        AndroidFlutterLocalNotificationsPlugin>();
-    return await android?.requestNotificationsPermission() ?? true;
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      final android = _plugin.resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
+      return await android?.requestNotificationsPermission() ?? true;
+    }
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      final ios = _plugin.resolvePlatformSpecificImplementation<
+          IOSFlutterLocalNotificationsPlugin>();
+      return await ios?.requestPermissions(
+              alert: true, badge: true, sound: true) ??
+          false;
+    }
+    return true;
   }
 
   Future<void> scheduleWeekly({
@@ -55,6 +75,7 @@ class WeeklyNotification {
           importance: Importance.defaultImportance,
           priority: Priority.defaultPriority,
         ),
+        iOS: DarwinNotificationDetails(),
       ),
       // Inexact avoids the exact-alarm permission; a weekly 9am nudge
       // doesn't need to-the-second timing.
