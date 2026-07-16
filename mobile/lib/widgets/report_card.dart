@@ -64,14 +64,20 @@ class ReportCard extends StatelessWidget {
           const SizedBox(height: 4),
           Text(dateRange, style: const TextStyle(color: _muted, fontSize: 14)),
           const SizedBox(height: 24),
-          Row(
-            children: [
-              _kpi(l10n.uniqueLabel, unique),
-              const SizedBox(width: 12),
-              _kpi(l10n.newVisitorsLabel, newVisitors),
-              const SizedBox(width: 12),
-              _kpi(l10n.returningLabel, returning),
-            ],
+          // IntrinsicHeight + stretch keeps the three tiles identical: only
+          // "Odwiedzający" is long enough to wrap, so without it that tile
+          // alone grew and the exported PNG shipped a lopsided card.
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _kpi(l10n.uniqueLabel, unique),
+                const SizedBox(width: 12),
+                _kpi(l10n.newVisitorsLabel, newVisitors),
+                const SizedBox(width: 12),
+                _kpi(l10n.returningLabel, returning),
+              ],
+            ),
           ),
         ],
       ),
@@ -93,9 +99,17 @@ class ReportCard extends StatelessWidget {
                 style: const TextStyle(
                     color: _accent, fontSize: 26, fontWeight: FontWeight.w700)),
             const SizedBox(height: 4),
-            Text(label,
-                style: const TextStyle(color: _muted, fontSize: 12),
-                maxLines: 2),
+            // One line, scaled down if need be: Flutter breaks an over-long
+            // single word mid-word ("Odwiedzając" / "y") rather than
+            // hyphenating, which looked broken in a card people send to
+            // other people.
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(label,
+                  style: const TextStyle(color: _muted, fontSize: 12),
+                  maxLines: 1),
+            ),
           ],
         ),
       ),
