@@ -56,6 +56,10 @@ dependencies:
   # the diagnostic report header.
   sensors_plus: ^6.1.1
   package_info_plus: ^8.1.2
+  # .xlsx export (pure Dart). Chosen over CSV deliberately: Polish Excel and
+  # comma-separated files are a separator lottery, xlsx sidesteps it and
+  # carries real sheets/typed dates.
+  excel: ^4.0.6
 
 dev_dependencies:
   flutter_test:
