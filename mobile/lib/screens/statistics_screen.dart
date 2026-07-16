@@ -17,6 +17,7 @@ import '../widgets/chart_style.dart';
 import '../widgets/detail_sheet.dart';
 import '../widgets/glass_card.dart';
 import '../widgets/gradient_background.dart';
+import 'chart_detail.dart';
 import 'report_actions.dart';
 
 enum _Period { today, week, month, custom }
@@ -437,8 +438,27 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
               // point count (24 hours, 7 days, or 30) with no bar-width
               // cramping to manage.
               const SizedBox(height: 24),
-              Text(l10n.dailyTrendTitle,
-                  style: Theme.of(context).textTheme.titleMedium),
+              // Same affordance as the panel's daily chart, opening the same
+              // drill-down - one screen for "look at this trend properly",
+              // reachable from wherever the trend is on screen.
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(l10n.dailyTrendTitle,
+                        style: Theme.of(context).textTheme.titleMedium),
+                  ),
+                  TextButton.icon(
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => ChartDetail(
+                            deviceId: _deviceId, title: l10n.dailyTrendTitle),
+                      ),
+                    ),
+                    icon: const Icon(Icons.open_in_full, size: 16),
+                    label: Text(l10n.expandChart),
+                  ),
+                ],
+              ),
               const SizedBox(height: 8),
               revolutLegend(context, [
                 (Theme.of(context).colorScheme.primary, l10n.uniqueLabel),
