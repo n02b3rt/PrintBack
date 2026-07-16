@@ -131,6 +131,17 @@ These constraints are baked into the code, not just declared:
 
 - **No network calls**: the app has no HTTP/MQTT/anything outbound. Data
   physically has no way to leave the operator's computer.
+- **No network permission on the phone, and no cloud backup**: the Android
+  release manifest declares no `INTERNET` permission at all (verified on the
+  merged release manifest, not just the source one - it stays 0 even with the
+  BLE/notification/share plugins merged in), so "nothing leaves the phone" is
+  a property of the build rather than a promise. The app also opts out of
+  Android Auto Backup and device-to-device transfer
+  (`allowBackup="false"` + `res/xml/data_extraction_rules.xml`), which would
+  otherwise have copied the cached aggregate database to the operator's
+  Google Drive. Those rows are anonymous counts, so this is about keeping the
+  claim literally true rather than about protecting a data subject - and the
+  history costs nothing to lose, since SYNC re-downloads it from the device.
 - **No crosslinking**: the schema has no columns or interfaces to join a
   fingerprint with anything external (CRM, loyalty, POS, CCTV). The operator
   can't do this in one click.

@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android 12+ (API 31+) counterpart to android:allowBackup="false".
+
+  PrintBack's whole claim is that the operator's data never leaves their
+  phone (docs/compliance/README.md) - and with no INTERNET permission in the
+  release manifest, that is literally true of the app itself. Android's own
+  Auto Backup would quietly undercut it by copying
+  printback_aggregates.db to the user's Google Drive. The cached rows are
+  anonymous aggregate counts, so this is a narrative/consistency call rather
+  than a data-protection one, but the narrative is worth more than the
+  convenience: the history is re-downloadable from the device over SYNC
+  anyway, so a backup buys almost nothing.
+
+  allowBackup="false" covers cloud backup on all versions; these rules also
+  opt out of Android 12+ device-to-device transfer, which allowBackup alone
+  does not cover.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="file" />
+        <exclude domain="external" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="file" />
+        <exclude domain="external" />
+    </device-transfer>
+</data-extraction-rules>
