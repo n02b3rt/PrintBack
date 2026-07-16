@@ -14,11 +14,10 @@ import '../widgets/gradient_background.dart';
 
 enum _Range { d7, d30, max }
 
-/// Which series the whole screen is about. Switching it re-points the
-/// headline, the line, the scrub readout and the stats at once - the numbers
-/// on screen always describe the same thing, rather than a chart of one
-/// metric sitting under a total of another.
-enum _Metric { unique, newVisitors, returning }
+/// Extra series the operator can lay over the visitors line. Visitors itself
+/// is always drawn - it's what the headline counts, so a chart without it
+/// would describe something the header doesn't.
+enum _Series { returning, newVisitors }
 
 /// Full-screen drill-down for the daily trend: the period's headline number
 /// and how it compares, a scrubbable line, optional overlays, the same
@@ -43,26 +42,13 @@ class _ChartDetailState extends State<ChartDetail> {
   final _localDb = LocalDb();
 
   _Range _range = _Range.d30;
-  _Metric _metric = _Metric.unique;
+  final Set<_Series> _series = {};
   bool _showPrevious = false;
   bool _showAverage = true;
 
   /// "New" is unique minus returning, clamped - the same definition the KPI
   /// cards use, kept in one place so the two can't drift.
-  int _valueOf(Aggregate a) => switch (_metric) {
-        _Metric.unique => a.unique,
-        _Metric.returning => a.returning,
-        _Metric.newVisitors => (a.unique - a.returning).clamp(0, a.unique),
-      };
-
-  int _sumOf(List<Aggregate> rows) =>
-      rows.fold<int>(0, (s, a) => s + _valueOf(a));
-
-  String _metricLabel(AppLocalizations l10n) => switch (_metric) {
-        _Metric.unique => l10n.uniqueLabel,
-        _Metric.returning => l10n.returningLabel,
-        _Metric.newVisitors => l10n.newVisitorsLabel,
-      };
+  static int newOf(Aggregate a) => (a.unique - a.returning).clamp(0, a.unique);
 
   List<Aggregate> _rows = [];
   List<Aggregate> _previous = [];
@@ -122,9 +108,18 @@ class _ChartDetailState extends State<ChartDetail> {
   String _deltaSentence(AppLocalizations l10n) {
     final days = _rangeDays;
     if (days == null || _previous.isEmpty) return l10n.deltaNoBaseline;
-    final diff = _sumOf(_rows) - _sumOf(_previous);
+    final diff = sumUnique(_rows) - sumUnique(_previous);
     if (diff == 0) return l10n.deltaSame(days);
     return diff > 0 ? l10n.deltaMore(diff, days) : l10n.deltaFewer(-diff, days);
+  }
+
+  /// Percent change against the previous period, or null when there isn't
+  /// one. Shown next to the count, not instead of it: a percentage is what
+  /// people scan for, a headcount is what they can actually picture, and
+  /// Revolut shows both for the same reason.
+  int? _deltaPct() {
+    if (_rangeDays == null || _previous.isEmpty) return null;
+    return deltaPercent(sumUnique(_rows), sumUnique(_previous));
   }
 
   /// The period summary, or - while a finger is on the chart - that day.
@@ -140,6 +135,12 @@ class _ChartDetailState extends State<ChartDetail> {
     // jump (the chart would shift under a scrubbing finger), but a hard
     // SizedBox silently clipped the number when the delta sentence wrapped
     // to two lines. Reserve the taller state's height and let it grow.
+    final pct = _deltaPct();
+    final up = (pct ?? 0) >= 0;
+    final pctColor = pct == null || pct == 0
+        ? theme.colorScheme.outline
+        : (up ? theme.colorScheme.primary : theme.colorScheme.error);
+
     return ConstrainedBox(
       constraints: const BoxConstraints(minHeight: 116),
       child: Column(
@@ -147,22 +148,80 @@ class _ChartDetailState extends State<ChartDetail> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            '${scrubbed == null ? total : _valueOf(scrubbed)}',
+            '${scrubbed == null ? total : scrubbed.unique}',
             style: theme.textTheme.displayMedium
                 ?.copyWith(fontWeight: FontWeight.w700),
           ),
           Text(
-            _metricLabel(l10n),
+            l10n.uniqueLabel,
             style: theme.textTheme.bodySmall
                 ?.copyWith(color: theme.colorScheme.outline),
           ),
           const SizedBox(height: 4),
-          Text(
-            scrubbed == null
-                ? _deltaSentence(l10n)
-                : formatDayTitle(scrubbed.date, l10n.localeName),
-            style: theme.textTheme.bodyMedium,
+          if (scrubbed == null)
+            Row(
+              children: [
+                if (pct != null && pct != 0) ...[
+                  Icon(up ? Icons.arrow_drop_up : Icons.arrow_drop_down,
+                      size: 20, color: pctColor),
+                  Text('${pct.abs()}%',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                          color: pctColor, fontWeight: FontWeight.w700)),
+                  const SizedBox(width: 6),
+                ],
+                Expanded(
+                  child: Text(_deltaSentence(l10n),
+                      style: theme.textTheme.bodyMedium),
+                ),
+              ],
+            )
+          else
+            // Scrubbing: the date, plus whatever extra series are switched on
+            // for that same day - otherwise turning "Powracający" on would
+            // draw a line whose numbers you could never read.
+            Row(
+              children: [
+                Expanded(
+                  child: Text(formatDayTitle(scrubbed.date, l10n.localeName),
+                      style: theme.textTheme.bodyMedium),
+                ),
+                if (_series.contains(_Series.returning))
+                  _scrubChip(theme, l10n.returningLabel, scrubbed.returning,
+                      theme.colorScheme.tertiary),
+                if (_series.contains(_Series.newVisitors))
+                  _scrubChip(theme, l10n.newVisitorsLabel, newOf(scrubbed),
+                      theme.colorScheme.secondary),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// Colour swatch on a series chip, so the chip and its line are tied
+  /// together without a separate legend.
+  Widget? _seriesDot(Color color, bool on) => on
+      ? null // the chip's own tick already says "on"
+      : Container(
+          width: 12,
+          height: 12,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        );
+
+  Widget _scrubChip(ThemeData theme, String label, int value, Color color) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 10),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
           ),
+          const SizedBox(width: 4),
+          Text('$label $value',
+              style: theme.textTheme.labelMedium?.copyWith(color: color)),
         ],
       ),
     );
@@ -171,7 +230,8 @@ class _ChartDetailState extends State<ChartDetail> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
-    final total = _sumOf(_rows);
+    final theme = Theme.of(context);
+    final total = sumUnique(_rows);
 
     return Scaffold(
       appBar: AppBar(title: Text(widget.title)),
@@ -183,25 +243,6 @@ class _ChartDetailState extends State<ChartDetail> {
                 children: [
                   _header(context, l10n, total),
                   const SizedBox(height: 16),
-                  SegmentedButton<_Metric>(
-                    segments: [
-                      ButtonSegment(
-                          value: _Metric.unique, label: Text(l10n.uniqueLabel)),
-                      ButtonSegment(
-                          value: _Metric.newVisitors,
-                          label: Text(l10n.newVisitorsLabel)),
-                      ButtonSegment(
-                          value: _Metric.returning,
-                          label: Text(l10n.returningLabel)),
-                    ],
-                    selected: {_metric},
-                    showSelectedIcon: false,
-                    onSelectionChanged: (s) => setState(() {
-                      _metric = s.first;
-                      _scrub = null; // stale readout for the new series
-                    }),
-                  ),
-                  const SizedBox(height: 8),
                   SegmentedButton<_Range>(
                     segments: [
                       ButtonSegment(value: _Range.d7, label: Text(l10n.range7d)),
@@ -226,7 +267,7 @@ class _ChartDetailState extends State<ChartDetail> {
                               rows: _rows,
                               previous: _showPrevious ? _previous : const [],
                               showAverage: _showAverage,
-                              value: _valueOf,
+                              series: _series,
                               onScrub: (i) {
                                 if (i != _scrub) setState(() => _scrub = i);
                               },
@@ -236,7 +277,30 @@ class _ChartDetailState extends State<ChartDetail> {
                   const SizedBox(height: 12),
                   Wrap(
                     spacing: 8,
+                    runSpacing: 4,
                     children: [
+                      // Extra series first: these change what the chart is
+                      // showing, the two below only annotate it.
+                      FilterChip(
+                        label: Text(l10n.returningLabel),
+                        selected: _series.contains(_Series.returning),
+                        avatar: _seriesDot(
+                            theme.colorScheme.tertiary,
+                            _series.contains(_Series.returning)),
+                        onSelected: (v) => setState(() => v
+                            ? _series.add(_Series.returning)
+                            : _series.remove(_Series.returning)),
+                      ),
+                      FilterChip(
+                        label: Text(l10n.newVisitorsLabel),
+                        selected: _series.contains(_Series.newVisitors),
+                        avatar: _seriesDot(
+                            theme.colorScheme.secondary,
+                            _series.contains(_Series.newVisitors)),
+                        onSelected: (v) => setState(() => v
+                            ? _series.add(_Series.newVisitors)
+                            : _series.remove(_Series.newVisitors)),
+                      ),
                       FilterChip(
                         label: Text(l10n.overlayPrevious),
                         selected: _showPrevious,
@@ -319,10 +383,8 @@ class _ChartDetailState extends State<ChartDetail> {
 
   List<Widget> _statsGrid(BuildContext context, AppLocalizations l10n) {
     if (_rows.isEmpty) return const [];
-    final total = _sumOf(_rows);
-    // The record is the best day *of the selected metric* - the busiest day
-    // for returning visitors isn't necessarily the busiest day overall.
-    final peak = _rows.map(_valueOf).fold<int>(0, (m, v) => v > m ? v : m);
+    final total = sumUnique(_rows);
+    final peak = _rows.map((a) => a.unique).fold<int>(0, (m, v) => v > m ? v : m);
     return [
       GlassCard(
         child: ChartStatStrip(stats: [
@@ -357,15 +419,15 @@ class _TrendChart extends StatelessWidget {
   final List<Aggregate> previous;
   final bool showAverage;
 
-  /// Which number to plot out of each row - the screen's selected metric.
-  final int Function(Aggregate) value;
+  /// Extra series switched on by the operator.
+  final Set<_Series> series;
   final void Function(int?) onScrub;
 
   const _TrendChart({
     required this.rows,
     required this.previous,
     required this.showAverage,
-    required this.value,
+    required this.series,
     required this.onScrub,
   });
 
@@ -374,14 +436,20 @@ class _TrendChart extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final spots = [
       for (var i = 0; i < rows.length; i++)
-        FlSpot(i.toDouble(), value(rows[i]).toDouble())
+        FlSpot(i.toDouble(), rows[i].unique.toDouble())
     ];
 
     // Everything drawn decides the window, overlays included - a ghost line
-    // running off the top would be worse than a slightly looser axis.
+    // running off the top would be worse than a slightly looser axis. The
+    // extra series are all subsets of unique, so they can only lower the
+    // floor, never raise the ceiling.
     final plotted = <double>[
-      ...rows.map((r) => value(r).toDouble()),
-      if (previous.isNotEmpty) ...previous.map((r) => value(r).toDouble()),
+      ...rows.map((r) => r.unique.toDouble()),
+      if (series.contains(_Series.returning))
+        ...rows.map((r) => r.returning.toDouble()),
+      if (series.contains(_Series.newVisitors))
+        ...rows.map((r) => _ChartDetailState.newOf(r).toDouble()),
+      if (previous.isNotEmpty) ...previous.map((r) => r.unique.toDouble()),
     ];
     var dataMin = plotted.reduce((a, b) => a < b ? a : b);
     var dataMax = plotted.reduce((a, b) => a > b ? a : b);
@@ -403,7 +471,7 @@ class _TrendChart extends StatelessWidget {
         // period before", laid over today's, not a second calendar axis.
         spots: [
           for (var i = 0; i < prev.length && i < rows.length; i++)
-            FlSpot(i.toDouble(), value(prev[i]).toDouble())
+            FlSpot(i.toDouble(), prev[i].unique.toDouble())
         ],
         isCurved: prev.length > 6,
         barWidth: 2,
@@ -416,10 +484,37 @@ class _TrendChart extends StatelessWidget {
 
     bars.add(revolutLine(context, spots));
 
+    // Subsets of the visitors line, drawn unfilled so their areas don't
+    // muddy the fill underneath (same reasoning as chart_style's two-line
+    // helper).
+    if (series.contains(_Series.returning)) {
+      bars.add(revolutLine(
+        context,
+        [
+          for (var i = 0; i < rows.length; i++)
+            FlSpot(i.toDouble(), rows[i].returning.toDouble())
+        ],
+        color: scheme.tertiary,
+        fill: false,
+      ));
+    }
+    if (series.contains(_Series.newVisitors)) {
+      bars.add(revolutLine(
+        context,
+        [
+          for (var i = 0; i < rows.length; i++)
+            FlSpot(i.toDouble(),
+                _ChartDetailState.newOf(rows[i]).toDouble())
+        ],
+        color: scheme.secondary,
+        fill: false,
+      ));
+    }
+
     // Guarded by the same rule the chip uses: under a full window every
     // point is null and this would add an empty, invisible series.
     if (showAverage && rows.length >= 7) {
-      final avg = movingAverage(rows.map(value).toList(), 7);
+      final avg = movingAverage(rows.map((r) => r.unique).toList(), 7);
       bars.add(LineChartBarData(
         spots: [
           for (var i = 0; i < avg.length; i++)
