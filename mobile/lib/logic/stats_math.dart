@@ -115,6 +115,29 @@ TrendResult classifyTrend(num value, double average, {required bool isExtreme}) 
   return const TrendResult(TrendClass.around, 0);
 }
 
+/// Drops the day the device was switched on from [rows].
+///
+/// That day only ever covers part of a day - nobody plugs the thing in at
+/// midnight - so it lands in the history as a near-empty day that isn't one.
+/// Left in, it drags a trend line down to the floor, pulls the daily average
+/// under, and poisons "a typical Tuesday" if it happens to be a Tuesday. It's
+/// real data, but it answers a different question ("how many people between
+/// 3pm and closing") than every other row ("how many people that day"), and
+/// averaging the two together is what makes the number wrong.
+///
+/// [installDate] is the oldest date the *cache* holds (LocalDb.
+/// oldestDailyDate), not the oldest date in [rows] - a period like "last 7
+/// days" has its own first row, which is an ordinary complete day.
+///
+/// Never strips the last row standing: on day one that would leave a screen
+/// with nothing on it, and "no data yet" is already handled elsewhere with
+/// better words than an empty chart.
+List<Aggregate> withoutInstallDay(List<Aggregate> rows, String? installDate) {
+  if (installDate == null) return rows;
+  final kept = rows.where((a) => a.date != installDate).toList();
+  return kept.isEmpty ? rows : kept;
+}
+
 /// Trailing moving average of [values] over [window] points.
 ///
 /// Positions without a full window are null rather than a partial average:

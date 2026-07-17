@@ -177,6 +177,23 @@ class LocalDb {
   /// if nothing's synced yet. Used to compute a SYNC `since_unix_day`
   /// cutoff (docs/DATA_MODEL.md "BLE SYNC payload") without re-fetching
   /// history the phone already has.
+  /// The oldest daily row's date - in practice the day the device was first
+  /// switched on, since SYNC replays everything it holds. Callers treat that
+  /// day as partial (see `installDay` in lib/logic/stats_math.dart).
+  Future<String?> oldestDailyDate(String deviceId) async {
+    final db = await _open();
+    final rows = await db.query(
+      _table,
+      columns: ['date'],
+      where: 'device_id = ? AND hour = ?',
+      whereArgs: [deviceId, _dayHour],
+      orderBy: 'date ASC',
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return rows.first['date'] as String;
+  }
+
   Future<String?> newestDailyDate(String deviceId) async {
     final db = await _open();
     final rows = await db.query(

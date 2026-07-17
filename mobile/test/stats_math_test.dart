@@ -122,6 +122,52 @@ void main() {
     });
   });
 
+  group('withoutInstallDay', () {
+    test('drops the install day wherever it sits in the list', () {
+      final rows = [
+        daily('2026-07-10', 3), // install day - half a day of traffic
+        daily('2026-07-11', 100),
+        daily('2026-07-12', 110),
+      ];
+      final kept = withoutInstallDay(rows, '2026-07-10');
+      expect(kept.map((a) => a.date), ['2026-07-11', '2026-07-12']);
+    });
+
+    test('keeps everything when the install day is outside the period', () {
+      // "Last 7 days" of a device installed a month ago: its first row is an
+      // ordinary complete day and must not be thrown away.
+      final rows = [daily('2026-07-11', 100), daily('2026-07-12', 110)];
+      expect(withoutInstallDay(rows, '2026-06-01'), rows);
+    });
+
+    test('does nothing without an install date', () {
+      final rows = [daily('2026-07-11', 100)];
+      expect(withoutInstallDay(rows, null), rows);
+    });
+
+    test('never strips the only row, so day one still shows something', () {
+      final rows = [daily('2026-07-10', 3)];
+      expect(withoutInstallDay(rows, '2026-07-10'), rows);
+    });
+
+    test('an empty period stays empty', () {
+      expect(withoutInstallDay([], '2026-07-10'), isEmpty);
+    });
+
+    test('the average stops being dragged under by the half day', () {
+      final rows = [
+        daily('2026-07-10', 4), // switched on late afternoon
+        daily('2026-07-11', 100),
+        daily('2026-07-12', 100),
+      ];
+      final before = averagePerDay(sumUnique(rows), rows.length);
+      final kept = withoutInstallDay(rows, '2026-07-10');
+      final after = averagePerDay(sumUnique(kept), kept.length);
+      expect(before, 68); // 204/3 - a number describing no real day
+      expect(after, 100);
+    });
+  });
+
   group('movingAverage', () {
     test('is null until a full window is available', () {
       final avg = movingAverage([1, 2, 3, 4], 3);
