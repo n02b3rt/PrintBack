@@ -569,12 +569,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onChanged: (v) => _saveHours(_hours.copyWith(enabled: v)),
           ),
           if (_hours.enabled) ...[
-            if (_hoursAdvanced)
-              for (var wd = 0; wd < 7; wd++)
-                _dayRow(context, l10n, namesFull, wd)
-            else
-              ..._simpleHours(context, l10n, namesShort),
-            const Divider(height: 24),
+            // Above the list, not below it: the per-day editor is seven
+            // expandable rows tall, so a switch underneath meant scrolling
+            // past all of them to undo an accidental tap.
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               value: _hoursAdvanced,
@@ -584,6 +581,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ?.copyWith(color: theme.colorScheme.outline)),
               onChanged: _setAdvanced,
             ),
+            const Divider(height: 16),
+            if (_hoursAdvanced)
+              for (var wd = 0; wd < 7; wd++)
+                _dayRow(context, l10n, namesFull, wd)
+            else
+              ..._simpleHours(context, l10n, namesShort),
           ],
         ],
       ),
