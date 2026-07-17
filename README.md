@@ -1,33 +1,33 @@
 # PrintBack
 
-> **Status:** this README describes the target architecture on
-> `refactor/ble-sd-flutter` (BLE + SD + Flutter). `main` is today's shipped
-> system (USB-CDC → desktop dashboard), described below where still
-> accurate. See [docs/PROGRESS.md](docs/PROGRESS.md) for what's actually
-> built on this branch, and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) /
-> [docs/DATA_MODEL.md](docs/DATA_MODEL.md) for detail.
-
 Retail footfall analytics that runs entirely on the operator's own hardware.
 A tiny ESP32-C6 sniffs WiFi probe requests near the entrance and hashes them
 into pseudonymous device fingerprints on the chip. Raw observations stay on
 its own SD card for 30 days; hourly and daily counts get computed on-device.
 Only those counts are served over BLE to a companion Flutter app, showing
-live traffic, returning vs. new visitor split, and frequency segmentation.
-No raw fingerprint and no MAC address ever leave the device.
+live traffic, returning vs. new visitor split, and trends over time.
+
+No MAC address is ever stored, anywhere - not on the SD card, not in debug
+output. The salted fingerprint that replaces it never leaves the device
+either. See [docs/compliance/README.md](docs/compliance/README.md) for what
+that means in practice and why it was built that way.
 
 No cloud, no server, no third-party services.
 
 ![dashboard](docs/dashboard.png)
 
+*The app's dashboard and statistics, in Polish. Numbers are from the
+built-in demo mode, not a real deployment.*
+
 ## What it does
 
 - Counts unique devices with a rolling active-now window plus daily totals.
 - Splits new vs. returning visitors using a lookback over stable IE-based
-  fingerprints (configurable). Exact returning-window definition:
-  [docs/DATA_MODEL.md](docs/DATA_MODEL.md), "Otwarte pytania".
+  fingerprints (window configurable from the app, no reflash).
 - Whitelists sustained presence (staff phones, the router, the neighbouring
-  shop's WiFi) via a physical button on the device: hold to capture. No
-  automatic hours-per-window detection yet.
+  shop's WiFi) two ways: a physical button on the device (hold to capture),
+  and automatically - a fingerprint seen in 6+ distinct hours within a
+  rolling 8h window *and* observed 30+ times drops out of the counts.
 - Layered retention with automatic purge: 30 days of raw observations on
   the SD card, unlimited retention for aggregates since they carry no
   identifiers ([docs/DECISIONS.md](docs/DECISIONS.md) D3).
@@ -37,28 +37,27 @@ No cloud, no server, no third-party services.
 ## Repository layout
 
 - `firmware/`: ESP-IDF C firmware for the XIAO ESP32-C6. Promiscuous WiFi
-  sniffer, IE hashing on-chip (host never sees raw bytes), tact-switch plus
-  RGB LED for whitelist capture, task/interrupt/brownout watchdogs for
-  unattended stability. Target architecture adds SD storage, hourly/daily
-  aggregation and a BLE GATT server, see
-  [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
-- `app/`: Python desktop app (PySide6 + pyqtgraph + stdlib sqlite3 +
-  pyserial). Live and historical dashboard, hourly chart, 7-day comparison,
-  visit-frequency segmentation. Includes a supervisor wrapper and software
-  USB reset (Windows `pnputil`) for unattended deployment. Gets phased out
-  once the BLE/mobile path is complete.
-- `mobile/`: Flutter companion app (Android + iOS), BLE central, caches
-  aggregates only. Not built yet, Phase 6, see [docs/TASKS.md](docs/TASKS.md).
+  sniffer, IE hashing on-chip, SD storage with rolling purge, hourly/daily
+  aggregation behind the k-anonymity gate, and a NimBLE GATT server serving
+  aggregates to bonded phones only. Tact switch plus RGB LED for pairing,
+  whitelist capture and recovery gestures; task/interrupt/brownout watchdogs
+  for unattended stability. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+- `mobile/`: Flutter companion app (Android + iOS), BLE central. Caches
+  aggregates only, works offline from that cache, and is bilingual (PL/EN).
+  Dashboard, statistics with drill-down charts, xlsx export, shareable
+  report card.
+- `app/`: **legacy.** The original Python/PySide6 desktop dashboard from the
+  USB-CDC architecture, superseded by `mobile/`. Kept in the tree for
+  reference; not part of the current system.
 - `docs/compliance/`: plain-language description of the data architecture,
-  retention design and privacy choices enforced in the code. Starting point
-  for a lawyer drafting RODO/GDPR paperwork per deployment. Describes
-  today's USB/desktop system, update scheduled for Phase 7.
+  retention design and privacy choices actually enforced in the code.
+  Starting point for a lawyer drafting RODO/GDPR paperwork per deployment.
 
 ## Quick start
 
 ### Firmware
 
-Requires ESP-IDF 5.3+ and a XIAO ESP32-C6.
+Requires ESP-IDF 5.3+ and a XIAO ESP32-C6 with an SD card wired over SPI.
 
 ```sh
 cd firmware
@@ -67,46 +66,34 @@ idf.py build
 idf.py -p <COMx> flash monitor
 ```
 
-Target architecture: the device's headline output is an aggregate served
-over BLE (see [docs/DATA_MODEL.md](docs/DATA_MODEL.md)), not a per-probe
-line:
+The device's output is an aggregate served over BLE (see
+[docs/DATA_MODEL.md](docs/DATA_MODEL.md)), not a per-probe line:
 
 ```json
 {"date":"2026-07-02","hour":14,"unique":37,"returning":22,"kanon":false}
 ```
 
-A per-probe USB-CDC debug line still exists today for bench debugging
-(115200 baud). No MAC field: raw MAC never appears outside the device's
-own SD card, not even in USB debug output:
+A per-probe USB-CDC debug line still exists for bench debugging (115200
+baud). Note what isn't in it - there is no MAC field, because the MAC is
+never stored in the first place:
 
 ```json
 {"t":12345678,"fp":"cba68c5d230c5649","rssi":-67,"ch":6,"ies":11,"new":true,"wl":false}
 ```
 
-### App (current, main branch)
+### Mobile app
 
-Requires Python 3.11+.
+Requires Flutter 3.x.
 
 ```sh
-cd app
-python -m venv .venv
-.venv\Scripts\activate                  # Windows
-pip install -e .
-printback                               # auto-detects ESP via VID; --port COMx to override
+cd mobile
+flutter pub get
+flutter run
 ```
 
-For unattended deployment use `app/scripts/run-as-admin.bat`: wraps the app
-in a supervisor that restarts it on crashes and can issue a software USB
-reset when the Windows driver gets stuck without unplugging the cable.
-
-Data and config live under `%APPDATA%\PrintBack\` on Windows
-(`~/.local/share/PrintBack/` on Linux).
-
-### Mobile app (target, this branch)
-
-Not built yet, Phase 6, see [docs/TASKS.md](docs/TASKS.md). Will live in
-`mobile/`, Flutter (`flutter_blue_plus`), pairs with the device over BLE and
-caches aggregates only.
+Pairing needs physical access to the device: press its button to open a
+short pairing window, then pair from the app. Up to 3 phones can stay
+bonded. Without the button, a stranger in BLE range gets nothing.
 
 ## Honest limits
 
@@ -116,6 +103,10 @@ capabilities between probe bursts, so the same visitor can show up as 2-3
 different fingerprints. Treat the numbers as trend estimation with a
 ~10-30% error margin: "traffic up 15% this week", not "exactly 142
 customers".
+
+The same randomization is what makes the returning-visitor split an
+estimate rather than a count: it only sees devices whose fingerprint stays
+stable between visits.
 
 ## License
 
