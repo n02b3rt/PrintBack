@@ -323,6 +323,8 @@
   "paceAbove": "Ruch większy niż zwykle",
   "paceTypical": "Ruch jak zwykle",
   "paceBelow": "Ruch mniejszy niż zwykle",
+  "paceByNowShort": "typowo ~{typical} o tej porze",
+  "@paceByNowShort": { "placeholders": { "typical": { "type": "int" } } },
   "paceCaption": "Do {hour}:00 typowy {weekday} ma około {typical}",
   "@paceCaption": { "placeholders": { "hour": { "type": "int" }, "weekday": { "type": "String" }, "typical": { "type": "int" } } },
   "bugReportTitle": "Zgłoś problem",

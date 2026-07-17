@@ -142,6 +142,11 @@ class _ChartDetailState extends State<ChartDetail> {
   /// bands can turn an x back into a real hour of a real weekday.
   DateTime _windowStart = DateTime.now();
 
+  /// "Today vs a typical same-weekday at this hour", for the today range only.
+  /// Null when there isn't enough same-weekday history to say it honestly -
+  /// [computeDayPace] returns null rather than guess, and so do we.
+  DayPace? _pace;
+
   /// Which point the finger is on, or null when nobody's touching the chart.
   /// Dragging rewrites the header instead of popping a tooltip over the line:
   /// the number is already the biggest thing on the screen, so putting the
@@ -232,6 +237,32 @@ class _ChartDetailState extends State<ChartDetail> {
           widget.deviceId, _fmt(prevStart), _fmt(prevEnd));
     }
 
+    // Today can't be compared against a whole previous day, but it *can* be
+    // compared against how a typical same-weekday looks by this hour, which is
+    // the actual question ("is today going well?") and the one the header has
+    // room for once the bogus delta is gone.
+    DayPace? pace;
+    if (_range == _Range.today) {
+      final todayIso = _fmt(start);
+      final pastDaily = (await _localDb.recentDaily(widget.deviceId, limit: 30))
+          .where((a) => a.date != todayIso)
+          .toList();
+      final pastHourly = (await _localDb.hourlyInRange(
+        widget.deviceId,
+        _fmt(start.subtract(const Duration(days: 30))),
+        todayIso,
+      ))
+          .where((a) => a.localDate != todayIso)
+          .toList();
+      pace = computeDayPace(
+        pastDaily: pastDaily,
+        pastHourly: pastHourly,
+        todaySoFar: sumUnique(ordered),
+        todayWeekday: weekdayIndex(todayIso),
+        hour: DateTime.now().hour,
+      );
+    }
+
     var gran = _granFor(_range, ordered.length);
 
     List<_PlotPoint> points;
@@ -258,6 +289,7 @@ class _ChartDetailState extends State<ChartDetail> {
       _points = points;
       _gran = gran;
       _windowStart = start;
+      _pace = pace;
       _loading = false;
       _scrub = null; // the old index means nothing against new points
     });
@@ -536,11 +568,15 @@ class _ChartDetailState extends State<ChartDetail> {
                       theme.colorScheme.secondary),
               ],
             )
-          // Today deliberately has no baseline (see _load), so there is nothing
-          // to put here - "no earlier period to compare against" would be a lie
-          // (there is one), and a delta against a complete day would be worse.
-          // The note under the range picker carries the explanation instead.
-          else if (_range != _Range.today)
+          // Today has no whole-day baseline (see _load), but the line can't
+          // just go blank - the header reserves this row's height so the chart
+          // doesn't shift under a scrubbing finger, and an empty reserved row
+          // reads as something that failed to load. So: the pace verdict when
+          // there's enough same-weekday history to mean it, and the day's own
+          // date when there isn't. Both beat a hole, neither invents a trend.
+          else if (_range == _Range.today)
+            _todayLine(context, l10n)
+          else
             Row(
               children: [
                 if (pct != null && pct != 0) ...[
@@ -559,6 +595,61 @@ class _ChartDetailState extends State<ChartDetail> {
             ),
         ],
       ),
+    );
+  }
+
+  /// What sits where the delta line goes when the range is today.
+  ///
+  /// The pace verdict is the honest version of "how's today doing": it holds
+  /// today's running total against how far a typical same-weekday has usually
+  /// got by this hour, instead of against a finished day. When there aren't
+  /// enough same-weekdays yet, [computeDayPace] gives null rather than guess,
+  /// and the row falls back to naming the day - which is at least a fact, and
+  /// tells you which Friday you're looking at.
+  Widget _todayLine(BuildContext context, AppLocalizations l10n) {
+    final theme = Theme.of(context);
+    final pace = _pace;
+    if (pace == null) {
+      return Text(
+        formatDayTitle(_fmt(_windowStart), l10n.localeName),
+        style: theme.textTheme.bodyMedium
+            ?.copyWith(color: theme.colorScheme.outline),
+      );
+    }
+
+    final (String verdict, IconData icon, Color color) = switch (pace.verdict) {
+      PaceVerdict.above => (
+          l10n.paceAbove,
+          Icons.trending_up,
+          theme.colorScheme.primary
+        ),
+      PaceVerdict.below => (
+          l10n.paceBelow,
+          Icons.trending_down,
+          theme.colorScheme.tertiary
+        ),
+      PaceVerdict.typical => (
+          l10n.paceTypical,
+          Icons.trending_flat,
+          theme.colorScheme.outline
+        ),
+    };
+
+    return Row(
+      children: [
+        Icon(icon, size: 18, color: color),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            // The verdict, then what it's measured against - a verdict with no
+            // baseline visible is just an adjective.
+            '$verdict · ${l10n.paceByNowShort(pace.typicalByNow)}',
+            style: theme.textTheme.bodyMedium?.copyWith(color: color),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
     );
   }
 

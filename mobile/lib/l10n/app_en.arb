@@ -323,6 +323,8 @@
   "paceAbove": "Busier than usual",
   "paceTypical": "A typical day so far",
   "paceBelow": "Quieter than usual",
+  "paceByNowShort": "usually ~{typical} by now",
+  "@paceByNowShort": { "placeholders": { "typical": { "type": "int" } } },
   "paceCaption": "By {hour}:00 a typical {weekday} has about {typical}",
   "@paceCaption": { "placeholders": { "hour": { "type": "int" }, "weekday": { "type": "String" }, "typical": { "type": "int" } } },
   "bugReportTitle": "Report a problem",
