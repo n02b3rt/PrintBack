@@ -169,6 +169,8 @@
   "rangeMax": "All",
   "overlayPrevious": "Previous period",
   "overlayMovingAvg": "7-day average",
+  "belowThresholdValue": "<5",
+  "belowThresholdHint": "Hours with fewer than 5 people aren't published - we show them as \"<5\".",
   "interpretationTitle": "Interpretation",
   "deltaMore": "{count} more than the previous {days} days",
   "@deltaMore": { "placeholders": { "count": { "type": "int" }, "days": { "type": "int" } } },

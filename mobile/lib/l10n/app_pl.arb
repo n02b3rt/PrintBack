@@ -169,6 +169,8 @@
   "rangeMax": "Wszystko",
   "overlayPrevious": "Poprzedni okres",
   "overlayMovingAvg": "Średnia 7 dni",
+  "belowThresholdValue": "<5",
+  "belowThresholdHint": "Godziny z mniej niż 5 osobami nie są publikowane — pokazujemy je jako „<5”.",
   "interpretationTitle": "Interpretacja",
   "deltaMore": "o {count} więcej niż poprzednie {days} dni",
   "@deltaMore": { "placeholders": { "count": { "type": "int" }, "days": { "type": "int" } } },

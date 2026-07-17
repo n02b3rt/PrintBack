@@ -40,6 +40,13 @@ class _PlotPoint {
   final String isoDate;
   final int? hour;
 
+  /// An hour the device never published because it fell under the
+  /// k-anonymity threshold. Not "no data" - the device is telling us it was
+  /// fewer than five, we just don't get the exact number. Plotted at zero
+  /// (which can only ever understate by four) and read out as "<5" rather
+  /// than as a count we'd be inventing.
+  final bool belowThreshold;
+
   const _PlotPoint({
     required this.x,
     required this.unique,
@@ -47,6 +54,7 @@ class _PlotPoint {
     required this.axisLabel,
     required this.isoDate,
     this.hour,
+    this.belowThreshold = false,
   });
 
   int get newVisitors => (unique - returning).clamp(0, unique);
@@ -168,11 +176,18 @@ class _ChartDetailState extends State<ChartDetail> {
 
   /// Hourly points across the range, positioned by real elapsed hours.
   ///
-  /// Hours the device never published (under the k-anonymity threshold) are
-  /// simply absent, leaving gaps in [x] - which is the point. The chart
-  /// breaks the line there instead of drawing straight through, because a
-  /// line across a gap claims traffic we never measured. A shut shop at 3am
-  /// should read as a break in the line, not as a smooth dip.
+  /// Every hour between the first and last measurement gets a point, so the
+  /// line is continuous. Hours the device never published are filled in at
+  /// zero and flagged [_PlotPoint.belowThreshold]; the readout says "<5"
+  /// for them rather than a number.
+  ///
+  /// The alternative - joining the published hours with a straight line -
+  /// would run at whatever height the neighbours happen to be, claiming
+  /// dozens of visitors in an hour the device is explicitly telling us had
+  /// fewer than five. Filling at zero can only ever be four out, and the
+  /// label says so. Hours *outside* the measured window are left alone: the
+  /// device wasn't there, and a flat zero across days before it was plugged
+  /// in would be a different lie.
   Future<List<_PlotPoint>> _hourlyPoints() async {
     final now = DateTime.now();
     final start = DateTime(now.year, now.month, now.day)
@@ -206,7 +221,31 @@ class _ChartDetailState extends State<ChartDetail> {
       ));
     }
     out.sort((a, b) => a.x.compareTo(b.x));
-    return out;
+    if (out.length < 2) return out;
+
+    // Fill the holes inside the measured window.
+    final byHour = {for (final p in out) p.x.round(): p};
+    final firstX = out.first.x.round();
+    final lastX = out.last.x.round();
+    final filled = <_PlotPoint>[];
+    for (var h = firstX; h <= lastX; h++) {
+      final existing = byHour[h];
+      if (existing != null) {
+        filled.add(existing);
+        continue;
+      }
+      final day = start.add(Duration(hours: h));
+      filled.add(_PlotPoint(
+        x: h.toDouble(),
+        unique: 0,
+        returning: 0,
+        axisLabel: formatAxisDay(_fmt(day)),
+        isoDate: _fmt(day),
+        hour: day.hour,
+        belowThreshold: true,
+      ));
+    }
+    return filled;
   }
 
   List<_PlotPoint> _dailyPoints(List<Aggregate> rows) => [
@@ -292,7 +331,13 @@ class _ChartDetailState extends State<ChartDetail> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            '${scrubbed == null ? total : scrubbed.unique}',
+            // A suppressed hour reads "<5", not "0" - zero is where it's
+            // drawn, not what the device measured.
+            scrubbed == null
+                ? '$total'
+                : (scrubbed.belowThreshold
+                    ? l10n.belowThresholdValue
+                    : '${scrubbed.unique}'),
             style: theme.textTheme.displayMedium
                 ?.copyWith(fontWeight: FontWeight.w700),
           ),
@@ -450,6 +495,24 @@ class _ChartDetailState extends State<ChartDetail> {
                             ),
                     ),
                   ),
+                  // Say it out loud rather than leaving it to whoever happens
+                  // to scrub a quiet hour: part of this line is a floor, not
+                  // a measurement.
+                  if (_points.any((p) => p.belowThreshold)) ...[
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Icon(Icons.info_outline,
+                            size: 14, color: theme.colorScheme.outline),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(l10n.belowThresholdHint,
+                              style: theme.textTheme.bodySmall
+                                  ?.copyWith(color: theme.colorScheme.outline)),
+                        ),
+                      ],
+                    ),
+                  ],
                   const SizedBox(height: 12),
                   Wrap(
                     spacing: 8,
