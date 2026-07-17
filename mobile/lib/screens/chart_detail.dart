@@ -78,7 +78,17 @@ class ChartDetail extends StatefulWidget {
   final String deviceId;
   final String title;
 
-  const ChartDetail({super.key, required this.deviceId, required this.title});
+  /// Open on the 7-day range, which is where the points are hours. The
+  /// hourly chart on Statistics expands into this, and landing on a 30-day
+  /// daily view would answer a different question than the one tapped.
+  final bool startHourly;
+
+  const ChartDetail({
+    super.key,
+    required this.deviceId,
+    required this.title,
+    this.startHourly = false,
+  });
 
   @override
   State<ChartDetail> createState() => _ChartDetailState();
@@ -87,7 +97,7 @@ class ChartDetail extends StatefulWidget {
 class _ChartDetailState extends State<ChartDetail> {
   final _localDb = LocalDb();
 
-  _Range _range = _Range.d30;
+  late _Range _range = widget.startHourly ? _Range.d7 : _Range.d30;
   final Set<_Series> _series = {};
   bool _showPrevious = false;
   bool _showAverage = true;
