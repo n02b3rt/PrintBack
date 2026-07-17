@@ -14,6 +14,37 @@ import '../widgets/gradient_background.dart';
 
 enum _Range { d7, d30, max }
 
+/// How much history one point covers. Picked from the range and how much
+/// data actually exists, not fixed per range: four days of daily rows is a
+/// four-dot chart nobody would call a trend, and a year of them is a smear.
+enum _Gran { hourly, daily, weekly }
+
+/// One point on the trend, whatever it's aggregated from.
+///
+/// [x] is a position on a real timeline (hours or days since the range
+/// started), not a list index - so a missing hour leaves a hole the chart can
+/// break the line across, rather than being silently closed up as if the time
+/// never happened.
+class _PlotPoint {
+  final double x;
+  final int unique;
+  final int returning;
+
+  /// Short form for the x-axis, long form for the scrub header.
+  final String axisLabel;
+  final String fullLabel;
+
+  const _PlotPoint({
+    required this.x,
+    required this.unique,
+    required this.returning,
+    required this.axisLabel,
+    required this.fullLabel,
+  });
+
+  int get newVisitors => (unique - returning).clamp(0, unique);
+}
+
 /// Extra series the operator can lay over the visitors line. Visitors itself
 /// is always drawn - it's what the headline counts, so a chart without it
 /// would describe something the header doesn't.
@@ -46,12 +77,11 @@ class _ChartDetailState extends State<ChartDetail> {
   bool _showPrevious = false;
   bool _showAverage = true;
 
-  /// "New" is unique minus returning, clamped - the same definition the KPI
-  /// cards use, kept in one place so the two can't drift.
-  static int newOf(Aggregate a) => (a.unique - a.returning).clamp(0, a.unique);
 
   List<Aggregate> _rows = [];
   List<Aggregate> _previous = [];
+  List<_PlotPoint> _points = [];
+  _Gran _gran = _Gran.daily;
   bool _loading = true;
 
   /// Which point the finger is on, or null when nobody's touching the chart.
@@ -89,14 +119,119 @@ class _ChartDetailState extends State<ChartDetail> {
       previous = await _localDb.dailyInRange(
           widget.deviceId, _fmt(prevStart), _fmt(prevEnd));
     }
+    // recentDaily comes back newest-first; a trend reads left-to-right.
+    final ordered = rows.reversed.toList();
+
+    // Granularity follows the data, not just the button. A week of daily rows
+    // is four or seven dots - technically a trend, practically a shrug - so a
+    // short range drops to hours, where there are ~24x as many points. A very
+    // long history goes the other way: 200 daily dots at 3px apart is a smear
+    // nobody can read or scrub, so it rolls up to weeks.
+    final gran = switch (_range) {
+      _Range.d7 => _Gran.hourly,
+      _Range.d30 => _Gran.daily,
+      _Range.max => ordered.length > 90 ? _Gran.weekly : _Gran.daily,
+    };
+
+    List<_PlotPoint> points;
+    if (gran == _Gran.hourly) {
+      points = await _hourlyPoints();
+      // No hourly history yet (the device backfills a week, and a fresh
+      // install has none) - a blank chart would be a worse answer than a
+      // coarse one.
+      if (points.length < 2) {
+        points = _dailyPoints(ordered);
+      }
+    } else if (gran == _Gran.weekly) {
+      points = _weeklyPoints(ordered);
+    } else {
+      points = _dailyPoints(ordered);
+    }
+
     if (!mounted) return;
     setState(() {
-      // recentDaily comes back newest-first; a trend reads left-to-right.
-      _rows = rows.reversed.toList();
+      _rows = ordered;
       _previous = previous;
+      _points = points;
+      _gran = points.isEmpty ? gran : gran;
       _loading = false;
-      _scrub = null; // the old index means nothing against new rows
+      _scrub = null; // the old index means nothing against new points
     });
+  }
+
+  /// Hourly points across the range, positioned by real elapsed hours.
+  ///
+  /// Hours the device never published (under the k-anonymity threshold) are
+  /// simply absent, leaving gaps in [x] - which is the point. The chart
+  /// breaks the line there instead of drawing straight through, because a
+  /// line across a gap claims traffic we never measured. A shut shop at 3am
+  /// should read as a break in the line, not as a smooth dip.
+  Future<List<_PlotPoint>> _hourlyPoints() async {
+    final now = DateTime.now();
+    final start = DateTime(now.year, now.month, now.day)
+        .subtract(const Duration(days: 6));
+    // A day of padding each side, then filtered by local date - hourly rows
+    // are dated UTC on the wire (docs/LEARNINGS.md 2026-07-11).
+    final rows = await _localDb.hourlyInRange(
+      widget.deviceId,
+      _fmt(start.subtract(const Duration(days: 1))),
+      _fmt(now.add(const Duration(days: 1))),
+    );
+
+    final out = <_PlotPoint>[];
+    for (final a in rows) {
+      final day = DateTime.tryParse(a.localDate);
+      if (day == null) continue;
+      final hoursFromStart =
+          day.difference(start).inDays * 24 + a.localHour;
+      if (hoursFromStart < 0) continue;
+      out.add(_PlotPoint(
+        x: hoursFromStart.toDouble(),
+        unique: a.unique,
+        returning: a.returning,
+        // The axis gets the date, not the hour: only three labels fit across
+        // a week of hourly points, and "12:00" on a seven-day chart says
+        // nothing about which day you're looking at. The exact hour is in
+        // the scrub readout, where it has a date next to it.
+        axisLabel: formatAxisDay(a.localDate),
+        fullLabel: '${formatAxisDay(a.localDate)}, ${a.localHour}:00',
+      ));
+    }
+    out.sort((a, b) => a.x.compareTo(b.x));
+    return out;
+  }
+
+  List<_PlotPoint> _dailyPoints(List<Aggregate> rows) => [
+        for (var i = 0; i < rows.length; i++)
+          _PlotPoint(
+            x: i.toDouble(),
+            unique: rows[i].unique,
+            returning: rows[i].returning,
+            axisLabel: formatAxisDay(rows[i].date),
+            fullLabel: rows[i].date,
+          ),
+      ];
+
+  /// Rolls daily rows up into calendar weeks (Monday-anchored), summing them.
+  List<_PlotPoint> _weeklyPoints(List<Aggregate> rows) {
+    final buckets = <String, List<Aggregate>>{};
+    for (final a in rows) {
+      final d = DateTime.tryParse(a.date);
+      if (d == null) continue;
+      final monday = d.subtract(Duration(days: d.weekday - 1));
+      buckets.putIfAbsent(_fmt(monday), () => []).add(a);
+    }
+    final keys = buckets.keys.toList()..sort();
+    return [
+      for (var i = 0; i < keys.length; i++)
+        _PlotPoint(
+          x: i.toDouble(),
+          unique: sumUnique(buckets[keys[i]]!),
+          returning: sumReturning(buckets[keys[i]]!),
+          axisLabel: formatAxisDay(keys[i]),
+          fullLabel: keys[i],
+        ),
+    ];
   }
 
   static String _fmt(DateTime d) => '${d.year.toString().padLeft(4, '0')}-'
@@ -129,7 +264,8 @@ class _ChartDetailState extends State<ChartDetail> {
   Widget _header(BuildContext context, AppLocalizations l10n, int total) {
     final theme = Theme.of(context);
     final i = _scrub;
-    final scrubbed = (i != null && i >= 0 && i < _rows.length) ? _rows[i] : null;
+    final scrubbed =
+        (i != null && i >= 0 && i < _points.length) ? _points[i] : null;
 
     // A floor, not a fixed height: the two states must not make the layout
     // jump (the chart would shift under a scrubbing finger), but a hard
@@ -182,14 +318,19 @@ class _ChartDetailState extends State<ChartDetail> {
             Row(
               children: [
                 Expanded(
-                  child: Text(formatDayTitle(scrubbed.date, l10n.localeName),
+                  child: Text(
+                      // Hourly/weekly points carry their own label; a daily
+                      // one is worth spelling out ("czwartek, 16 lipca").
+                      _gran == _Gran.daily
+                          ? formatDayTitle(scrubbed.fullLabel, l10n.localeName)
+                          : scrubbed.fullLabel,
                       style: theme.textTheme.bodyMedium),
                 ),
                 if (_series.contains(_Series.returning))
                   _scrubChip(theme, l10n.returningLabel, scrubbed.returning,
                       theme.colorScheme.tertiary),
                 if (_series.contains(_Series.newVisitors))
-                  _scrubChip(theme, l10n.newVisitorsLabel, newOf(scrubbed),
+                  _scrubChip(theme, l10n.newVisitorsLabel, scrubbed.newVisitors,
                       theme.colorScheme.secondary),
               ],
             ),
@@ -197,6 +338,9 @@ class _ChartDetailState extends State<ChartDetail> {
       ),
     );
   }
+
+  /// The day-based overlays are only meaningful while a point is a day.
+  bool get _canOverlay => _gran == _Gran.daily;
 
   /// Colour swatch on a series chip, so the chip and its line are tied
   /// together without a separate legend.
@@ -264,7 +408,8 @@ class _ChartDetailState extends State<ChartDetail> {
                       child: _rows.isEmpty
                           ? Center(child: Text(l10n.emptyNoData))
                           : _TrendChart(
-                              rows: _rows,
+                              points: _points,
+                              gran: _gran,
                               previous: _showPrevious ? _previous : const [],
                               showAverage: _showAverage,
                               series: _series,
@@ -301,11 +446,15 @@ class _ChartDetailState extends State<ChartDetail> {
                             ? _series.add(_Series.newVisitors)
                             : _series.remove(_Series.newVisitors)),
                       ),
+                      // Both overlays are defined in days, so they only mean
+                      // something while the points are days. Over hourly
+                      // points a "7-day average" would be an average of 7
+                      // hours wearing the wrong label, and the ghost period
+                      // wouldn't line up with the axis at all.
                       FilterChip(
                         label: Text(l10n.overlayPrevious),
-                        selected: _showPrevious,
-                        // Nothing to ghost against on MAX.
-                        onSelected: _previous.isEmpty
+                        selected: _showPrevious && _canOverlay,
+                        onSelected: _previous.isEmpty || !_canOverlay
                             ? null
                             : (v) => setState(() => _showPrevious = v),
                       ),
@@ -315,8 +464,8 @@ class _ChartDetailState extends State<ChartDetail> {
                         // overlay is unavailable then - and must not read as
                         // ticked while drawing nothing, which is what showing
                         // the raw _showAverage did.
-                        selected: _showAverage && _rows.length >= 7,
-                        onSelected: _rows.length < 7
+                        selected: _showAverage && _canOverlay && _rows.length >= 7,
+                        onSelected: !_canOverlay || _rows.length < 7
                             ? null
                             : (v) => setState(() => _showAverage = v),
                       ),
@@ -415,7 +564,8 @@ class _ChartDetailState extends State<ChartDetail> {
 /// Touch drives [onScrub] instead of a tooltip: the parent puts the value in
 /// the header, so nothing covers the line under your finger.
 class _TrendChart extends StatelessWidget {
-  final List<Aggregate> rows;
+  final List<_PlotPoint> points;
+  final _Gran gran;
   final List<Aggregate> previous;
   final bool showAverage;
 
@@ -424,31 +574,51 @@ class _TrendChart extends StatelessWidget {
   final void Function(int?) onScrub;
 
   const _TrendChart({
-    required this.rows,
+    required this.points,
+    required this.gran,
     required this.previous,
     required this.showAverage,
     required this.series,
     required this.onScrub,
   });
 
+  /// Splits into runs of points that are actually adjacent in time.
+  ///
+  /// A jump in [_PlotPoint.x] means hours the device published nothing for -
+  /// under the k-anonymity threshold, or the shop was shut. Drawing one line
+  /// through that would invent traffic between two real measurements, so each
+  /// run becomes its own line and the gap stays a gap. At daily/weekly
+  /// granularity the points are consecutive by construction, so this returns
+  /// a single run and costs nothing.
+  List<List<_PlotPoint>> _runs() {
+    final runs = <List<_PlotPoint>>[];
+    var current = <_PlotPoint>[];
+    for (final p in points) {
+      if (current.isNotEmpty && (p.x - current.last.x).abs() > 1.001) {
+        runs.add(current);
+        current = [];
+      }
+      current.add(p);
+    }
+    if (current.isNotEmpty) runs.add(current);
+    return runs;
+  }
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final spots = [
-      for (var i = 0; i < rows.length; i++)
-        FlSpot(i.toDouble(), rows[i].unique.toDouble())
-    ];
+    final runs = _runs();
 
     // Everything drawn decides the window, overlays included - a ghost line
     // running off the top would be worse than a slightly looser axis. The
     // extra series are all subsets of unique, so they can only lower the
     // floor, never raise the ceiling.
     final plotted = <double>[
-      ...rows.map((r) => r.unique.toDouble()),
+      ...points.map((p) => p.unique.toDouble()),
       if (series.contains(_Series.returning))
-        ...rows.map((r) => r.returning.toDouble()),
+        ...points.map((p) => p.returning.toDouble()),
       if (series.contains(_Series.newVisitors))
-        ...rows.map((r) => _ChartDetailState.newOf(r).toDouble()),
+        ...points.map((p) => p.newVisitors.toDouble()),
       if (previous.isNotEmpty) ...previous.map((r) => r.unique.toDouble()),
     ];
     var dataMin = plotted.reduce((a, b) => a < b ? a : b);
@@ -470,8 +640,8 @@ class _TrendChart extends StatelessWidget {
         // Plotted against the same x positions: this is "the shape of the
         // period before", laid over today's, not a second calendar axis.
         spots: [
-          for (var i = 0; i < prev.length && i < rows.length; i++)
-            FlSpot(i.toDouble(), prev[i].unique.toDouble())
+          for (var i = 0; i < prev.length && i < points.length; i++)
+            FlSpot(points[i].x, prev[i].unique.toDouble())
         ],
         isCurved: prev.length > 6,
         barWidth: 2,
@@ -482,39 +652,43 @@ class _TrendChart extends StatelessWidget {
       ));
     }
 
-    bars.add(revolutLine(context, spots));
-
-    // Subsets of the visitors line, drawn unfilled so their areas don't
-    // muddy the fill underneath (same reasoning as chart_style's two-line
-    // helper).
-    if (series.contains(_Series.returning)) {
+    // One line per contiguous run, per series. Dots only when the points are
+    // sparse enough to read as measurements rather than noise - at hourly
+    // granularity there can be a hundred-plus of them.
+    final showDots = points.length <= 12;
+    for (final run in runs) {
       bars.add(revolutLine(
         context,
-        [
-          for (var i = 0; i < rows.length; i++)
-            FlSpot(i.toDouble(), rows[i].returning.toDouble())
-        ],
-        color: scheme.tertiary,
-        fill: false,
+        [for (final p in run) FlSpot(p.x, p.unique.toDouble())],
+        forceDots: showDots,
       ));
-    }
-    if (series.contains(_Series.newVisitors)) {
-      bars.add(revolutLine(
-        context,
-        [
-          for (var i = 0; i < rows.length; i++)
-            FlSpot(i.toDouble(),
-                _ChartDetailState.newOf(rows[i]).toDouble())
-        ],
-        color: scheme.secondary,
-        fill: false,
-      ));
+      // Subsets of the visitors line, drawn unfilled so their areas don't
+      // muddy the fill underneath (same reasoning as chart_style's two-line
+      // helper).
+      if (series.contains(_Series.returning)) {
+        bars.add(revolutLine(
+          context,
+          [for (final p in run) FlSpot(p.x, p.returning.toDouble())],
+          color: scheme.tertiary,
+          fill: false,
+          forceDots: showDots,
+        ));
+      }
+      if (series.contains(_Series.newVisitors)) {
+        bars.add(revolutLine(
+          context,
+          [for (final p in run) FlSpot(p.x, p.newVisitors.toDouble())],
+          color: scheme.secondary,
+          fill: false,
+          forceDots: showDots,
+        ));
+      }
     }
 
     // Guarded by the same rule the chip uses: under a full window every
     // point is null and this would add an empty, invisible series.
-    if (showAverage && rows.length >= 7) {
-      final avg = movingAverage(rows.map((r) => r.unique).toList(), 7);
+    if (showAverage && gran == _Gran.daily && points.length >= 7) {
+      final avg = movingAverage(points.map((p) => p.unique).toList(), 7);
       bars.add(LineChartBarData(
         spots: [
           for (var i = 0; i < avg.length; i++)
@@ -533,10 +707,37 @@ class _TrendChart extends StatelessWidget {
         .labelSmall
         ?.copyWith(color: scheme.outline);
 
+    // Which x positions get an axis label. Everything fits while there are a
+    // handful of points; past that only the ends and the middle, because 168
+    // hourly labels would be a grey smear.
+    final labelAt = <int, String>{};
+    if (points.length <= 7) {
+      for (final p in points) {
+        labelAt[p.x.round()] = p.axisLabel;
+      }
+    } else {
+      for (final i in {0, (points.length - 1) ~/ 2, points.length - 1}) {
+        labelAt[points[i].x.round()] = points[i].axisLabel;
+      }
+    }
+
+    // Breathing room on both ends. Without it the first and last points sit
+    // exactly on the plot's edges - the line looked cropped on the left while
+    // the right had the axis-label column to itself, which read as the chart
+    // being shoved sideways.
+    // Real timeline extent, not the point count: hourly points skip the hours
+    // the device never published, so the last x can be far past the length.
+    final xFirst = points.first.x;
+    final xLast = points.last.x;
+    final xSpan = xLast - xFirst;
+    final xPad = xSpan <= 0 ? 0.5 : xSpan * 0.04;
+
     return LineChart(
       LineChartData(
         minY: minY,
         maxY: maxY,
+        minX: xFirst - xPad,
+        maxX: xLast + xPad,
         lineBarsData: bars,
         gridData: revolutGrid,
         borderData: revolutBorder,
@@ -551,10 +752,12 @@ class _TrendChart extends StatelessWidget {
           rightTitles: AxisTitles(
             sideTitles: SideTitles(
               showTitles: true,
-              reservedSize: 48,
+              // Just wide enough for a 4-digit count. 48 left a dead column
+              // the eye read as the chart being off-centre.
+              reservedSize: 34,
               interval: (maxY - minY).abs() < 0.001 ? 1 : maxY - minY,
               getTitlesWidget: (value, meta) => Padding(
-                padding: const EdgeInsets.only(left: 6),
+                padding: const EdgeInsets.only(left: 4),
                 child: Text('${value.round()}', style: labelStyle),
               ),
             ),
@@ -565,16 +768,15 @@ class _TrendChart extends StatelessWidget {
               reservedSize: 28,
               interval: 1,
               getTitlesWidget: (value, meta) {
-                final i = value.toInt();
-                if (value != i.toDouble() || i < 0 || i >= rows.length) {
-                  return const SizedBox.shrink();
-                }
-                if (!showDayLabelAt(i, rows.length)) {
-                  return const SizedBox.shrink();
-                }
+                // x is a timeline position, so match by rounding rather than
+                // indexing - hourly points skip the hours with no data.
+                final key = value.round();
+                if ((value - key).abs() > 0.01) return const SizedBox.shrink();
+                final label = labelAt[key];
+                if (label == null) return const SizedBox.shrink();
                 return Padding(
                   padding: const EdgeInsets.only(top: 6),
-                  child: Text(formatAxisDay(rows[i].date), style: labelStyle),
+                  child: Text(label, style: labelStyle),
                 );
               },
             ),
@@ -608,7 +810,11 @@ class _TrendChart extends StatelessWidget {
               onScrub(null);
               return;
             }
-            onScrub(spot.x.toInt());
+            // Map the touched x back to a point. x is a timeline position,
+            // not an index - at hourly granularity the two diverge the moment
+            // a single hour is missing.
+            final i = points.indexWhere((p) => (p.x - spot.x).abs() < 0.001);
+            onScrub(i >= 0 ? i : null);
           },
         ),
       ),

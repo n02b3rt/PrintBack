@@ -109,11 +109,17 @@ FlTitlesData revolutTitlesSparseHours(BuildContext context) {
 /// bars: a smooth curved gradient stroke with a soft gradient fill below
 /// it, no dots (the touch line + detail sheet carry the "exact point"
 /// job instead, same as bars never showing a numeric label).
+/// [forceDots] overrides the "few points, show dots" rule. A caller drawing
+/// one line per contiguous run (the drill-down, where hourly gaps break the
+/// series) has to decide dots from the *whole* chart's point count, not from
+/// each fragment's - otherwise a two-point run would sprout dots in the
+/// middle of a hundred-point chart.
 LineChartBarData revolutLine(
   BuildContext context,
   List<FlSpot> spots, {
   Color? color,
   bool fill = true,
+  bool? forceDots,
 }) {
   final scheme = Theme.of(context).colorScheme;
   final lineColor = color ?? scheme.primary;
@@ -127,7 +133,7 @@ LineChartBarData revolutLine(
     curveSmoothness: 0.25,
     barWidth: 3,
     color: lineColor,
-    dotData: FlDotData(show: spots.length <= 10),
+    dotData: FlDotData(show: forceDots ?? spots.length <= 10),
     belowBarData: BarAreaData(
       show: fill,
       gradient: LinearGradient(
