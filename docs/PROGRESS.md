@@ -150,7 +150,23 @@
       retroactively fix already-stale on-device aggregate files until the
       next real rollover (docs/DECISIONS.md D6 already frames this as
       expected drift-then-catch-up, not a bug).
-- [ ] Phase 7: docs/compliance/README.md + README.md, final documentation
+- [x] Phase 7: documentation (2026-07-17). Rewrote docs/compliance/README.md,
+      README.md, docs/ARCHITECTURE.md and docs/DATA_MODEL.md to describe the
+      system that exists rather than the target it was planned as. Every doc
+      still opened with a `refactor/ble-sd-flutter` banner and described the
+      USB/desktop architecture as "today", months after that branch merged.
+      Two claims were not just stale but wrong in the direction that matters:
+      compliance said of the MAC "we store whatever arrives", and the
+      architecture diagram showed a `"mac"` field in the USB JSON line -
+      both describing a **more invasive system than the one built**. No MAC
+      is stored anywhere: `src_mac` is populated in RAM
+      (`wifi_sniffer.c`) and never read, and `sd_raw_record_t` has no field
+      for it. The compliance doc is the one a lawyer reads, so this mattered
+      beyond tidiness. Also resolved DATA_MODEL's two "open questions"
+      (returning_count, app cache) into descriptions of the built code, and
+      replaced the README screenshot, which still showed the dead PySide6
+      desktop app including a per-fingerprint whitelist table - the opposite
+      of what the product now shows.
 - [x] Phase 8: production sync, multi-device, redesign (done 2026-07-12).
       Not in the original plan - added after real-phone use
       of Phase 6 surfaced concrete gaps: no way to get more than "today"
@@ -409,9 +425,12 @@ Note: the current code in `firmware/` and `app/` is still the old
 architecture (USB-CDC → Python desktop dashboard, SQLite). Don't remove /
 change it until the new path (BLE+SD) is ready and tested in parallel.
 
-Last updated: 2026-07-16 (Phase 12 done). The plan in Etapy 1-5 is now
-complete except iOS (needs a Mac + iPhone, neither available) and Phase 7
-documentation. What's left is either time (the 30-day soak, which every
+Last updated: 2026-07-17 (Phase 7 done). The plan in Etapy 1-5 is now
+complete except iOS (needs a Mac + iPhone, neither available). What's left
+before a real pilot, beyond the firmware batch below, is the Play Store
+blockers: the release build still signs with the debug key, the icon is
+still Flutter's default, and `android:label` is lowercase "printback".
+Otherwise what's left is either time (the 30-day soak, which every
 reflash restarts - the board should now be left alone), hardware (a second
 unit, an enclosure with a soldered switch instead of the breadboard that
 cost an hour of debugging on 2026-07-15, the SD card's ~460MB partition,
