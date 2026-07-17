@@ -154,6 +154,7 @@
 
   "statisticsTitle": "Statistics",
   "periodToday": "Today",
+  "periodYesterday": "Yesterday",
   "periodWeek": "Week",
   "periodMonth": "Month",
   "periodCustom": "Custom range",

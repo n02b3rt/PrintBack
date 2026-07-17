@@ -216,24 +216,39 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
   /// The period is already chosen on this screen, so no picker here - unlike
   /// the panel's quick action, which has to ask. Both end up in the same
   /// implementation (screens/report_actions.dart).
+  /// What a report or an export actually covers, as opposed to what the screen
+  /// is showing. Complete days only: today is still being collected, so
+  /// including it reports a few hours of traffic as a day's total and drags
+  /// the average down with it. Browsing today is fine and stays; filing it in
+  /// a document is not. A custom range is left exactly as picked - those dates
+  /// were an explicit choice, not a default we get to second-guess.
+  (DateTimeRange, String) _reportScope(AppLocalizations l10n) =>
+      switch (_period) {
+        _Period.today => (
+            quickRange(QuickPeriod.yesterday),
+            l10n.periodYesterday
+          ),
+        _Period.week => (quickRange(QuickPeriod.week), l10n.periodWeek),
+        _Period.month => (quickRange(QuickPeriod.month), l10n.periodMonth),
+        _Period.custom => (_rangeFor(_period), _periodLabel(l10n)),
+      };
+
   Future<void> _exportExcel(List<String> weekdaysFull) async {
     if (_exporting) return;
     setState(() => _exporting = true);
     try {
+      final (range, _) = _reportScope(AppLocalizations.of(context)!);
       await exportRangeToExcel(context,
-          deviceId: _deviceId,
-          range: _rangeFor(_period),
-          weekdaysFull: weekdaysFull);
+          deviceId: _deviceId, range: range, weekdaysFull: weekdaysFull);
     } finally {
       if (mounted) setState(() => _exporting = false);
     }
   }
 
   void _openReport(AppLocalizations l10n) {
+    final (range, label) = _reportScope(l10n);
     openReportForRange(context,
-        deviceId: _deviceId,
-        range: _rangeFor(_period),
-        periodLabel: _periodLabel(l10n));
+        deviceId: _deviceId, range: range, periodLabel: label);
   }
 
   Future<void> _pickCustomRange() async {

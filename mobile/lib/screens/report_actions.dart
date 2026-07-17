@@ -15,22 +15,30 @@ import 'report_preview.dart';
 /// meant today, and "Eksport" dodged the question by dumping the operator on
 /// the statistics screen and letting them find the export button themselves.
 /// Neither is a choice the app gets to make - so both now ask.
-enum QuickPeriod { today, week, month }
+///
+/// Every period here ends **yesterday**, not today. A report is a
+/// retrospective document - you send it to someone, or file it. Today is still
+/// being collected, so a day that is three hours old reports three hours of
+/// traffic as if it were the day's total, which understates it and drags any
+/// average down with it. Complete days only. The live view of today is the
+/// dashboard's job, and the statistics screen still browses it.
+enum QuickPeriod { yesterday, week, month }
 
 DateTimeRange quickRange(QuickPeriod p) {
   final now = DateTime.now();
   final today = DateTime(now.year, now.month, now.day);
+  final yesterday = today.subtract(const Duration(days: 1));
   return switch (p) {
-    QuickPeriod.today => DateTimeRange(start: today, end: today),
+    QuickPeriod.yesterday => DateTimeRange(start: yesterday, end: yesterday),
     QuickPeriod.week => DateTimeRange(
-        start: today.subtract(const Duration(days: 6)), end: today),
+        start: yesterday.subtract(const Duration(days: 6)), end: yesterday),
     QuickPeriod.month => DateTimeRange(
-        start: today.subtract(const Duration(days: 29)), end: today),
+        start: yesterday.subtract(const Duration(days: 29)), end: yesterday),
   };
 }
 
 String quickPeriodLabel(AppLocalizations l10n, QuickPeriod p) => switch (p) {
-      QuickPeriod.today => l10n.periodToday,
+      QuickPeriod.yesterday => l10n.periodYesterday,
       QuickPeriod.week => l10n.periodWeek,
       QuickPeriod.month => l10n.periodMonth,
     };
