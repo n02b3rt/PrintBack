@@ -4,9 +4,11 @@ import 'package:flutter/material.dart';
 import '../l10n/app_localizations.dart';
 import '../logic/format.dart';
 import '../logic/narrative.dart';
+import '../logic/opening_hours.dart';
 import '../logic/stats_math.dart';
 import '../models/aggregate.dart';
 import '../storage/local_db.dart';
+import '../storage/opening_hours_store.dart';
 import '../widgets/chart_stats.dart';
 import '../widgets/chart_style.dart';
 import '../widgets/glass_card.dart';
@@ -131,6 +133,15 @@ class _ChartDetailState extends State<ChartDetail> {
   _Gran _gran = _Gran.daily;
   bool _loading = true;
 
+  /// Only used to shade the closed hours behind the line. Defaults to
+  /// `disabled`, which shades nothing - if the operator never set opening
+  /// hours, the chart has no business claiming to know when they're shut.
+  OpeningHours _hours = OpeningHours.disabled;
+
+  /// Where the current window starts, kept from the last load so the closed
+  /// bands can turn an x back into a real hour of a real weekday.
+  DateTime _windowStart = DateTime.now();
+
   /// Which point the finger is on, or null when nobody's touching the chart.
   /// Dragging rewrites the header instead of popping a tooltip over the line:
   /// the number is already the biggest thing on the screen, so putting the
@@ -141,7 +152,13 @@ class _ChartDetailState extends State<ChartDetail> {
   @override
   void initState() {
     super.initState();
+    _loadHours();
     _load();
+  }
+
+  Future<void> _loadHours() async {
+    final h = await OpeningHoursStore.load();
+    if (mounted) setState(() => _hours = h);
   }
 
   /// How many days the range covers, or null for "everything" (which has no
@@ -240,9 +257,48 @@ class _ChartDetailState extends State<ChartDetail> {
       _previous = previous;
       _points = points;
       _gran = gran;
+      _windowStart = start;
       _loading = false;
       _scrub = null; // the old index means nothing against new points
     });
+  }
+
+  /// Shaded bands behind the line for the hours the place is shut.
+  ///
+  /// Without this, traffic at 03:00 reads as either a bug or a break-in. The
+  /// device keeps sniffing around the clock (people walk past a closed shop),
+  /// so the line is real - it just isn't custom, and the chart should say
+  /// which is which instead of leaving the operator to work it out.
+  ///
+  /// Only drawn for hourly points, and only when opening hours are actually
+  /// switched on: a band on a daily chart would be meaningless (a day isn't
+  /// open or closed), and shading by some default nobody chose would invent a
+  /// rule the operator never set.
+  List<VerticalRangeAnnotation> _closedBands(Color color) {
+    if (!_hours.enabled || _gran != _Gran.hourly || _points.isEmpty) {
+      return const [];
+    }
+    final firstX = _points.first.x.round();
+    final lastX = _points.last.x.round();
+    final out = <VerticalRangeAnnotation>[];
+    int? runStart;
+    // One past the end so a run that reaches the last hour still gets closed.
+    for (var h = firstX; h <= lastX + 1; h++) {
+      final t = _windowStart.add(Duration(hours: h));
+      // DateTime.weekday is 1=Monday; OpeningHours indexes 0=Monday.
+      final closed =
+          h <= lastX && !_hours.isOpenAt(t.weekday - 1, t.hour);
+      if (closed) {
+        runStart ??= h;
+      } else if (runStart != null) {
+        // Half-hour overhang each side so the band covers its hours rather
+        // than stopping at their centres.
+        out.add(VerticalRangeAnnotation(
+            x1: runStart - 0.5, x2: h - 0.5, color: color));
+        runStart = null;
+      }
+    }
+    return out;
   }
 
   /// Hourly points across the range, positioned by real elapsed hours.
@@ -592,12 +648,36 @@ class _ChartDetailState extends State<ChartDetail> {
                               previous: _showPrevious ? _previous : const [],
                               showAverage: _showAverage,
                               series: _series,
+                              closedBands: _closedBands(
+                                  theme.colorScheme.onSurface
+                                      .withValues(alpha: 0.06)),
                               onScrub: (i) {
                                 if (i != _scrub) setState(() => _scrub = i);
                               },
                             ),
                     ),
                   ),
+                  // A grey band nobody can explain is worse than no band. Say
+                  // what the shading is, right under it, whenever it's drawn.
+                  // Deliberately the same icon as the "<5" note below rather
+                  // than a colour swatch: a small filled square with a border
+                  // reads as an unchecked checkbox, which invites a tap that
+                  // does nothing.
+                  if (_closedBands(Colors.transparent).isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Icon(Icons.nightlight_outlined,
+                            size: 14, color: theme.colorScheme.outline),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(l10n.closedHoursLegend,
+                              style: theme.textTheme.bodySmall
+                                  ?.copyWith(color: theme.colorScheme.outline)),
+                        ),
+                      ],
+                    ),
+                  ],
                   // Say it out loud rather than leaving it to whoever happens
                   // to scrub a quiet hour: part of this line is a floor, not
                   // a measurement.
@@ -768,6 +848,10 @@ class _TrendChart extends StatelessWidget {
 
   /// Extra series switched on by the operator.
   final Set<_Series> series;
+
+  /// Closed-hour shading, already resolved to x ranges. Empty when opening
+  /// hours are off or the points aren't hours.
+  final List<VerticalRangeAnnotation> closedBands;
   final void Function(int?) onScrub;
 
   const _TrendChart({
@@ -776,6 +860,7 @@ class _TrendChart extends StatelessWidget {
     required this.previous,
     required this.showAverage,
     required this.series,
+    required this.closedBands,
     required this.onScrub,
   });
 
@@ -981,6 +1066,8 @@ class _TrendChart extends StatelessWidget {
         lineBarsData: bars,
         gridData: revolutGrid,
         borderData: revolutBorder,
+        rangeAnnotations:
+            RangeAnnotations(verticalRangeAnnotations: closedBands),
         titlesData: FlTitlesData(
           show: true,
           topTitles: const AxisTitles(),

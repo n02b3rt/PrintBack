@@ -1382,4 +1382,11 @@ row at all rather than falling back to "no earlier period to compare
 against" - there *is* one, we're just not pretending half a day matches it.
 The note under the range picker ("Dzień jeszcze trwa - dane są zbierane")
 carries the explanation.
+The same defect turned out to sit on the Statistics screen's own "Dziś"
+period ("-47% - o 93 mniej niż poprzednio", in red), found by looking at it
+rather than reported. Fixed the same way: `_reload()` skips the baseline for
+`_Period.today`, after which `deltaPercent(x, 0)` returns null on its own and
+the whole line stops rendering. Worth remembering as a pattern rather than
+two bugs: anywhere a period can be "today", its baseline is a complete day
+and the comparison is invalid until midnight.
 Status: RESOLVED (2026-07-17)

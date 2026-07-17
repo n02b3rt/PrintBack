@@ -176,6 +176,7 @@
   "range7d": "7 dni",
   "range30d": "30 dni",
   "rangeMax": "Wszystko",
+  "closedHoursLegend": "Zacieniowane pasy to godziny poza otwarciem — urządzenie liczy przez całą dobę.",
   "rangeToday": "Dziś",
   "rangeYesterday": "Wczoraj",
   "chartDetailRecentTitle": "Odwiedziny",

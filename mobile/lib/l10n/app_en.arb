@@ -173,6 +173,7 @@
   "weekdayTrendTitle": "Your {weekday}s",
   "@weekdayTrendTitle": { "placeholders": { "weekday": { "type": "String" } } },
   "weekdayTrendEmpty": "Not enough history yet to show this day's trend.",
+  "closedHoursLegend": "Shaded bands are hours outside opening times - the device counts around the clock.",
   "rangeToday": "Today",
   "rangeYesterday": "Yesterday",
   "chartDetailRecentTitle": "Visits",

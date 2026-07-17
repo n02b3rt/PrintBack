@@ -121,8 +121,13 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
         _deviceId,
         _fmt(range.start.subtract(const Duration(days: 1))),
         _fmt(range.end.add(const Duration(days: 1))));
-    final prevDaily =
-        await _localDb.dailyInRange(_deviceId, _fmt(prevStart), _fmt(prevEnd));
+    // "Dziś" gets no baseline: a day that's twelve hours old against a
+    // complete one isn't a comparison, it's a countdown to midnight that
+    // reads as a collapse all afternoon. Same reason today stays out of
+    // reports, and same call as the drill-down's today range.
+    final prevDaily = _period == _Period.today
+        ? const <Aggregate>[]
+        : await _localDb.dailyInRange(_deviceId, _fmt(prevStart), _fmt(prevEnd));
     final installDate = await _localDb.oldestDailyDate(_deviceId);
 
     if (!mounted) return;
@@ -546,12 +551,36 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                   child: _period == _Period.today
                       ? (hourlyToday.isEmpty
                           ? Center(child: Text(l10n.noDataYet))
-                          : _HourlyTrendChart(data: hourlyToday))
+                          : _HourlyTrendChart(
+                              data: hourlyToday,
+                              hours: _hours,
+                              weekday: DateTime.now().weekday - 1))
                       : (_daily.isEmpty
                           ? Center(child: Text(l10n.noDataYet))
                           : _DailyTrendChart(data: rows)),
                 ),
               ),
+              // Same note as the drill-down: the shading has to explain itself
+              // or it's just an unexplained grey box behind the line.
+              if (_period == _Period.today && _hours.enabled) ...[
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Icon(Icons.nightlight_outlined,
+                        size: 14, color: Theme.of(context).colorScheme.outline),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(l10n.closedHoursLegend,
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodySmall
+                              ?.copyWith(
+                                  color:
+                                      Theme.of(context).colorScheme.outline)),
+                    ),
+                  ],
+                ),
+              ],
               // A single "Dziś" day can only ever populate one weekday
               // bucket, so the 7-bar pattern chart is meaningless (six
               // empty bars, one real one) - hide it instead of showing
@@ -826,7 +855,34 @@ class _DailyTrendChart extends StatelessWidget {
 class _HourlyTrendChart extends StatelessWidget {
   final List<Aggregate> data;
 
-  const _HourlyTrendChart({required this.data});
+  /// Shades the hours the place is shut, so 3am traffic reads as "people walk
+  /// past a closed shop" rather than as a fault. Same treatment as the
+  /// drill-down's chart.
+  final OpeningHours hours;
+
+  /// Which weekday these hours belong to (0=Monday). Opening hours are
+  /// per-weekday, so "is this hour open" can't be answered without it.
+  final int weekday;
+
+  const _HourlyTrendChart(
+      {required this.data, required this.hours, required this.weekday});
+
+  List<VerticalRangeAnnotation> _closedBands(Color color) {
+    if (!hours.enabled) return const [];
+    final out = <VerticalRangeAnnotation>[];
+    int? runStart;
+    for (var h = 0; h <= 24; h++) {
+      final closed = h < 24 && !hours.isOpenAt(weekday, h);
+      if (closed) {
+        runStart ??= h;
+      } else if (runStart != null) {
+        out.add(VerticalRangeAnnotation(
+            x1: runStart - 0.5, x2: h - 0.5, color: color));
+        runStart = null;
+      }
+    }
+    return out;
+  }
 
   void _showDetail(BuildContext context, AppLocalizations l10n, Aggregate agg) {
     final hour = agg.localHour;
@@ -876,6 +932,10 @@ class _HourlyTrendChart extends StatelessWidget {
         maxX: 23 + xPad,
         gridData: revolutGrid,
         borderData: revolutBorder,
+        rangeAnnotations: RangeAnnotations(
+          verticalRangeAnnotations: _closedBands(
+              Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.06)),
+        ),
         lineTouchData: LineTouchData(
           touchTooltipData: noLineTooltip,
           touchCallback: (event, response) {
