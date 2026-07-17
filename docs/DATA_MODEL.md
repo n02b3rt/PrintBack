@@ -1,6 +1,6 @@
 # Data model: PrintBack (BLE + SD)
 
-Formats for the target architecture (`refactor/ble-sd-flutter`), context:
+The formats as built on `main`, context:
 [docs/ARCHITECTURE.md](ARCHITECTURE.md). Little-endian everywhere (RISC-V HP
 core on the C6), matters for any future tool (Flutter, desktop) that ever
 reads raw `.bin` files directly.
@@ -46,7 +46,8 @@ typedef struct __attribute__((packed)) {
                                             * same semantics as today's
                                             * "new" JSON field)
                                             * bit1 is_returning (see
-                                            * "Open questions" below)
+                                            * "How returning_count is
+                                            * actually computed" below)
                                             * bit2 is_whitelisted
                                             * bit3-7 reserved, write 0 */
     uint8_t  _reserved;                   /* padding to 16B, write 0 */
@@ -76,7 +77,8 @@ typedef struct __attribute__((packed)) {
     uint16_t unique_count;         /* unique, non-whitelisted fp in the window */
     uint16_t returning_count;      /* subset of unique_count seen on an
                                      * earlier day within the returning window,
-                                     * same open question as below */
+                                     * see "How returning_count is actually
+                                     * computed" below */
     uint8_t  k_anonymity_applied;  /* bool. Hourly records: always 0,
                                      * the record only exists if
                                      * kanon_hourly_publishable() (firmware/
@@ -237,14 +239,31 @@ that never sends one falls back to the phone's ~1.5s idle-gap heuristic -
 backward compatible both ways. Write requires a bonded/encrypted link,
 same reasoning as CONFIG/TIME_SYNC.
 
-## Open questions: deliberately unresolved in this phase
+## How `returning_count` is actually computed
 
-**`is_returning`/`returning_count` algorithm.** Needs a persistent
-"seen-on-which-day" index that doesn't exist anywhere today, `tracker.c`
-is RAM-only, a 5-minute activity window. We reserve the bit/field in the
-format now (so the SD layout doesn't change later), but the algorithm
-itself (e.g. scanning the last N days of raw files during the hourly
-aggregation run, or a compact per-day on-device index) is a Phase 3
-decision, per docs/TASKS.md ("confirm the exact definition with the user").
+Of the two options this document used to float, the built one is scanning
+raw files rather than keeping a separate index. On daily rollover
+(`aggregate.c`), the device rebuilds an in-RAM set of fingerprints seen over
+the last N days by reading back the raw `.bin` files, skipping whitelisted
+records and de-duplicating. A fingerprint observed today that is in that set
+counts as returning; anything else is new.
 
-**Flutter-side aggregate cache format**: Phase 6 TODO, not designing it now.
+- **N** is runtime-configurable over BLE CONFIG (no reflash), see "BLE CONFIG
+  payload" above.
+- Raw files older than the 30-day retention are gone, so N is effectively
+  capped by it. A missing file means "no history from that day", not an
+  error.
+- The set is capped at `MAX_HISTORY_UNIQUE` (4096). On overflow the device
+  logs a warning and `returning_count` undercounts rather than lying about a
+  clean number - worth knowing before reading a busy site's returning rate.
+- It lives in RAM, so it is rebuilt on every rollover and after any reset.
+
+## Flutter-side aggregate cache
+
+One `aggregates` table (`mobile/lib/storage/local_db.dart`): `device_id`
+plus the four aggregate fields, `UNIQUE(device_id, date, hour)`. Every query
+is scoped by device, so switching paired devices can't mix data. `hour = -1`
+means "whole day", matching the device's own convention rather than using
+SQL NULL - NULL defeats the UNIQUE index, which is exactly how duplicate
+daily rows got in once (docs/LEARNINGS.md, 2026-07-09). No per-client data
+and no retention cap (docs/DECISIONS.md D3).
