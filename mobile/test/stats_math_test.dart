@@ -122,6 +122,30 @@ void main() {
     });
   });
 
+  group('onlyWeekday', () {
+    // 2026-07-06 is a Monday, so 07-07 / 07-14 / 07-21 are Tuesdays.
+    final rows = [
+      daily('2026-07-21', 30),
+      daily('2026-07-06', 10),
+      daily('2026-07-07', 10),
+      daily('2026-07-14', 20),
+    ];
+
+    test('picks out one weekday and orders it oldest first', () {
+      final tuesdays = onlyWeekday(rows, weekdayIndex('2026-07-07'));
+      expect(tuesdays.map((a) => a.date), ['2026-07-07', '2026-07-14', '2026-07-21']);
+    });
+
+    test('leaves the other weekdays alone', () {
+      final mondays = onlyWeekday(rows, weekdayIndex('2026-07-06'));
+      expect(mondays.map((a) => a.date), ['2026-07-06']);
+    });
+
+    test('a weekday with no rows is empty, not an error', () {
+      expect(onlyWeekday(rows, weekdayIndex('2026-07-12')), isEmpty); // Sunday
+    });
+  });
+
   group('withoutInstallDay', () {
     test('drops the install day wherever it sits in the list', () {
       final rows = [

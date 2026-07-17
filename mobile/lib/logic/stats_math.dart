@@ -138,6 +138,18 @@ List<Aggregate> withoutInstallDay(List<Aggregate> rows, String? installDate) {
   return kept.isEmpty ? rows : kept;
 }
 
+/// Just the rows falling on [weekday] (0=Monday), oldest first.
+///
+/// The weekday-pattern chart answers "which day is busiest"; this answers the
+/// question that comes straight after it - "are my Tuesdays getting better or
+/// worse?" - which the pattern chart can't, because it has already averaged
+/// the time dimension away.
+List<Aggregate> onlyWeekday(List<Aggregate> daily, int weekday) {
+  final rows = daily.where((a) => weekdayIndex(a.date) == weekday).toList()
+    ..sort((a, b) => a.date.compareTo(b.date));
+  return rows;
+}
+
 /// Trailing moving average of [values] over [window] points.
 ///
 /// Positions without a full window are null rather than a partial average:
