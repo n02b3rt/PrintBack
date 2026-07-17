@@ -151,11 +151,19 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
   /// The period in two or three plain sentences, above the numbers. Skipped
   /// for "today": a single in-progress day has no best day and nothing
   /// meaningful to compare against.
-  List<Widget> _narrativeSection(BuildContext context, AppLocalizations l10n,
-      List<String> weekdayLabelsFull) {
+  /// [rows] and [prevRows] are the already-filtered series from build(), not
+  /// the raw ones: this used to re-derive its own from `_daily` and drifted
+  /// the moment the filtering changed - the summary said "Łącznie 652" above
+  /// a headline reading 524, the difference being today. One source of truth,
+  /// passed in.
+  List<Widget> _narrativeSection(
+      BuildContext context,
+      AppLocalizations l10n,
+      List<String> weekdayLabelsFull,
+      List<Aggregate> rows,
+      List<Aggregate> prevRows) {
     if (_period == _Period.today) return const [];
-    final n = buildPeriodNarrative(withoutInstallDay(_daily, _installDate),
-        withoutInstallDay(_prevDaily, _installDate));
+    final n = buildPeriodNarrative(rows, prevRows);
     if (n == null) return const [];
 
     final sentences = <String>[l10n.narrativeTotal(n.total)];
@@ -449,7 +457,8 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
               ],
               // The period in words, before the numbers - most owners want
               // the takeaway, not the table.
-              ..._narrativeSection(context, l10n, weekdayLabelsFull),
+              ..._narrativeSection(
+                  context, l10n, weekdayLabelsFull, rows, prevRows),
               GlassCard(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,

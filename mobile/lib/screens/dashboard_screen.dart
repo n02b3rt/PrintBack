@@ -419,15 +419,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   List<Widget> _insightsSection(BuildContext context, AppLocalizations l10n) {
     // Exclude today's partial running total - insights compare complete days.
-    final completeDays =
-        _recentDaily.where((a) => a.date != _todayString()).toList();
+    // _recentDaily is already today-free (see _load) - the insights used to
+    // filter it out here by hand, which is what made it obvious the rest of
+    // the app should be doing the same thing.
     // Rotate on the day-of-year: more rules fire than fit on the card, so
     // the secondary slot cycles day to day instead of showing the same two
     // forever. Stable within a day, so the card doesn't reshuffle on every
     // rebuild/notification.
     final now = DateTime.now();
     final dayOfYear = now.difference(DateTime(now.year)).inDays;
-    final insights = buildInsights(completeDays, rotationSeed: dayOfYear);
+    final insights = buildInsights(_recentDaily, rotationSeed: dayOfYear);
     if (insights.isEmpty) return const [];
     final scheme = Theme.of(context).colorScheme;
     return [
