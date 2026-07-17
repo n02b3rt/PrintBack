@@ -61,15 +61,27 @@ directly-executable PE binary; `subprocess.call` without `shell=True` (or
 without resolving through `python.exe`) can't launch it that way on this
 setup even though the ESP-IDF environment is correctly activated (plain
 `idf.py build` typed directly into PowerShell works fine).
-Fix: none yet, worked around by calling `idf.py build`/`idf.py -p COMx
+Fix: worked around for a long time by calling `idf.py build`/`idf.py -p COMx
 flash` directly instead of through dev_cycle.py, and using
 `--skip-build --skip-flash` (pure pyserial capture, no subprocess) for
-the log-reading half, which works. dev_cycle.py's build/flash path
-itself needs a real fix (`shell=True`, or resolve to
-`sys.executable, idf.py path` explicitly), didn't do that here since
-it's a tooling fix orthogonal to Phase 2, flagging instead of guessing
-further per the "2 tries and stop" rule.
-Status: OPEN
+the log-reading half, which always worked.
+Root cause (2026-07-17, diagnosed properly): on Windows, `subprocess`
+with an argument *list* goes straight to `CreateProcess`, which - unlike
+the shell - does not consult `PATHEXT`. So `"idf.py"` matched the literal
+Python script on PATH, `CreateProcess` was handed a text file, and refused
+it with "%1 is not a valid Win32 application". Typing the same command into
+PowerShell worked because the shell does apply PATHEXT and picks up
+`idf.py.exe`, the wrapper the IDF tools installer provides - which is why
+the failure looked like an environment problem for so long when it was
+purely how the script spawned the process.
+Fix: `dev_cycle.py` now resolves the program through `shutil.which()`
+(which does apply PATHEXT) before spawning, and falls back to running it
+via `sys.executable` if a platform only ships the bare `.py`. `shell=True`
+would also have worked but would mean hand-quoting every path. Verified:
+`python scripts/dev_cycle.py --skip-flash --skip-capture` now reaches
+`Project build complete` - the first time the script's own build path has
+ever run on this machine.
+Status: RESOLVED (2026-07-17)
 
 ## [FIRMWARE] FAT short filenames silently broke raw log writes
 Date: 2026-07-08

@@ -14,6 +14,7 @@ Examples:
 from __future__ import annotations
 
 import argparse
+import shutil
 import subprocess
 import sys
 import time
@@ -35,9 +36,35 @@ def detect_port() -> str | None:
     return ports[0].device if ports else None
 
 
+def resolve(cmd: list[str]) -> list[str]:
+    """Turn a bare program name into something CreateProcess will actually run.
+
+    On Windows, subprocess with an argument list goes straight to
+    CreateProcess, which - unlike the shell - does not consult PATHEXT. So
+    "idf.py" matches the literal Python script sitting on PATH, CreateProcess
+    is handed a text file and refuses it with "%1 is not a valid Win32
+    application" (WinError 193), which is what made this script's build/flash
+    path unusable on this machine while typing the same command into
+    PowerShell worked fine.
+
+    shutil.which() does apply PATHEXT, so it finds idf.py.exe - the wrapper
+    the IDF tools installer puts there. If a platform only has the bare
+    script, run it through this interpreter rather than hoping the OS knows
+    what to do with it. shell=True would also work, but it would mean quoting
+    every path by hand.
+    """
+    exe = shutil.which(cmd[0])
+    if exe is None:
+        return cmd  # let subprocess raise the real "not found"
+    if exe.lower().endswith(".py"):
+        return [sys.executable, exe, *cmd[1:]]
+    return [exe, *cmd[1:]]
+
+
 def run(cmd: list[str]) -> int:
+    resolved = resolve(cmd)
     print(f"$ {' '.join(cmd)}")
-    return subprocess.call(cmd, cwd=FIRMWARE_DIR)
+    return subprocess.call(resolved, cwd=FIRMWARE_DIR)
 
 
 def capture_serial(port: str, baud: int, seconds: float) -> list[str]:
