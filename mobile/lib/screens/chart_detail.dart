@@ -12,7 +12,22 @@ import '../widgets/chart_style.dart';
 import '../widgets/glass_card.dart';
 import '../widgets/gradient_background.dart';
 
-enum _Range { d7, d30, max }
+/// Which question a drill-down is for.
+///
+/// One screen used to try to answer both, and the seam showed: tapping the
+/// hourly "today" chart opened a seven-day view still captioned "today"
+/// (2026-07-17). "How is today going" and "where is this heading" want
+/// different periods, different resolutions and different comparisons, so they
+/// get their own range sets rather than one list that half-fits each.
+enum ChartDetailMode {
+  /// Near-term, at hour resolution: today, yesterday, the last week.
+  recent,
+
+  /// The long view, at day resolution: a week, a month, everything.
+  trend,
+}
+
+enum _Range { today, yesterday, d7, d30, max }
 
 /// How much history one point covers. Picked from the range and how much
 /// data actually exists, not fixed per range: four days of daily rows is a
@@ -76,18 +91,12 @@ enum _Series { returning, newVisitors }
 /// and no connection.
 class ChartDetail extends StatefulWidget {
   final String deviceId;
-  final String title;
-
-  /// Open on the 7-day range, which is where the points are hours. The
-  /// hourly chart on Statistics expands into this, and landing on a 30-day
-  /// daily view would answer a different question than the one tapped.
-  final bool startHourly;
+  final ChartDetailMode mode;
 
   const ChartDetail({
     super.key,
     required this.deviceId,
-    required this.title,
-    this.startHourly = false,
+    required this.mode,
   });
 
   @override
@@ -97,7 +106,20 @@ class ChartDetail extends StatefulWidget {
 class _ChartDetailState extends State<ChartDetail> {
   final _localDb = LocalDb();
 
-  late _Range _range = widget.startHourly ? _Range.d7 : _Range.d30;
+  /// The ranges this mode offers, and where it opens. A drill-down opens on
+  /// the period that was tapped to get here: the hourly card means today, the
+  /// trend card means the month.
+  List<_Range> get _ranges => switch (widget.mode) {
+        ChartDetailMode.recent => const [
+            _Range.today,
+            _Range.yesterday,
+            _Range.d7
+          ],
+        ChartDetailMode.trend => const [_Range.d7, _Range.d30, _Range.max],
+      };
+
+  late _Range _range =
+      widget.mode == ChartDetailMode.recent ? _Range.today : _Range.d30;
   final Set<_Series> _series = {};
   bool _showPrevious = false;
   bool _showAverage = true;
@@ -122,50 +144,89 @@ class _ChartDetailState extends State<ChartDetail> {
     _load();
   }
 
+  /// How many days the range covers, or null for "everything" (which has no
+  /// earlier period to compare against).
   int? get _rangeDays => switch (_range) {
+        _Range.today || _Range.yesterday => 1,
         _Range.d7 => 7,
         _Range.d30 => 30,
         _Range.max => null,
       };
 
+  bool get _isSingleDay =>
+      _range == _Range.today || _range == _Range.yesterday;
+
+  /// The local calendar days a range covers, inclusive at both ends.
+  (DateTime, DateTime) get _window {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final yesterday = today.subtract(const Duration(days: 1));
+    return switch (_range) {
+      _Range.today => (today, today),
+      _Range.yesterday => (yesterday, yesterday),
+      _Range.d7 => (today.subtract(const Duration(days: 6)), today),
+      _Range.d30 => (today.subtract(const Duration(days: 29)), today),
+      // Far enough back to mean "whatever the cache holds".
+      _Range.max => (DateTime(2000), today),
+    };
+  }
+
+  /// Resolution follows the range, and for the open-ended one, the data.
+  ///
+  /// A single day is only ever worth reading by the hour. A week of daily rows
+  /// is seven dots - technically a trend, practically a shrug - so it drops to
+  /// hours too, where there are ~24x as many points. A long history goes the
+  /// other way: 200 daily dots at 3px apart is a smear nobody can scrub, so it
+  /// rolls up to weeks.
+  _Gran _granFor(_Range range, int dailyRowCount) => switch (range) {
+        _Range.today || _Range.yesterday || _Range.d7 => _Gran.hourly,
+        _Range.d30 => _Gran.daily,
+        _Range.max => dailyRowCount > 90 ? _Gran.weekly : _Gran.daily,
+      };
+
+  String _rangeLabel(AppLocalizations l10n, _Range r) => switch (r) {
+        _Range.today => l10n.rangeToday,
+        _Range.yesterday => l10n.rangeYesterday,
+        _Range.d7 => l10n.range7d,
+        _Range.d30 => l10n.range30d,
+        _Range.max => l10n.rangeMax,
+      };
+
   Future<void> _load() async {
     setState(() => _loading = true);
     final days = _rangeDays;
+    final (start, end) = _window;
 
-    // "MAX" means the whole cache, which also means there is no earlier
-    // period left to compare it against - the ghost overlay is meaningless
-    // there and the delta line says so rather than inventing a baseline.
-    final rows = await _localDb.recentDaily(widget.deviceId, limit: days);
+    final ordered = await _localDb.dailyInRange(
+        widget.deviceId, _fmt(start), _fmt(end));
+
+    // Two ranges get no baseline, for different reasons. "Everything" has no
+    // earlier period left to compare against at all. "Today" has one, but it
+    // isn't a fair fight: a day that is twelve hours old against a complete
+    // one reads as a 47% collapse at noon and recovers only because the clock
+    // moves - the same partial-day distortion that keeps today out of reports.
+    // The header drops the delta rather than showing a number that's wrong
+    // until midnight, and the note under the range picker says why.
     List<Aggregate> previous = const [];
-    if (days != null) {
-      final now = DateTime.now();
-      final prevEnd = now.subtract(Duration(days: days));
+    if (days != null && _range != _Range.today) {
+      final prevEnd = start.subtract(const Duration(days: 1));
       final prevStart = prevEnd.subtract(Duration(days: days - 1));
       previous = await _localDb.dailyInRange(
           widget.deviceId, _fmt(prevStart), _fmt(prevEnd));
     }
-    // recentDaily comes back newest-first; a trend reads left-to-right.
-    final ordered = rows.reversed.toList();
 
-    // Granularity follows the data, not just the button. A week of daily rows
-    // is four or seven dots - technically a trend, practically a shrug - so a
-    // short range drops to hours, where there are ~24x as many points. A very
-    // long history goes the other way: 200 daily dots at 3px apart is a smear
-    // nobody can read or scrub, so it rolls up to weeks.
-    final gran = switch (_range) {
-      _Range.d7 => _Gran.hourly,
-      _Range.d30 => _Gran.daily,
-      _Range.max => ordered.length > 90 ? _Gran.weekly : _Gran.daily,
-    };
+    var gran = _granFor(_range, ordered.length);
 
     List<_PlotPoint> points;
     if (gran == _Gran.hourly) {
-      points = await _hourlyPoints();
-      // No hourly history yet (the device backfills a week, and a fresh
-      // install has none) - a blank chart would be a worse answer than a
-      // coarse one.
-      if (points.length < 2) {
+      points = await _hourlyPoints(start, end);
+      // No hourly history for this window (the device backfills a week, and a
+      // fresh install has none) - a coarse answer beats a blank chart. A
+      // single day has no daily fallback worth drawing, though: one dot is not
+      // a chart, so it stays empty and the card says so.
+      if (points.length < 2 && !_isSingleDay) {
         points = _dailyPoints(ordered);
+        gran = _Gran.daily;
       }
     } else if (gran == _Gran.weekly) {
       points = _weeklyPoints(ordered);
@@ -178,7 +239,7 @@ class _ChartDetailState extends State<ChartDetail> {
       _rows = ordered;
       _previous = previous;
       _points = points;
-      _gran = points.isEmpty ? gran : gran;
+      _gran = gran;
       _loading = false;
       _scrub = null; // the old index means nothing against new points
     });
@@ -198,34 +259,40 @@ class _ChartDetailState extends State<ChartDetail> {
   /// label says so. Hours *outside* the measured window are left alone: the
   /// device wasn't there, and a flat zero across days before it was plugged
   /// in would be a different lie.
-  Future<List<_PlotPoint>> _hourlyPoints() async {
-    final now = DateTime.now();
-    final start = DateTime(now.year, now.month, now.day)
-        .subtract(const Duration(days: 6));
+  Future<List<_PlotPoint>> _hourlyPoints(DateTime start, DateTime end) async {
     // A day of padding each side, then filtered by local date - hourly rows
     // are dated UTC on the wire (docs/LEARNINGS.md 2026-07-11).
     final rows = await _localDb.hourlyInRange(
       widget.deviceId,
       _fmt(start.subtract(const Duration(days: 1))),
-      _fmt(now.add(const Duration(days: 1))),
+      _fmt(end.add(const Duration(days: 1))),
     );
+
+    final startIso = _fmt(start);
+    final endIso = _fmt(end);
+    // On a single day the axis can carry the hour, which is the whole point of
+    // that view. Across a week only about three labels fit, and "12:00" on a
+    // seven-day chart doesn't say which day - so there it carries the date and
+    // the hour lives in the scrub readout next to it.
+    final single = _isSingleDay;
 
     final out = <_PlotPoint>[];
     for (final a in rows) {
+      if (a.localDate.compareTo(startIso) < 0 ||
+          a.localDate.compareTo(endIso) > 0) {
+        continue;
+      }
       final day = DateTime.tryParse(a.localDate);
       if (day == null) continue;
-      final hoursFromStart =
-          day.difference(start).inDays * 24 + a.localHour;
+      final hoursFromStart = day.difference(start).inDays * 24 + a.localHour;
       if (hoursFromStart < 0) continue;
       out.add(_PlotPoint(
         x: hoursFromStart.toDouble(),
         unique: a.unique,
         returning: a.returning,
-        // The axis gets the date, not the hour: only three labels fit across
-        // a week of hourly points, and "12:00" on a seven-day chart says
-        // nothing about which day you're looking at. The exact hour is in
-        // the scrub readout, where it has a date next to it.
-        axisLabel: formatAxisDay(a.localDate),
+        axisLabel: single
+            ? '${a.localHour.toString().padLeft(2, '0')}:00'
+            : formatAxisDay(a.localDate),
         isoDate: a.localDate,
         hour: a.localHour,
       ));
@@ -249,7 +316,9 @@ class _ChartDetailState extends State<ChartDetail> {
         x: h.toDouble(),
         unique: 0,
         returning: 0,
-        axisLabel: formatAxisDay(_fmt(day)),
+        axisLabel: single
+            ? '${day.hour.toString().padLeft(2, '0')}:00'
+            : formatAxisDay(_fmt(day)),
         isoDate: _fmt(day),
         hour: day.hour,
         belowThreshold: true,
@@ -301,6 +370,14 @@ class _ChartDetailState extends State<ChartDetail> {
     final days = _rangeDays;
     if (days == null || _previous.isEmpty) return l10n.deltaNoBaseline;
     final diff = sumUnique(_rows) - sumUnique(_previous);
+    // "than the previous 1 days" is not a sentence. A one-day range compares
+    // against the day before, and says so.
+    if (_isSingleDay) {
+      if (diff == 0) return l10n.deltaSamePrevDay;
+      return diff > 0
+          ? l10n.deltaMorePrevDay(diff)
+          : l10n.deltaFewerPrevDay(-diff);
+    }
     if (diff == 0) return l10n.deltaSame(days);
     return diff > 0 ? l10n.deltaMore(diff, days) : l10n.deltaFewer(-diff, days);
   }
@@ -357,24 +434,7 @@ class _ChartDetailState extends State<ChartDetail> {
                 ?.copyWith(color: theme.colorScheme.outline),
           ),
           const SizedBox(height: 4),
-          if (scrubbed == null)
-            Row(
-              children: [
-                if (pct != null && pct != 0) ...[
-                  Icon(up ? Icons.arrow_drop_up : Icons.arrow_drop_down,
-                      size: 20, color: pctColor),
-                  Text('${pct.abs()}%',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                          color: pctColor, fontWeight: FontWeight.w700)),
-                  const SizedBox(width: 6),
-                ],
-                Expanded(
-                  child: Text(_deltaSentence(l10n),
-                      style: theme.textTheme.bodyMedium),
-                ),
-              ],
-            )
-          else
+          if (scrubbed != null)
             // Scrubbing: the date, plus whatever extra series are switched on
             // for that same day - otherwise turning "Powracający" on would
             // draw a line whose numbers you could never read.
@@ -418,6 +478,27 @@ class _ChartDetailState extends State<ChartDetail> {
                 if (_series.contains(_Series.newVisitors))
                   _scrubChip(theme, l10n.newVisitorsLabel, scrubbed.newVisitors,
                       theme.colorScheme.secondary),
+              ],
+            )
+          // Today deliberately has no baseline (see _load), so there is nothing
+          // to put here - "no earlier period to compare against" would be a lie
+          // (there is one), and a delta against a complete day would be worse.
+          // The note under the range picker carries the explanation instead.
+          else if (_range != _Range.today)
+            Row(
+              children: [
+                if (pct != null && pct != 0) ...[
+                  Icon(up ? Icons.arrow_drop_up : Icons.arrow_drop_down,
+                      size: 20, color: pctColor),
+                  Text('${pct.abs()}%',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                          color: pctColor, fontWeight: FontWeight.w700)),
+                  const SizedBox(width: 6),
+                ],
+                Expanded(
+                  child: Text(_deltaSentence(l10n),
+                      style: theme.textTheme.bodyMedium),
+                ),
               ],
             ),
         ],
@@ -463,8 +544,13 @@ class _ChartDetailState extends State<ChartDetail> {
     final theme = Theme.of(context);
     final total = sumUnique(_rows);
 
+    final title = switch (widget.mode) {
+      ChartDetailMode.recent => l10n.chartDetailRecentTitle,
+      ChartDetailMode.trend => l10n.chartDetailTrendTitle,
+    };
+
     return Scaffold(
-      appBar: AppBar(title: Text(widget.title)),
+      appBar: AppBar(title: Text(title)),
       body: GradientBackground(
         child: _loading
             ? const Center(child: CircularProgressIndicator())
@@ -475,11 +561,8 @@ class _ChartDetailState extends State<ChartDetail> {
                   const SizedBox(height: 16),
                   SegmentedButton<_Range>(
                     segments: [
-                      ButtonSegment(value: _Range.d7, label: Text(l10n.range7d)),
-                      ButtonSegment(
-                          value: _Range.d30, label: Text(l10n.range30d)),
-                      ButtonSegment(
-                          value: _Range.max, label: Text(l10n.rangeMax)),
+                      for (final r in _ranges)
+                        ButtonSegment(value: r, label: Text(_rangeLabel(l10n, r))),
                     ],
                     selected: {_range},
                     onSelectionChanged: (s) {
@@ -487,6 +570,16 @@ class _ChartDetailState extends State<ChartDetail> {
                       _load();
                     },
                   ),
+                  // Today's number is a running total, not a result. Without
+                  // this the day reads as a bad day right up until it ends.
+                  if (_range == _Range.today) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      l10n.todayPartialNote,
+                      style: theme.textTheme.bodySmall
+                          ?.copyWith(color: theme.colorScheme.outline),
+                    ),
+                  ],
                   const SizedBox(height: 16),
                   GlassCard(
                     child: SizedBox(

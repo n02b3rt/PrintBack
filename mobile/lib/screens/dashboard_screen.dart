@@ -539,8 +539,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
               ),
               const SizedBox(height: 24),
-              Text(l10n.hourlyChartTitle,
-                  style: Theme.of(context).textTheme.titleMedium),
+              // Same pattern as the daily card below: a button, not a tap on
+              // the chart. Tapping a bar already opens that hour's sheet, and
+              // the drill-down is the rarer of the two.
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(l10n.hourlyChartTitle,
+                        style: Theme.of(context).textTheme.titleMedium),
+                  ),
+                  TextButton.icon(
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => ChartDetail(
+                            deviceId: _deviceId,
+                            mode: ChartDetailMode.recent),
+                      ),
+                    ),
+                    icon: const Icon(Icons.open_in_full, size: 16),
+                    label: Text(l10n.expandChart),
+                  ),
+                ],
+              ),
               const SizedBox(height: 8),
               GlassCard(
                 key: widget.hourlyKey,
@@ -582,7 +602,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     onPressed: () => Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (_) => ChartDetail(
-                            deviceId: _deviceId, title: l10n.dailyChartTitle),
+                            deviceId: _deviceId,
+                            mode: ChartDetailMode.trend),
                       ),
                     ),
                     icon: const Icon(Icons.open_in_full, size: 16),

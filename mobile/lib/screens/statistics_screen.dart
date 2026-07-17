@@ -515,17 +515,17 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                         style: Theme.of(context).textTheme.titleMedium),
                   ),
                   TextButton.icon(
-                    // "Dziś" draws the hourly trend here, so its drill-down
-                    // opens on hours too - expanding a chart should show you
-                    // more of what you tapped, not a different chart.
+                    // Expanding a chart should show more of what you tapped,
+                    // not a different chart: "Dziś" draws hours here, so it
+                    // opens the near-term drill-down (which starts on today);
+                    // a week or a month is a trend question.
                     onPressed: () => Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (_) => ChartDetail(
                           deviceId: _deviceId,
-                          title: _period == _Period.today
-                              ? l10n.hourlyChartTitle
-                              : l10n.dailyTrendTitle,
-                          startHourly: _period == _Period.today,
+                          mode: _period == _Period.today
+                              ? ChartDetailMode.recent
+                              : ChartDetailMode.trend,
                         ),
                       ),
                     ),
