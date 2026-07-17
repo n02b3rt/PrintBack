@@ -687,10 +687,16 @@ class _TrendChart extends StatelessWidget {
     // sparse enough to read as measurements rather than noise - at hourly
     // granularity there can be a hundred-plus of them.
     final showDots = points.length <= 12;
+    // The area fill belongs to a single unbroken series. Filling each run
+    // separately turns a broken line into a row of narrow filled columns -
+    // it reads as a bar chart of nothing, which is what the hourly view
+    // looked like once the overnight gaps split it into seven runs.
+    final fillArea = runs.length == 1;
     for (final run in runs) {
       bars.add(revolutLine(
         context,
         [for (final p in run) FlSpot(p.x, p.unique.toDouble())],
+        fill: fillArea,
         forceDots: showDots,
       ));
       // Subsets of the visitors line, drawn unfilled so their areas don't
