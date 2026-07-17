@@ -675,10 +675,18 @@ class _DailyTrendChart extends StatelessWidget {
         .map((a) => a.unique)
         .fold<int>(1, (m, v) => v > m ? v : m)
         .toDouble();
+    // Breathing room at both ends. Without it the first and last points sit
+    // exactly on the plot's edges, and their date labels - which fl_chart
+    // centres on the point - hang off the sides of the card.
+    final xSpan = (data.length - 1).toDouble();
+    final xPad = xSpan <= 0 ? 0.5 : xSpan * 0.06;
+
     return LineChart(
       LineChartData(
         minY: 0,
         maxY: maxY * 1.2,
+        minX: -xPad,
+        maxX: xSpan + xPad,
         gridData: revolutGrid,
         borderData: revolutBorder,
         lineTouchData: LineTouchData(
@@ -764,10 +772,15 @@ class _HourlyTrendChart extends StatelessWidget {
         .fold<int>(1, (m, v) => v > m ? v : m)
         .toDouble();
 
+    // Same reason as the daily trend: keep the end labels inside the card.
+    final xPad = 24 * 0.06;
+
     return LineChart(
       LineChartData(
         minY: 0,
         maxY: maxY * 1.2,
+        minX: -xPad,
+        maxX: 23 + xPad,
         gridData: revolutGrid,
         borderData: revolutBorder,
         lineTouchData: LineTouchData(
