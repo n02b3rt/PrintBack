@@ -480,8 +480,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// local setting - nothing is written to the device, and no reconnect or
   /// CONFIG round-trip is involved (unlike the range/returning-window
   /// settings above, which are device state).
+  /// Opening hours affect charts and averages everywhere, so this is a plain
+  /// local setting - nothing is written to the device, and no reconnect or
+  /// CONFIG round-trip is involved (unlike the range/returning-window
+  /// settings above, which are device state).
+  ///
+  /// Seven collapsed rows rather than one range for the week: a closed Sunday,
+  /// a short Saturday or a day off midweek is what ordinary shops actually
+  /// look like, and folding them into one range feeds closed days into the
+  /// averages.
   Widget _openingHoursCard(BuildContext context, AppLocalizations l10n) {
     final theme = Theme.of(context);
+    final names = [
+      l10n.weekdayMonFull,
+      l10n.weekdayTueFull,
+      l10n.weekdayWedFull,
+      l10n.weekdayThuFull,
+      l10n.weekdayFriFull,
+      l10n.weekdaySatFull,
+      l10n.weekdaySunFull,
+    ];
+
     return GlassCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -497,37 +516,94 @@ class _SettingsScreenState extends State<SettingsScreen> {
             title: Text(l10n.openingHoursEnable),
             onChanged: (v) => _saveHours(_hours.copyWith(enabled: v)),
           ),
-          if (_hours.enabled) ...[
+          if (_hours.enabled)
+            for (var wd = 0; wd < 7; wd++) _dayRow(context, l10n, names, wd),
+        ],
+      ),
+    );
+  }
+
+  Widget _dayRow(BuildContext context, AppLocalizations l10n,
+      List<String> names, int wd) {
+    final theme = Theme.of(context);
+    final day = _hours.days[wd];
+    final summary = day.closed
+        ? l10n.openingHoursClosedDay
+        : (day.openHour == day.closeHour
+            ? l10n.openingHoursAllDay
+            : '${_hh(day.openHour)} - ${_hh(day.closeHour)}');
+
+    return Theme(
+      // The card already has a divider-ish rhythm; drop the tile's own.
+      data: theme.copyWith(dividerColor: Colors.transparent),
+      child: ExpansionTile(
+        tilePadding: EdgeInsets.zero,
+        title: Text(names[wd]),
+        subtitle: Text(summary,
+            style: theme.textTheme.bodySmall?.copyWith(
+                color: day.closed
+                    ? theme.colorScheme.outline
+                    : theme.colorScheme.primary)),
+        childrenPadding: const EdgeInsets.only(bottom: 12),
+        children: [
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            value: !day.closed,
+            title: Text(day.closed
+                ? l10n.openingHoursClosedDay
+                : l10n.openingHoursEnable),
+            onChanged: (v) =>
+                _saveHours(_hours.copyWithDay(wd, day.copyWith(closed: !v))),
+          ),
+          if (!day.closed)
             Row(
               children: [
                 Expanded(
                   child: _hourDropdown(
                     label: l10n.openingHoursOpen,
-                    value: _hours.openHour,
-                    onChanged: (v) => _saveHours(_hours.copyWith(openHour: v)),
+                    value: day.openHour,
+                    onChanged: (v) => _saveHours(
+                        _hours.copyWithDay(wd, day.copyWith(openHour: v))),
                   ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: _hourDropdown(
                     label: l10n.openingHoursClose,
-                    value: _hours.closeHour,
-                    onChanged: (v) => _saveHours(_hours.copyWith(closeHour: v)),
+                    value: day.closeHour,
+                    onChanged: (v) => _saveHours(
+                        _hours.copyWithDay(wd, day.copyWith(closeHour: v))),
                   ),
                 ),
               ],
             ),
-            if (_hours.openHour == _hours.closeHour)
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Text(l10n.openingHoursAllDay,
-                    style: theme.textTheme.bodySmall
-                        ?.copyWith(color: theme.colorScheme.outline)),
-              ),
-          ],
+          // Most shops are the same Mon-Fri, so setting one day and copying
+          // beats seven identical edits.
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: () => _copyDayToAll(l10n, wd),
+              icon: const Icon(Icons.copy_all, size: 16),
+              label: Text(l10n.openingHoursCopyToAll),
+            ),
+          ),
         ],
       ),
     );
+  }
+
+  static String _hh(int h) => '${h.toString().padLeft(2, '0')}:00';
+
+  Future<void> _copyDayToAll(AppLocalizations l10n, int wd) async {
+    final day = _hours.days[wd];
+    var next = _hours;
+    for (var i = 0; i < 7; i++) {
+      next = next.copyWithDay(i, day);
+    }
+    await _saveHours(next);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(l10n.openingHoursCopied)));
   }
 
   Widget _hourDropdown({
@@ -540,8 +616,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       decoration: InputDecoration(labelText: label, isDense: true),
       items: [
         for (var h = 0; h < 24; h++)
-          DropdownMenuItem(
-              value: h, child: Text('${h.toString().padLeft(2, '0')}:00')),
+          DropdownMenuItem(value: h, child: Text(_hh(h))),
       ],
       onChanged: (v) => v == null ? null : onChanged(v),
     );

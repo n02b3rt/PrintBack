@@ -212,7 +212,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ChartStatStrip(stats: [
         (l10n.statPeak, '${peak.localHour}:00 · ${peak.unique}'),
         (l10n.statAvgHour, '$avg'),
-        (l10n.statHoursWithData, '${open.length}/${_hours.openHourCount}'),
+        // Today's own weekday - the denominator is how long *this* day is
+        // open, not some week-wide figure.
+        (
+          l10n.statHoursWithData,
+          '${open.length}/${_hours.openHourCountOn(weekdayIndex(_todayString()))}'
+        ),
       ]),
     ];
   }
@@ -551,7 +556,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                     textAlign: TextAlign.center),
                               ),
                             )
-                          : _HourlyBarChart(data: _hourlyToday, hours: _hours),
+                          : _HourlyBarChart(
+                              data: _hourlyToday,
+                              hours: _hours,
+                              weekday: weekdayIndex(_todayString()),
+                            ),
                     ),
                     ..._hourlyStats(context, l10n),
                   ],
@@ -691,7 +700,12 @@ class _HourlyBarChart extends StatelessWidget {
   final List<Aggregate> data;
   final OpeningHours hours;
 
-  const _HourlyBarChart({required this.data, required this.hours});
+  /// Which weekday these hours belong to (0=Monday). Opening hours are
+  /// per-weekday, so "is this hour open" can't be answered without it.
+  final int weekday;
+
+  const _HourlyBarChart(
+      {required this.data, required this.hours, required this.weekday});
 
   void _showDetail(BuildContext context, AppLocalizations l10n, Aggregate agg) {
     final hour = agg.localHour;
@@ -737,7 +751,7 @@ class _HourlyBarChart extends StatelessWidget {
     // Peak among open hours only - a spike at 3am is not the shop's "busiest
     // hour" in any sense the operator means by the word.
     final peak = data
-        .where((a) => hours.isOpen(a.localHour))
+        .where((a) => hours.isOpenAt(weekday, a.localHour))
         .map((a) => a.unique)
         .fold<int>(0, (m, v) => v > m ? v : m);
 
@@ -767,7 +781,7 @@ class _HourlyBarChart extends StatelessWidget {
         barGroups: List.generate(24, (hour) {
           final agg = byHour[hour];
           final value = (agg?.unique ?? 0).toDouble();
-          final closed = !hours.isOpen(hour);
+          final closed = !hours.isOpenAt(weekday, hour);
           return BarChartGroupData(
             x: hour,
             barRods: [
