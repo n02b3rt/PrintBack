@@ -30,16 +30,23 @@ class _PlotPoint {
   final int unique;
   final int returning;
 
-  /// Short form for the x-axis, long form for the scrub header.
+  /// Short form for the x-axis.
   final String axisLabel;
-  final String fullLabel;
+
+  /// The point's own date, and its hour when the point is an hour. Kept as
+  /// data rather than a pre-baked string so the header can format it in the
+  /// app's language ("czwartek, 16 lipca") instead of showing the axis's
+  /// terse "16.07".
+  final String isoDate;
+  final int? hour;
 
   const _PlotPoint({
     required this.x,
     required this.unique,
     required this.returning,
     required this.axisLabel,
-    required this.fullLabel,
+    required this.isoDate,
+    this.hour,
   });
 
   int get newVisitors => (unique - returning).clamp(0, unique);
@@ -194,7 +201,8 @@ class _ChartDetailState extends State<ChartDetail> {
         // nothing about which day you're looking at. The exact hour is in
         // the scrub readout, where it has a date next to it.
         axisLabel: formatAxisDay(a.localDate),
-        fullLabel: '${formatAxisDay(a.localDate)}, ${a.localHour}:00',
+        isoDate: a.localDate,
+        hour: a.localHour,
       ));
     }
     out.sort((a, b) => a.x.compareTo(b.x));
@@ -208,7 +216,7 @@ class _ChartDetailState extends State<ChartDetail> {
             unique: rows[i].unique,
             returning: rows[i].returning,
             axisLabel: formatAxisDay(rows[i].date),
-            fullLabel: rows[i].date,
+            isoDate: rows[i].date,
           ),
       ];
 
@@ -229,7 +237,7 @@ class _ChartDetailState extends State<ChartDetail> {
           unique: sumUnique(buckets[keys[i]]!),
           returning: sumReturning(buckets[keys[i]]!),
           axisLabel: formatAxisDay(keys[i]),
-          fullLabel: keys[i],
+          isoDate: keys[i],
         ),
     ];
   }
@@ -315,17 +323,40 @@ class _ChartDetailState extends State<ChartDetail> {
             // Scrubbing: the date, plus whatever extra series are switched on
             // for that same day - otherwise turning "Powracający" on would
             // draw a line whose numbers you could never read.
+            // Spelled out and given some weight: this line is the answer to
+            // "what am I pointing at", so a terse "16.07, 15:00" in body text
+            // made you decode the chart instead of reading it.
             Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Expanded(
+                Flexible(
                   child: Text(
-                      // Hourly/weekly points carry their own label; a daily
-                      // one is worth spelling out ("czwartek, 16 lipca").
-                      _gran == _Gran.daily
-                          ? formatDayTitle(scrubbed.fullLabel, l10n.localeName)
-                          : scrubbed.fullLabel,
-                      style: theme.textTheme.bodyMedium),
+                    formatDayTitle(scrubbed.isoDate, l10n.localeName),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                        color: theme.colorScheme.onSurface,
+                        fontWeight: FontWeight.w600),
+                  ),
                 ),
+                if (scrubbed.hour != null) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primary.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      '${scrubbed.hour.toString().padLeft(2, '0')}:00',
+                      style: theme.textTheme.labelMedium?.copyWith(
+                          color: theme.colorScheme.primary,
+                          fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                ],
+                const Spacer(),
                 if (_series.contains(_Series.returning))
                   _scrubChip(theme, l10n.returningLabel, scrubbed.returning,
                       theme.colorScheme.tertiary),
@@ -732,6 +763,43 @@ class _TrendChart extends StatelessWidget {
     final xSpan = xLast - xFirst;
     final xPad = xSpan <= 0 ? 0.5 : xSpan * 0.04;
 
+    // The y labels float on top of the plot rather than living in a reserved
+    // column beside it. A column only ever eats space on one side, so the
+    // line sat flush against the left edge while a wide strip of nothing sat
+    // on the right - the chart read as shoved sideways. Overlaid, the plot
+    // spans the full width and the only inset is the symmetric xPad below.
+    // (Revolut does exactly this: labels at the right edge, chart underneath.)
+    return Stack(
+      children: [
+        Positioned.fill(child: _chart(context, scheme, labelAt, labelStyle,
+            bars, minY, maxY, xFirst, xLast, xPad)),
+        Positioned(
+          top: 0,
+          right: 0,
+          child: Text('${maxY.round()}', style: labelStyle),
+        ),
+        Positioned(
+          // Clear of the x-axis labels underneath.
+          bottom: 30,
+          right: 0,
+          child: Text('${minY.round()}', style: labelStyle),
+        ),
+      ],
+    );
+  }
+
+  Widget _chart(
+    BuildContext context,
+    ColorScheme scheme,
+    Map<int, String> labelAt,
+    TextStyle? labelStyle,
+    List<LineChartBarData> bars,
+    double minY,
+    double maxY,
+    double xFirst,
+    double xLast,
+    double xPad,
+  ) {
     return LineChart(
       LineChartData(
         minY: minY,
@@ -749,19 +817,8 @@ class _TrendChart extends StatelessWidget {
           // for an interval as wide as the window itself. That's the whole
           // job: say where the axis was cropped, without turning into a
           // ruler.
-          rightTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              // Just wide enough for a 4-digit count. 48 left a dead column
-              // the eye read as the chart being off-centre.
-              reservedSize: 34,
-              interval: (maxY - minY).abs() < 0.001 ? 1 : maxY - minY,
-              getTitlesWidget: (value, meta) => Padding(
-                padding: const EdgeInsets.only(left: 4),
-                child: Text('${value.round()}', style: labelStyle),
-              ),
-            ),
-          ),
+          // No reserved column for the y labels - see the Stack in build().
+          rightTitles: const AxisTitles(),
           bottomTitles: AxisTitles(
             sideTitles: SideTitles(
               showTitles: true,
