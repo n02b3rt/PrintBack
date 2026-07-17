@@ -19,6 +19,7 @@ import '../widgets/glass_card.dart';
 import '../widgets/gradient_background.dart';
 import 'chart_detail.dart';
 import 'report_actions.dart';
+import 'weekday_trend.dart';
 
 enum _Period { today, week, month, custom }
 
@@ -562,6 +563,8 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                             sums: weekdaySums,
                             counts: weekdayCounts,
                             labels: weekdayLabels,
+                            fullLabels: weekdayLabelsFull,
+                            deviceId: _deviceId,
                           ),
                   ),
                 ),
@@ -605,10 +608,18 @@ class _WeekdayChart extends StatelessWidget {
   final List<int> counts;
   final List<String> labels;
 
+  /// Full weekday names and the device, so a tapped bar can offer the trend
+  /// for that day - this chart averages the time dimension away, which is
+  /// exactly what hides whether Tuesdays are climbing or sliding.
+  final List<String> fullLabels;
+  final String deviceId;
+
   const _WeekdayChart({
     required this.sums,
     required this.counts,
     required this.labels,
+    required this.fullLabels,
+    required this.deviceId,
   });
 
   void _showDetail(
@@ -633,10 +644,18 @@ class _WeekdayChart extends StatelessWidget {
 
     showDetailSheet(
       context,
-      title: labels[i],
+      title: fullLabels[i],
       primaryValue: '~${avgs[i].round()}',
       primaryLabel: l10n.totalUniqueLabel,
       interpretation: interpretation,
+      actionLabel: l10n.weekdayTrendTitle(fullLabels[i]),
+      actionIcon: Icons.show_chart,
+      onAction: () => Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => WeekdayTrend(
+              deviceId: deviceId, weekday: i, weekdayName: fullLabels[i]),
+        ),
+      ),
     );
   }
 

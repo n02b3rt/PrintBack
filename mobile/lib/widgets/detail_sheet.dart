@@ -12,6 +12,13 @@ void showDetailSheet(
   required String primaryLabel,
   List<(String, String)> rows = const [],
   String? interpretation,
+
+  /// Optional way out of the sheet and into a fuller view. The sheet closes
+  /// first, so the drill-down isn't stacked on top of it and Back lands where
+  /// the operator expects.
+  String? actionLabel,
+  IconData? actionIcon,
+  VoidCallback? onAction,
 }) {
   showModalBottomSheet(
     context: context,
@@ -63,6 +70,20 @@ void showDetailSheet(
                         style: Theme.of(context).textTheme.bodyMedium),
                   ),
                 ],
+              ),
+            ),
+          ],
+          if (onAction != null && actionLabel != null) ...[
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.tonalIcon(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  onAction();
+                },
+                icon: Icon(actionIcon ?? Icons.open_in_full, size: 18),
+                label: Text(actionLabel),
               ),
             ),
           ],
