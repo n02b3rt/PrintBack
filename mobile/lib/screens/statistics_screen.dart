@@ -44,6 +44,10 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
   Timer? _reloadDebounce;
   OpeningHours _hours = OpeningHours.disabled;
 
+  /// The day the device was switched on - a part-day that has to stay out of
+  /// every average and baseline (lib/logic/stats_math.dart withoutInstallDay).
+  String? _installDate;
+
   List<Aggregate> _daily = [];
   List<Aggregate> _hourly = [];
   List<Aggregate> _prevDaily = [];
@@ -118,9 +122,11 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
         _fmt(range.end.add(const Duration(days: 1))));
     final prevDaily =
         await _localDb.dailyInRange(_deviceId, _fmt(prevStart), _fmt(prevEnd));
+    final installDate = await _localDb.oldestDailyDate(_deviceId);
 
     if (!mounted) return;
     setState(() {
+      _installDate = installDate;
       _daily = daily;
       _hourly = hourly;
       _prevDaily = prevDaily;
@@ -142,7 +148,8 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
   List<Widget> _narrativeSection(BuildContext context, AppLocalizations l10n,
       List<String> weekdayLabelsFull) {
     if (_period == _Period.today) return const [];
-    final n = buildPeriodNarrative(_daily, _prevDaily);
+    final n = buildPeriodNarrative(withoutInstallDay(_daily, _installDate),
+        withoutInstallDay(_prevDaily, _installDate));
     if (n == null) return const [];
 
     final sentences = <String>[l10n.narrativeTotal(n.total)];
@@ -181,6 +188,13 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
       ),
       const SizedBox(height: 24),
     ];
+  }
+
+  String _deltaPeople(AppLocalizations l10n, int diff) {
+    if (diff == 0) return l10n.deltaPeopleSame;
+    return diff > 0
+        ? l10n.deltaPeopleMore(diff)
+        : l10n.deltaPeopleFewer(-diff);
   }
 
   String _periodLabel(AppLocalizations l10n) {
@@ -269,17 +283,27 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
 
-    final totalUnique = sumUnique(_daily);
-    final totalReturning = sumReturning(_daily);
-    final prevTotalUnique = sumUnique(_prevDaily);
-    final avgDaily = averagePerDay(totalUnique, _daily.length);
+    // Everything on this screen is computed from complete days. The day the
+    // device was switched on is half a day wearing a whole day's clothes -
+    // left in, it drags the average under, flattens the trend line against
+    // the floor, and skews whichever weekday it happens to land on. The
+    // handful of visitors it drops are well inside the accuracy this product
+    // already declares; the wrong average was not.
+    final rows = withoutInstallDay(_daily, _installDate);
+    final prevRows = withoutInstallDay(_prevDaily, _installDate);
+    final excludedInstallDay = rows.length != _daily.length;
+
+    final totalUnique = sumUnique(rows);
+    final totalReturning = sumReturning(rows);
+    final prevTotalUnique = sumUnique(prevRows);
+    final avgDaily = averagePerDay(totalUnique, rows.length);
     final returningRatePct = returningRate(totalUnique, totalReturning);
     final delta = deltaPercent(totalUnique, prevTotalUnique);
-    final best = bestDay(_daily);
+    final best = bestDay(rows);
 
     final weekdaySums = List<int>.filled(7, 0);
     final weekdayCounts = List<int>.filled(7, 0);
-    for (final a in _daily) {
+    for (final a in rows) {
       final idx = weekdayIndex(a.date);
       weekdaySums[idx] += a.unique;
       weekdayCounts[idx]++;
@@ -359,6 +383,24 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                 ),
               ),
               const SizedBox(height: 8),
+              // Said out loud rather than silently dropped: a day is missing
+              // from these numbers and the operator is entitled to know which
+              // and why.
+              if (excludedInstallDay) ...[
+                Row(
+                  children: [
+                    Icon(Icons.info_outline,
+                        size: 14, color: Theme.of(context).colorScheme.outline),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(l10n.installDayExcluded,
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: Theme.of(context).colorScheme.outline)),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+              ],
               // The period in words, before the numbers - most owners want
               // the takeaway, not the table.
               ..._narrativeSection(context, l10n, weekdayLabelsFull),
@@ -372,8 +414,14 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                         style: Theme.of(context).textTheme.bodySmall),
                     if (delta != null) ...[
                       const SizedBox(height: 4),
+                      // A percentage tells you it moved; a headcount tells you
+                      // what moved. "+15%" needs mental arithmetic against a
+                      // number you'd have to go and find - "o 23 osoby więcej"
+                      // is the thing itself. Both, because people scan for the
+                      // percentage and then want to know what it means.
                       Text(
-                        '${delta >= 0 ? '+' : ''}$delta% ${l10n.vsPreviousPeriod}',
+                        '${delta >= 0 ? '+' : ''}$delta% · '
+                        '${_deltaPeople(l10n, totalUnique - prevTotalUnique)}',
                         style: TextStyle(
                           color: delta >= 0
                               ? Theme.of(context).colorScheme.tertiary
@@ -444,14 +492,25 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
               Row(
                 children: [
                   Expanded(
-                    child: Text(l10n.dailyTrendTitle,
+                    child: Text(
+                        _period == _Period.today
+                            ? l10n.hourlyChartTitle
+                            : l10n.dailyTrendTitle,
                         style: Theme.of(context).textTheme.titleMedium),
                   ),
                   TextButton.icon(
+                    // "Dziś" draws the hourly trend here, so its drill-down
+                    // opens on hours too - expanding a chart should show you
+                    // more of what you tapped, not a different chart.
                     onPressed: () => Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (_) => ChartDetail(
-                            deviceId: _deviceId, title: l10n.dailyTrendTitle),
+                          deviceId: _deviceId,
+                          title: _period == _Period.today
+                              ? l10n.hourlyChartTitle
+                              : l10n.dailyTrendTitle,
+                          startHourly: _period == _Period.today,
+                        ),
                       ),
                     ),
                     icon: const Icon(Icons.open_in_full, size: 16),
@@ -474,7 +533,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                           : _HourlyTrendChart(data: hourlyToday))
                       : (_daily.isEmpty
                           ? Center(child: Text(l10n.noDataYet))
-                          : _DailyTrendChart(data: _daily)),
+                          : _DailyTrendChart(data: rows)),
                 ),
               ),
               // A single "Dziś" day can only ever populate one weekday
