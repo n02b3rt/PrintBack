@@ -425,11 +425,17 @@ Note: the current code in `firmware/` and `app/` is still the old
 architecture (USB-CDC → Python desktop dashboard, SQLite). Don't remove /
 change it until the new path (BLE+SD) is ready and tested in parallel.
 
-Last updated: 2026-07-17 (Phase 7 done). The plan in Etapy 1-5 is now
-complete except iOS (needs a Mac + iPhone, neither available). What's left
-before a real pilot, beyond the firmware batch below, is the Play Store
-blockers: the release build still signs with the debug key, the icon is
-still Flutter's default, and `android:label` is lowercase "printback".
+Last updated: 2026-07-17 (Phase 7 done, v1.0.0 released). The plan in Etapy
+1-5 is now complete except iOS (needs a Mac + iPhone, neither available).
+`v1.0.0` is tagged and released on GitHub as a source release - no binaries,
+deliberately: the Android release build still signs with the debug key, so
+publishing an APK would hand out something nobody can cleanly upgrade later.
+`app/`, the dead PySide6 desktop dashboard, was deleted in the same pass;
+nothing referenced it and git history keeps it.
+
+What's left before a real pilot, beyond the firmware batch below, is the
+Play Store blockers: the debug signing key, Flutter's default icon, and
+`android:label` being lowercase "printback".
 Otherwise what's left is either time (the 30-day soak, which every
 reflash restarts - the board should now be left alone), hardware (a second
 unit, an enclosure with a soldered switch instead of the breadboard that
