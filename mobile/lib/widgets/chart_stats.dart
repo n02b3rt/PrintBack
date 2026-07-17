@@ -12,6 +12,11 @@ import 'package:flutter/material.dart';
 /// Each entry is a (label, value) pair; the caller decides what's worth
 /// showing for its own chart, since "peak" means something different on an
 /// hourly chart than on a daily one.
+///
+/// Every cell gets an equal share of the row, so keep values short. A value
+/// that outgrows its share ellipsises, and it does it from the right - which
+/// is where the number usually is. Prefer "Czw · 198" over "Czwartek · 198"
+/// rather than relying on the truncation to be graceful; it isn't.
 class ChartStatStrip extends StatelessWidget {
   final List<(String label, String value)> stats;
 
@@ -23,27 +28,33 @@ class ChartStatStrip extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        for (final (label, value) in stats)
+        for (final (i, (label, value)) in stats.indexed)
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  value,
-                  style: theme.textTheme.titleMedium
-                      ?.copyWith(fontWeight: FontWeight.w700),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  label,
-                  style: theme.textTheme.labelSmall
-                      ?.copyWith(color: theme.colorScheme.outline),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
+            child: Padding(
+              // A gutter between cells. Without it a value that fills its
+              // share butts straight up against the next one and the two read
+              // as a single garbled string.
+              padding: EdgeInsets.only(right: i == stats.length - 1 ? 0 : 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    value,
+                    style: theme.textTheme.titleMedium
+                        ?.copyWith(fontWeight: FontWeight.w700),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    label,
+                    style: theme.textTheme.labelSmall
+                        ?.copyWith(color: theme.colorScheme.outline),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
             ),
           ),
       ],

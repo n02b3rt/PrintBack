@@ -193,6 +193,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
         l10n.weekdaySunFull,
       ];
 
+  List<String> _weekdayLabelsShort(AppLocalizations l10n) => [
+        l10n.weekdayMon,
+        l10n.weekdayTue,
+        l10n.weekdayWed,
+        l10n.weekdayThu,
+        l10n.weekdayFri,
+        l10n.weekdaySat,
+        l10n.weekdaySun,
+      ];
+
   /// Numbers for the hourly chart. Deliberately not the day's total - that's
   /// already the KPI right above, and repeating it would be filler. These say
   /// what the chart itself can't: when the rush was, how big a normal hour
@@ -224,11 +234,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   /// Numbers for the daily chart: the span's total, its best day and a
   /// typical day. Same rule as above - nothing here is already on screen.
-  List<Widget> _dailyStats(BuildContext context, AppLocalizations l10n,
-      List<String> weekdaysFull) {
+  List<Widget> _dailyStats(BuildContext context, AppLocalizations l10n) {
     if (_recentDaily.isEmpty) return const [];
     final total = sumUnique(_recentDaily);
     final best = bestDay(_recentDaily);
+    // Short weekday, not the full name: this cell gets a third of the row, and
+    // "Czwartek · 198" doesn't fit in it - it ellipsised to "Czwartek · 1…",
+    // dropping the number, which is the half worth reading. "Czw · 198" fits
+    // and keeps both.
+    final weekdays = _weekdayLabelsShort(l10n);
     return [
       const Divider(height: 20),
       ChartStatStrip(stats: [
@@ -237,7 +251,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           l10n.statBest,
           best == null
               ? '-'
-              : '${weekdaysFull[weekdayIndex(best.date)]} · ${best.unique}'
+              : '${weekdays[weekdayIndex(best.date)]} · ${best.unique}'
         ),
         (l10n.statAvgDay, '${averagePerDay(total, _recentDaily.length)}'),
       ]),
@@ -457,7 +471,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
-    final weekdayLabelsFull = _weekdayLabelsFull(l10n);
     // The sync icon needs a fully-ready connection; offline (or mid-attempt
     // on a wrong device) it's disabled - the status banner carries the
     // [Connect] affordance instead.
@@ -631,7 +644,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             )
                           : _DailyBarChart(data: _recentDaily.reversed.toList()),
                     ),
-                    ..._dailyStats(context, l10n, weekdayLabelsFull),
+                    ..._dailyStats(context, l10n),
                   ],
                 ),
               ),
