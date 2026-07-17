@@ -138,6 +138,26 @@ List<Aggregate> withoutInstallDay(List<Aggregate> rows, String? installDate) {
   return kept.isEmpty ? rows : kept;
 }
 
+/// Drops today from a daily series, for the same reason [withoutInstallDay]
+/// drops the first one.
+///
+/// Today is a partial day: it means "how many so far", while every row next to
+/// it means "how many that day". Trending or averaging the two together is
+/// what made the chart fall off a cliff every afternoon and heal itself at
+/// midnight - at noon today is half a day being read as a bad day.
+///
+/// Today isn't lost by this: it's the KPI cards, the hourly chart, and the
+/// "Odwiedziny -> Dziś" drill-down, all of which are built to say "so far".
+/// This is only about the series that answer "where is this heading", which is
+/// a question about finished days.
+///
+/// Same last-row guard as [withoutInstallDay]: on day one, dropping today
+/// would leave an empty chart, and "no data yet" is said better elsewhere.
+List<Aggregate> withoutToday(List<Aggregate> rows, String todayDate) {
+  final kept = rows.where((a) => a.date != todayDate).toList();
+  return kept.isEmpty ? rows : kept;
+}
+
 /// Just the rows falling on [weekday] (0=Monday), oldest first.
 ///
 /// The weekday-pattern chart answers "which day is busiest"; this answers the

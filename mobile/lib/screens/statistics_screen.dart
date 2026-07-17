@@ -310,9 +310,19 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     // the floor, and skews whichever weekday it happens to land on. The
     // handful of visitors it drops are well inside the accuracy this product
     // already declares; the wrong average was not.
-    final rows = withoutInstallDay(_daily, _installDate);
+    //
+    // Today is the same thing at the other end of the series, and was being
+    // left in - so "Tydzień" was six days plus however much of this one had
+    // happened by the time you looked. withoutToday's last-row guard makes
+    // this a no-op for the "Dziś" period, where today is the entire subject.
+    final today = _fmt(DateTime.now());
+    final withoutFirst = withoutInstallDay(_daily, _installDate);
+    final rows = withoutToday(withoutFirst, today);
     final prevRows = withoutInstallDay(_prevDaily, _installDate);
-    final excludedInstallDay = rows.length != _daily.length;
+    // Kept apart: the two notes say different things, and one list length
+    // can't tell you which end got trimmed.
+    final excludedInstallDay = withoutFirst.length != _daily.length;
+    final excludedToday = rows.length != withoutFirst.length;
 
     final totalUnique = sumUnique(rows);
     final totalReturning = sumReturning(rows);
@@ -407,6 +417,21 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
               // Said out loud rather than silently dropped: a day is missing
               // from these numbers and the operator is entitled to know which
               // and why.
+              if (excludedToday) ...[
+                Row(
+                  children: [
+                    Icon(Icons.info_outline,
+                        size: 14, color: Theme.of(context).colorScheme.outline),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(l10n.todayExcludedNote,
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: Theme.of(context).colorScheme.outline)),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+              ],
               if (excludedInstallDay) ...[
                 Row(
                   children: [
@@ -905,7 +930,13 @@ class _HourlyTrendChart extends StatelessWidget {
       title: '${hour.toString().padLeft(2, '0')}:00',
       primaryValue: '${agg.unique}',
       primaryLabel: l10n.uniqueLabel,
-      rows: [(l10n.returningLabel, '${agg.returning}')],
+      // Same pair as the dashboard's hourly sheet - one hour should read the
+      // same wherever you tap it.
+      rows: [
+        (l10n.newVisitorsLabel,
+            '${(agg.unique - agg.returning).clamp(0, agg.unique)}'),
+        (l10n.returningLabel, '${agg.returning}'),
+      ],
       interpretation: interpretation,
     );
   }

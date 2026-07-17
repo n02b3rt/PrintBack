@@ -1389,4 +1389,16 @@ rather than reported. Fixed the same way: `_reload()` skips the baseline for
 the whole line stops rendering. Worth remembering as a pattern rather than
 two bugs: anywhere a period can be "today", its baseline is a complete day
 and the comparison is invalid until midnight.
+Final pass (same date): the pattern turned out to be wider than comparisons.
+A partial today has no business being *in* a daily series either - it was
+still the last bar of the dashboard's "Ostatnie dni", the last point of the
+trend drill-down, and a member of the Statistics week/month totals, where it
+sank the average and made every afternoon look like a decline that healed
+itself at midnight. The repo already had the answer: `withoutInstallDay()`
+drops the *first* day for exactly this reason ("half a day wearing a whole
+day's clothes") and says so in a note. Added `withoutToday()` as its sibling,
+applied to all three, with a matching note. Today is not lost - it is the KPI
+cards, the hourly chart, and the "Odwiedziny -> Dziś" drill-down, all of which
+are built to say "so far". Rule: a daily *series* contains finished days; the
+running day lives in the views built for it.
 Status: RESOLVED (2026-07-17)

@@ -146,6 +146,48 @@ void main() {
     });
   });
 
+  group('withoutToday', () {
+    test('drops today, which is the last row of a daily series', () {
+      final rows = [
+        daily('2026-07-15', 172),
+        daily('2026-07-16', 198),
+        daily('2026-07-17', 111), // today, half done at the time of reading
+      ];
+      final kept = withoutToday(rows, '2026-07-17');
+      expect(kept.map((a) => a.date), ['2026-07-15', '2026-07-16']);
+    });
+
+    test('keeps everything when today is outside the period', () {
+      // Browsing an older range: none of its rows are today, so none go.
+      final rows = [daily('2026-07-15', 172), daily('2026-07-16', 198)];
+      expect(withoutToday(rows, '2026-07-17'), rows);
+    });
+
+    test('never strips the only row, so day one still shows something', () {
+      final rows = [daily('2026-07-17', 111)];
+      expect(withoutToday(rows, '2026-07-17'), rows);
+    });
+
+    test('an empty period stays empty', () {
+      expect(withoutToday([], '2026-07-17'), isEmpty);
+    });
+
+    test('the average stops being dragged under by the day in progress', () {
+      // The bug this exists for: at noon, today's running total reads as a
+      // collapse and pulls the average down with it.
+      final rows = [
+        daily('2026-07-15', 172),
+        daily('2026-07-16', 198),
+        daily('2026-07-17', 111),
+      ];
+      final withToday = sumUnique(rows) ~/ rows.length;
+      final kept = withoutToday(rows, '2026-07-17');
+      final withoutIt = sumUnique(kept) ~/ kept.length;
+      expect(withToday, 160);
+      expect(withoutIt, 185);
+    });
+  });
+
   group('withoutInstallDay', () {
     test('drops the install day wherever it sits in the list', () {
       final rows = [

@@ -152,7 +152,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (!mounted) return;
     setState(() {
       _hourlyToday = hourly;
-      _recentDaily = daily;
+      // "Ostatnie dni" means the days that are done. Today is a running total
+      // and it's already the three KPI cards and the hourly chart directly
+      // above this chart - drawing it here too gave it a stunted bar that made
+      // every afternoon look like a collapse, and dragged the strip's average
+      // down with it. Same call as the install day (stats_math.withoutToday).
+      _recentDaily = withoutToday(daily, today);
       _todayDaily = todayDaily;
       _pace = pace;
     });
@@ -648,6 +653,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ],
                 ),
               ),
+              // Today is missing from the chart above on purpose - say so, or
+              // the first question is "where's today?".
+              if (_recentDaily.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Icon(Icons.info_outline,
+                        size: 14, color: Theme.of(context).colorScheme.outline),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(l10n.todayExcludedNote,
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: Theme.of(context).colorScheme.outline)),
+                    ),
+                  ],
+                ),
+              ],
             ],
           ),
         ),
@@ -745,7 +767,6 @@ class _HourlyBarChart extends StatelessWidget {
     final hour = agg.localHour;
     final dayTotal = data.fold<int>(0, (s, a) => s + a.unique);
     final dayAvg = data.isEmpty ? 0.0 : dayTotal / data.length;
-    final share = dayTotal == 0 ? 0 : (agg.unique * 100 / dayTotal).round();
     final isPeak =
         agg.unique == data.map((a) => a.unique).reduce((a, b) => a > b ? a : b) &&
             agg.unique > 0;
@@ -763,9 +784,20 @@ class _HourlyBarChart extends StatelessWidget {
       title: '${hour.toString().padLeft(2, '0')}:00',
       primaryValue: '${agg.unique}',
       primaryLabel: l10n.uniqueLabel,
+      // Deliberately not a "share of today's traffic" percentage, which is
+      // what used to sit here. There is no honest denominator for it: summing
+      // the hourly counts double-counts anyone who came at 8 and again at 14,
+      // so the hourly sum isn't the day's traffic - but the day's real total
+      // (the KPI above) isn't the sum of these hours either, so any share
+      // computed from it wouldn't add up to 100% across the day. Whichever we
+      // picked, the number contradicted something already on screen: 43 at
+      // 08:00 was labelled "18% of today" while the KPI said 111 visitors.
+      // The same two counts the whole app speaks in say more and can't be
+      // wrong, and the vs-average percentage lives in the interpretation
+      // below, where it's a comparison rather than a fake part-of-whole.
       rows: [
+        (l10n.newVisitorsLabel, '${(agg.unique - agg.returning).clamp(0, agg.unique)}'),
         (l10n.returningLabel, '${agg.returning}'),
-        (l10n.shareOfDayLabel, '$share%'),
       ],
       interpretation: interpretation,
     );

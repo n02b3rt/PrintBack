@@ -219,8 +219,16 @@ class _ChartDetailState extends State<ChartDetail> {
     final days = _rangeDays;
     final (start, end) = _window;
 
-    final ordered = await _localDb.dailyInRange(
+    var ordered = await _localDb.dailyInRange(
         widget.deviceId, _fmt(start), _fmt(end));
+    // Trend ranges are about finished days: today is a running total, so
+    // leaving it in made the line dive every afternoon and pulled the average
+    // and "best day" down with it. The near-term ranges keep it - answering
+    // "how's today?" is the whole reason they exist (stats_math.withoutToday).
+    final excludesToday = widget.mode == ChartDetailMode.trend;
+    if (excludesToday) {
+      ordered = withoutToday(ordered, _fmt(DateTime.now()));
+    }
 
     // Two ranges get no baseline, for different reasons. "Everything" has no
     // earlier period left to compare against at all. "Today" has one, but it
@@ -748,6 +756,23 @@ class _ChartDetailState extends State<ChartDetail> {
                             ),
                     ),
                   ),
+                  // The trend stops at yesterday on purpose - say so, or the
+                  // first question is where today went.
+                  if (widget.mode == ChartDetailMode.trend) ...[
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Icon(Icons.info_outline,
+                            size: 14, color: theme.colorScheme.outline),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(l10n.todayExcludedNote,
+                              style: theme.textTheme.bodySmall
+                                  ?.copyWith(color: theme.colorScheme.outline)),
+                        ),
+                      ],
+                    ),
+                  ],
                   // A grey band nobody can explain is worse than no band. Say
                   // what the shading is, right under it, whenever it's drawn.
                   // Deliberately the same icon as the "<5" note below rather
