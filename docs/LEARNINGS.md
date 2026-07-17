@@ -1331,3 +1331,55 @@ screens were confirmed after the fix.
 Status: RESOLVED (2026-07-16) - verified visually on the device: the panel
 renders again, all three KPI cards are the same height with the label on one
 line, and both statistics rows line up.
+
+## [MOBILE] today's KPI froze at whatever it was when the app connected
+Date: 2026-07-17
+Problem: user spotted that the dashboard claimed 10 visitors today while the
+hourly chart's own detail sheet, on the same screen, reported 43 visitors in
+the 08:00 hour alone. Impossible on its face: a day cannot have fewer unique
+devices than one of its hours.
+Root cause: confirmed by pulling the phone's db rather than reasoning about
+it - today's daily row was `(unique=10, returning=10)`, byte for byte the
+same as that day's `hour=00` row, while hours 01-09 had since arrived and
+summed to 217. So the daily row wasn't wrong, it was *old*: it was the
+running total as of ~02:00 local, and nothing had refreshed it since.
+The daily "today so far" row is the one thing the device never notifies. It
+lives in `stats/today.bin` and only a STATS *read* returns it
+(`gatt_stats_read()`), which the app did exactly once, from
+`DashboardScreen.initState()` (the 2026-07-09 entry below added that read to
+fix the "0/0 after connecting" symptom, and one read was enough *for that
+symptom*). An app left open all day therefore showed a morning snapshot in
+the KPI cards - which read the daily row deliberately, per the 2026-07-09
+duplicate-row fix - while the hourly chart kept filling in around it. The
+longer the app stayed open, the more wrong the headline number got.
+Fix: app-side only; firmware is frozen for the soak, and no firmware change
+is needed anyway. `BleService._scheduleTodayRefresh()` re-reads STATS,
+debounced by 1s, triggered by (a) any arriving hourly row - the device
+rewrites today.bin every time it finalizes an hour, so an hourly row *is* the
+signal that the running total moved, (b) a completed SYNC replay, and (c) the
+app returning to the foreground, since otherwise the next hourly row could be
+up to an hour away and someone who just opened the app would stare at a stale
+number. Verified on hardware: KPI went from a frozen 10/0/10 to 105/34/71,
+matching the hourly data.
+Status: RESOLVED (2026-07-17)
+
+## [MOBILE] the "today" drill-down compared half a day against a whole one
+Date: 2026-07-17
+Problem: found while verifying the new near-term drill-down on hardware, not
+reported. Opening it at midday showed "105 odwiedzających, v 47% o 93 mniej
+niż dzień wcześniej" in red, and the interpretation card agreed ("Ruch
+mniejszy o 47%").
+Root cause: the range's baseline was the previous calendar day, loaded the
+same way every other range loads its previous period. For a complete range
+that's right; for "today" it compares twelve hours of traffic against
+twenty-four and calls the difference a trend. The number would have healed
+itself by midnight and been alarming all day - the same partial-day
+distortion that keeps today out of reports.
+Fix: `_load()` skips the baseline for `_Range.today` entirely, which also
+empties the narrative's comparison (`buildPeriodNarrative` drops the delta
+sentence when there's no previous period), and the header renders no delta
+row at all rather than falling back to "no earlier period to compare
+against" - there *is* one, we're just not pretending half a day matches it.
+The note under the range picker ("Dzień jeszcze trwa - dane są zbierane")
+carries the explanation.
+Status: RESOLVED (2026-07-17)

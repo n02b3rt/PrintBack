@@ -118,6 +118,7 @@ class BleService extends ChangeNotifier with WidgetsBindingObserver {
   DateTime? get lastSyncCompleted => _lastSyncCompleted;
 
   Timer? _syncIdleTimer;
+  Timer? _todayRefreshTimer;
 
   /// Auto-reconnect after the BLE link drops unexpectedly (device
   /// reflashed/rebooted, walked out of range) - without this the app sits
@@ -597,9 +598,17 @@ class BleService extends ChangeNotifier with WidgetsBindingObserver {
       // Backgrounded: stop retrying (battery), keep the flag so we resume
       // the loop when the app comes back.
       _reconnectTimer?.cancel();
-    } else if (!wasResumed && _isReconnecting) {
-      // Foregrounded again mid-reconnect - resume the loop immediately.
-      _scheduleReconnect();
+    } else if (!wasResumed) {
+      if (_isReconnecting) {
+        // Foregrounded again mid-reconnect - resume the loop immediately.
+        _scheduleReconnect();
+      } else if (isConnectedReady) {
+        // Coming back to the app after a while: today's running total has
+        // almost certainly moved on, and the next hourly row that would tell
+        // us could be up to an hour away. Ask now rather than showing a stale
+        // total to someone who just opened the app to look at it.
+        _scheduleTodayRefresh();
+      }
     }
   }
 
@@ -647,6 +656,34 @@ class BleService extends ChangeNotifier with WidgetsBindingObserver {
     // the row already in the db.
     await _persist(agg);
     if (!_statsController.isClosed) _statsController.add(agg);
+    // An hourly row arriving is the one signal that today's running total
+    // moved - see _scheduleTodayRefresh().
+    if (agg.hour != null) _scheduleTodayRefresh();
+  }
+
+  /// Re-reads today's running total from the device.
+  ///
+  /// The daily "today so far" row is the only thing the device never notifies:
+  /// it lives in stats/today.bin and a STATS *read* is the only way to get it.
+  /// readCurrentStats() used to run exactly once, from the dashboard's
+  /// initState(), so an app left open since the morning kept showing whatever
+  /// the total was at connect time while hourly rows filled in around it. On
+  /// 2026-07-17 that produced a day claiming 10 visitors that contained an
+  /// hour of 43 - impossible, and the KPI cards read the daily row, so that
+  /// was the number on screen.
+  ///
+  /// Every hour the device finalizes rewrites today.bin as well, so an
+  /// arriving hourly row means the running total has moved. Debounced: a
+  /// backlog replay is a burst of hourly rows and one read after it settles
+  /// is enough.
+  void _scheduleTodayRefresh() {
+    _todayRefreshTimer?.cancel();
+    _todayRefreshTimer = Timer(const Duration(seconds: 1), () async {
+      final agg = await readCurrentStats();
+      // readCurrentStats() already cached it; this just tells the screens to
+      // redraw, same as any other arriving row.
+      if (agg != null && !_statsController.isClosed) _statsController.add(agg);
+    });
   }
 
   void _completeSyncNow() {
@@ -656,6 +693,9 @@ class BleService extends ChangeNotifier with WidgetsBindingObserver {
       _lastSyncCompleted = DateTime.now();
       notifyListeners();
     }
+    // The replay just delivered a pile of hourly rows; make sure today's
+    // running total reflects the same moment they do.
+    _scheduleTodayRefresh();
   }
 
   /// Reads the device's STATUS snapshot (firmware version, SD state,
@@ -755,6 +795,7 @@ class BleService extends ChangeNotifier with WidgetsBindingObserver {
     _statsSub?.cancel();
     _connSub?.cancel();
     _syncIdleTimer?.cancel();
+    _todayRefreshTimer?.cancel();
     _reconnectTimer?.cancel();
     _statsController.close();
     super.dispose();
