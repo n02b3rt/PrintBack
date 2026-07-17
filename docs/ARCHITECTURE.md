@@ -1,8 +1,8 @@
 # Architecture: PrintBack (BLE + SD + Flutter)
 
 This is the architecture on `main`, built and running. The USB-CDC →
-Python/PySide6 desktop system it replaced is gone from the description here;
-its code survives under `app/` for reference only. See
+Python/PySide6 desktop system it replaced has been removed from the repo
+(it lives on in git history if it's ever needed). See
 [README.md](../README.md) for the overview,
 [docs/compliance/README.md](compliance/README.md) for the data/privacy side,
 and [docs/PROGRESS.md](PROGRESS.md) for how it got here.

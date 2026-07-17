@@ -16,10 +16,6 @@ venv/
 .ruff_cache/
 dist/
 
-# --- App runtime ---
-app/printback.db
-app/printback.db-wal
-app/printback.db-shm
 .env
 
 # --- Editors / OS ---

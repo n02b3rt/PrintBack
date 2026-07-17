@@ -46,9 +46,6 @@ built-in demo mode, not a real deployment.*
   aggregates only, works offline from that cache, and is bilingual (PL/EN).
   Dashboard, statistics with drill-down charts, xlsx export, shareable
   report card.
-- `app/`: **legacy.** The original Python/PySide6 desktop dashboard from the
-  USB-CDC architecture, superseded by `mobile/`. Kept in the tree for
-  reference; not part of the current system.
 - `docs/compliance/`: plain-language description of the data architecture,
   retention design and privacy choices actually enforced in the code.
   Starting point for a lawyer drafting RODO/GDPR paperwork per deployment.
