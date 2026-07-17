@@ -16,6 +16,20 @@ class OpeningHoursStore {
   static const _closed = 'opening_hours_closed_v2';
   static const _open = 'opening_hours_open_v2';
   static const _close = 'opening_hours_close_v2';
+  static const _advanced = 'opening_hours_advanced';
+
+  /// Whether the operator chose the per-day editor. Purely a UI preference -
+  /// the model is per-day either way, the simple view just writes the same
+  /// hours to every open day.
+  static Future<bool> loadAdvanced() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_advanced) ?? false;
+  }
+
+  static Future<void> saveAdvanced(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_advanced, value);
+  }
 
   static Future<OpeningHours> load() async {
     final prefs = await SharedPreferences.getInstance();

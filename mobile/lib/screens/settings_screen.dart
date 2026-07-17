@@ -465,15 +465,52 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   OpeningHours _hours = OpeningHours.disabled;
+  bool _hoursAdvanced = false;
 
   Future<void> _loadHours() async {
     final h = await OpeningHoursStore.load();
-    if (mounted) setState(() => _hours = h);
+    final adv = await OpeningHoursStore.loadAdvanced();
+    if (!mounted) return;
+    setState(() {
+      _hours = h;
+      // A schedule with genuinely different hours per day can't be shown in
+      // the simple view without lying about it, so it forces the per-day
+      // editor open regardless of the stored preference.
+      _hoursAdvanced = adv || _daysDiffer(h);
+    });
+  }
+
+  /// True when the open days don't all share the same hours.
+  static bool _daysDiffer(OpeningHours h) {
+    final open = h.days.where((d) => !d.closed).toList();
+    if (open.length <= 1) return false;
+    return open.any((d) =>
+        d.openHour != open.first.openHour || d.closeHour != open.first.closeHour);
   }
 
   Future<void> _saveHours(OpeningHours h) async {
     setState(() => _hours = h);
     await OpeningHoursStore.save(h);
+  }
+
+  Future<void> _setAdvanced(bool v) async {
+    setState(() => _hoursAdvanced = v);
+    await OpeningHoursStore.saveAdvanced(v);
+  }
+
+  /// The hours the simple view edits: whatever the first open day uses.
+  DaySchedule get _simpleDay =>
+      _hours.days.firstWhere((d) => !d.closed, orElse: () => _hours.days.first);
+
+  /// Writes one set of hours to every open day, leaving closed days closed.
+  Future<void> _setSimpleHours({int? openHour, int? closeHour}) async {
+    var next = _hours;
+    for (var i = 0; i < 7; i++) {
+      final d = next.days[i];
+      next = next.copyWithDay(
+          i, d.copyWith(openHour: openHour ?? d.openHour, closeHour: closeHour ?? d.closeHour));
+    }
+    await _saveHours(next);
   }
 
   /// Opening hours affect charts and averages everywhere, so this is a plain
@@ -485,13 +522,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// CONFIG round-trip is involved (unlike the range/returning-window
   /// settings above, which are device state).
   ///
-  /// Seven collapsed rows rather than one range for the week: a closed Sunday,
-  /// a short Saturday or a day off midweek is what ordinary shops actually
-  /// look like, and folding them into one range feeds closed days into the
-  /// averages.
+  /// Simple by default, per-day behind a switch.
+  ///
+  /// The model is per-weekday either way - a closed Sunday or a short
+  /// Saturday is what ordinary shops look like, and folding those into one
+  /// range feeds closed days into the averages. But most shops keep the same
+  /// hours every day they're open, and making all of them walk through seven
+  /// expandable rows to say "9 to 17" was the setting getting in the way of
+  /// the answer. So the simple view is one pair of hours plus day toggles -
+  /// which still covers "9-17, closed Sunday" - and the per-day editor is
+  /// there when the hours actually differ.
   Widget _openingHoursCard(BuildContext context, AppLocalizations l10n) {
     final theme = Theme.of(context);
-    final names = [
+    final namesFull = [
       l10n.weekdayMonFull,
       l10n.weekdayTueFull,
       l10n.weekdayWedFull,
@@ -499,6 +542,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
       l10n.weekdayFriFull,
       l10n.weekdaySatFull,
       l10n.weekdaySunFull,
+    ];
+    final namesShort = [
+      l10n.weekdayMon,
+      l10n.weekdayTue,
+      l10n.weekdayWed,
+      l10n.weekdayThu,
+      l10n.weekdayFri,
+      l10n.weekdaySat,
+      l10n.weekdaySun,
     ];
 
     return GlassCard(
@@ -516,11 +568,76 @@ class _SettingsScreenState extends State<SettingsScreen> {
             title: Text(l10n.openingHoursEnable),
             onChanged: (v) => _saveHours(_hours.copyWith(enabled: v)),
           ),
-          if (_hours.enabled)
-            for (var wd = 0; wd < 7; wd++) _dayRow(context, l10n, names, wd),
+          if (_hours.enabled) ...[
+            if (_hoursAdvanced)
+              for (var wd = 0; wd < 7; wd++)
+                _dayRow(context, l10n, namesFull, wd)
+            else
+              ..._simpleHours(context, l10n, namesShort),
+            const Divider(height: 24),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: _hoursAdvanced,
+              title: Text(l10n.openingHoursAdvanced),
+              subtitle: Text(l10n.openingHoursAdvancedHint,
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: theme.colorScheme.outline)),
+              onChanged: _setAdvanced,
+            ),
+          ],
         ],
       ),
     );
+  }
+
+  /// One pair of hours for the whole week, plus which days you're open at all.
+  List<Widget> _simpleHours(
+      BuildContext context, AppLocalizations l10n, List<String> namesShort) {
+    final theme = Theme.of(context);
+    final day = _simpleDay;
+    return [
+      Row(
+        children: [
+          Expanded(
+            child: _hourDropdown(
+              label: l10n.openingHoursOpen,
+              value: day.openHour,
+              onChanged: (v) => _setSimpleHours(openHour: v),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: _hourDropdown(
+              label: l10n.openingHoursClose,
+              value: day.closeHour,
+              onChanged: (v) => _setSimpleHours(closeHour: v),
+            ),
+          ),
+        ],
+      ),
+      if (day.openHour == day.closeHour)
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Text(l10n.openingHoursAllDay,
+              style: theme.textTheme.bodySmall
+                  ?.copyWith(color: theme.colorScheme.outline)),
+        ),
+      const SizedBox(height: 16),
+      Text(l10n.openingHoursOpenDays, style: theme.textTheme.bodyMedium),
+      const SizedBox(height: 8),
+      Wrap(
+        spacing: 6,
+        children: [
+          for (var wd = 0; wd < 7; wd++)
+            FilterChip(
+              label: Text(namesShort[wd]),
+              selected: !_hours.days[wd].closed,
+              onSelected: (v) => _saveHours(_hours.copyWithDay(
+                  wd, _hours.days[wd].copyWith(closed: !v))),
+            ),
+        ],
+      ),
+    ];
   }
 
   Widget _dayRow(BuildContext context, AppLocalizations l10n,
