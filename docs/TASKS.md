@@ -247,6 +247,31 @@ per `docs/compliance/README.md`, but the definitive read stays with the
 lawyer / operator DPIA - not decided here. This belongs in the Phase 7
 compliance/legal pass before a pilot.
 
+## Post-soak backlog: a power loss near midnight loses that day's daily total
+
+Found 2026-07-19 while diagnosing "the daily charts still show 17.07".
+Confirmed by pulling the phone's cache, not guessed: 18.07 had 22 hourly
+rows (sum 431) but **no daily row**, and a stray `1970-01-01` row sat
+alongside it - the clock-reset signature. The device has no RTC, so a power
+loss reverts its wallclock to the Kconfig fallback (1970) until a phone
+reconnects and sets it (docs/DECISIONS.md D6). The user's device was
+unplugged around the 18->19 midnight boundary; on reboot it wrote a 1970 row,
+then the phone reconnected and jumped the clock straight to 19.07 - skipping
+the real 18->19 midnight the device never experienced with a correct date.
+The daily rollover (`aggregate.c`, finalises the previous day into daily.bin)
+fires on that midnight crossing, so 18.07 was never finalised: the hours
+survived, the day's total did not. The app then correctly showed 17.07 as the
+newest complete day (18.07 has no total, 19.07 is today and excluded from
+daily series).
+
+Not an app bug - the app rendered exactly what the device had. Firmware fix
+belongs in the post-soak reflash: when `time_sync` jumps the clock forward
+across one or more day boundaries, finalise each skipped day from its hourly
+rows (or from today.bin as it stood) instead of silently losing the rollover.
+Cannot be built or verified without hardware, and firmware is frozen for the
+soak, so it waits. Low frequency in practice (needs a power cut in the ~1
+connect-latency window around local midnight), but real.
+
 ## Hold-to-restart gesture (flashed 2026-07-15)
 
 `firmware/main/ui.c` reboots the device on a ~10s button hold
