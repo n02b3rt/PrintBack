@@ -567,6 +567,36 @@ class BleService extends ChangeNotifier with WidgetsBindingObserver {
     await _syncChr!.write(bytes.buffer.asUint8List());
   }
 
+  /// Pulls whatever the device has that the cache doesn't, then lets the usual
+  /// statsUpdates path redraw the screens.
+  ///
+  /// This is what pull-to-refresh should do. A screen's own reload only re-reads
+  /// the local db - fine for redrawing, useless for "get me the newest
+  /// numbers", which is exactly what a pull-down gesture promises. Reads today's
+  /// running total (the one row the device never notifies) and asks for a
+  /// backlog replay from the newest day already cached, so a phone that missed a
+  /// day or two while the app was closed catches up.
+  ///
+  /// Safe offline: with no ready connection it does nothing and returns, and the
+  /// caller still reloads from cache.
+  Future<void> refreshFromDevice() async {
+    if (!isConnectedReady) return;
+    final deviceId = _activeDeviceId;
+    await readCurrentStats();
+    if (deviceId != null) {
+      final newest = await LocalDb().newestDailyDate(deviceId);
+      final sinceUnixDay =
+          newest == null ? 0 : _unixDayFromDate(newest) + 1;
+      await requestSync(sinceUnixDay);
+    }
+  }
+
+  static int _unixDayFromDate(String date) {
+    final p = date.split('-');
+    final d = DateTime.utc(int.parse(p[0]), int.parse(p[1]), int.parse(p[2]));
+    return d.difference(DateTime.utc(1970, 1, 1)).inDays;
+  }
+
   /// Schedules the next auto-reconnect attempt on the backoff schedule.
   /// Foreground-only; each failed attempt lengthens the delay up to the
   /// cap. Reuses tryAutoConnect() (which prefers the last-connected device

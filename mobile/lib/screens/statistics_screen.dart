@@ -37,7 +37,8 @@ class StatisticsScreen extends StatefulWidget {
   State<StatisticsScreen> createState() => _StatisticsScreenState();
 }
 
-class _StatisticsScreenState extends State<StatisticsScreen> {
+class _StatisticsScreenState extends State<StatisticsScreen>
+    with WidgetsBindingObserver {
   final _localDb = LocalDb();
   _Period _period = _Period.week;
   DateTimeRange? _customRange;
@@ -60,8 +61,21 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     // BleService caches every incoming aggregate itself before emitting, so
     // this is purely a "something landed, redraw" signal.
     _statsSub = ble.statsUpdates.listen((_) => _scheduleReload());
+    WidgetsBinding.instance.addObserver(this);
     _loadHours();
     _reload();
+  }
+
+  /// Same as the dashboard: reload when the app returns to the foreground, so
+  /// a screen that was left open across a day boundary or a fresh sync doesn't
+  /// keep showing stale dates. Pull fresh from the device (no-op offline).
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted) {
+      context.read<BleService>().refreshFromDevice();
+      _loadHours();
+      _scheduleReload();
+    }
   }
 
   Future<void> _loadHours() async {
@@ -76,8 +90,16 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     _reloadDebounce = Timer(const Duration(milliseconds: 250), _reload);
   }
 
+  /// Pull-to-refresh fetches from the device before redrawing - see the
+  /// dashboard's _pullToRefresh for why re-reading the db alone isn't enough.
+  Future<void> _pullToRefresh() async {
+    await context.read<BleService>().refreshFromDevice();
+    await _reload();
+  }
+
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _reloadDebounce?.cancel();
     _statsSub?.cancel();
     super.dispose();
@@ -394,7 +416,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
       ),
       body: GradientBackground(
         child: RefreshIndicator(
-          onRefresh: _reload,
+          onRefresh: _pullToRefresh,
           child: ListView(
             padding: const EdgeInsets.all(16),
             children: [

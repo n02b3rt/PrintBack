@@ -62,7 +62,8 @@ class DashboardScreen extends StatefulWidget {
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _DashboardScreenState extends State<DashboardScreen> {
+class _DashboardScreenState extends State<DashboardScreen>
+    with WidgetsBindingObserver {
   final _localDb = LocalDb();
   StreamSubscription<Aggregate>? _statsSub;
   Timer? _reloadDebounce;
@@ -86,9 +87,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
     // BleService caches every incoming aggregate itself before emitting, so
     // this is purely a "something landed, redraw" signal.
     _statsSub = ble.statsUpdates.listen((_) => _scheduleReload());
+    WidgetsBinding.instance.addObserver(this);
     _loadInitialStats(ble);
     _loadHours();
     _reload();
+  }
+
+  /// Coming back to the app after it sat in the background: the day may have
+  /// rolled over and the device may have counted more since. Nothing else
+  /// forces a reload here - statsUpdates only fires when a new row actually
+  /// arrives, so without this the screen keeps showing whatever it computed
+  /// when it was first opened, stale date and all. Pull fresh from the device
+  /// (no-op offline) and redraw.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted) {
+      context.read<BleService>().refreshFromDevice();
+      _loadHours();
+      _scheduleReload();
+    }
   }
 
   /// Re-read on every mount rather than cached once: the operator can change
@@ -96,6 +113,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Future<void> _loadHours() async {
     final h = await OpeningHoursStore.load();
     if (mounted) setState(() => _hours = h);
+  }
+
+  /// Pull-to-refresh: actually go and fetch, don't just redraw. The old
+  /// handler re-read the local db, so pulling down on a screen already showing
+  /// the newest cached numbers did visibly nothing - the gesture promises
+  /// "get me fresh data", so it now asks the device first (no-op offline),
+  /// then reloads. The reload is also driven by the arriving rows, but doing
+  /// it here too means the spinner covers a real reload even when nothing new
+  /// came back.
+  Future<void> _pullToRefresh() async {
+    await context.read<BleService>().refreshFromDevice();
+    await _reload();
   }
 
   /// A SYNC backlog replay arrives as a burst of notifications; collapse it
@@ -183,6 +212,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _reloadDebounce?.cancel();
     _statsSub?.cancel();
     super.dispose();
@@ -506,7 +536,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
       body: GradientBackground(
         child: RefreshIndicator(
-          onRefresh: _reload,
+          onRefresh: _pullToRefresh,
           child: ListView(
             padding: const EdgeInsets.all(16),
             children: [
